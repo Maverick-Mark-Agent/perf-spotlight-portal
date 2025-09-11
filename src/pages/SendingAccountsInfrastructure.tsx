@@ -662,15 +662,15 @@ const SendingAccountsInfrastructure = () => {
 
         {/* Client Detail Modal */}
         <Dialog open={isClientModalOpen} onOpenChange={setIsClientModalOpen}>
-          <DialogContent className="max-w-6xl max-h-[80vh] overflow-hidden bg-gray-900 border-white/20">
-            <DialogHeader>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden bg-gray-900 border-white/20 flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle className="text-white flex items-center space-x-2">
                 <Users className="h-5 w-5 text-dashboard-accent" />
                 <span>{selectedClient?.clientName} - Email Accounts</span>
               </DialogTitle>
             </DialogHeader>
             
-            <div className="overflow-y-auto flex-1 space-y-4">
+            <div className="overflow-y-auto flex-1 pr-2 space-y-4">
               {selectedClient && (
                 <ClientAccountsModal 
                   client={selectedClient}

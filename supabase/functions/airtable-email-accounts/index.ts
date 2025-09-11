@@ -20,23 +20,46 @@ serve(async (req) => {
       throw new Error('AIRTABLE_API_KEY not found');
     }
 
-    const response = await fetch(
-      `https://api.airtable.com/v0/${baseId}/${tableName}`,
-      {
+    // Fetch all records with pagination
+    let allRecords = [];
+    let offset = null;
+    let pageCount = 0;
+
+    do {
+      pageCount++;
+      console.log(`Fetching page ${pageCount}${offset ? ` with offset: ${offset}` : ''}`);
+      
+      const url = new URL(`https://api.airtable.com/v0/${baseId}/${tableName}`);
+      if (offset) {
+        url.searchParams.append('offset', offset);
+      }
+
+      const response = await fetch(url.toString(), {
         headers: {
           'Authorization': `Bearer ${airtableApiKey}`,
           'Content-Type': 'application/json',
         },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Airtable API error: ${response.status} on page ${pageCount}`);
       }
-    );
 
-    if (!response.ok) {
-      throw new Error(`Airtable API error: ${response.status}`);
-    }
+      const data = await response.json();
+      allRecords = allRecords.concat(data.records || []);
+      offset = data.offset;
+      
+      console.log(`Page ${pageCount}: Retrieved ${data.records?.length || 0} records. Total so far: ${allRecords.length}`);
+      
+    } while (offset);
 
-    const data = await response.json();
+    console.log(`Completed pagination: ${pageCount} pages, ${allRecords.length} total records`);
+
+    const finalData = {
+      records: allRecords
+    };
     
-    return new Response(JSON.stringify(data), {
+    return new Response(JSON.stringify(finalData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

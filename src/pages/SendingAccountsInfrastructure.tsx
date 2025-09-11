@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 const SendingAccountsInfrastructure = () => {
   const [emailAccounts, setEmailAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('Fetching all records...');
   const [accountStats, setAccountStats] = useState({
     total: 0,
     avgPerClient: '0',
@@ -114,7 +115,7 @@ const SendingAccountsInfrastructure = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.total}</div>
-              <p className="text-white/70 text-sm">Total Email Accounts Owned</p>
+              <p className="text-white/70 text-sm">{loading ? loadingMessage : 'Total Email Accounts Owned'}</p>
             </CardContent>
           </Card>
 

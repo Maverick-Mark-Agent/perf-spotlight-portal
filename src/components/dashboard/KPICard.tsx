@@ -1,7 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-
 interface KPICardProps {
   title: string;
   value: string | number;
@@ -12,7 +11,6 @@ interface KPICardProps {
   trend?: "up" | "down" | "neutral";
   icon?: React.ReactNode;
 }
-
 export const KPICard = ({
   title,
   value,
@@ -21,7 +19,7 @@ export const KPICard = ({
   progress,
   target,
   trend = "neutral",
-  icon,
+  icon
 }: KPICardProps) => {
   const getTrendColor = () => {
     switch (trend) {
@@ -33,9 +31,7 @@ export const KPICard = ({
         return "text-dashboard-secondary";
     }
   };
-
-  return (
-    <Card className="bg-dashboard-card border-border shadow-sm hover:shadow-md transition-shadow">
+  return <Card className="bg-dashboard-card border-border shadow-sm hover:shadow-md transition-shadow">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium text-dashboard-secondary">
@@ -47,19 +43,14 @@ export const KPICard = ({
       <CardContent>
         <div className="space-y-2">
           <div className="text-2xl font-bold text-dashboard-primary">{value}</div>
-          {subtitle && (
-            <div className={cn("text-sm", getTrendColor())}>{subtitle}</div>
-          )}
-          {type === "progress" && progress !== undefined && (
-            <div className="space-y-1">
+          {subtitle}
+          {type === "progress" && progress !== undefined && <div className="space-y-1">
               <Progress value={progress} className="h-2" />
               <div className="text-xs text-dashboard-secondary">
                 {progress}% of {target} target
               </div>
-            </div>
-          )}
+            </div>}
         </div>
       </CardContent>
-    </Card>
-  );
+    </Card>;
 };

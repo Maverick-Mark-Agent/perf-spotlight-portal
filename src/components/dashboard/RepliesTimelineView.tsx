@@ -8,6 +8,7 @@ interface RepliesTimelineViewProps {
   positiveRepliesLast30Days: number;
   positiveRepliesCurrentMonth: number;
   positiveRepliesLastMonth: number;
+  positiveRepliesLastVsThisMonth: number;
 }
 
 export const RepliesTimelineView = ({
@@ -16,6 +17,7 @@ export const RepliesTimelineView = ({
   positiveRepliesLast30Days,
   positiveRepliesCurrentMonth,
   positiveRepliesLastMonth,
+  positiveRepliesLastVsThisMonth,
 }: RepliesTimelineViewProps) => {
   // Find the maximum value to normalize the progress bars
   const maxValue = Math.max(
@@ -64,8 +66,7 @@ export const RepliesTimelineView = ({
     }
   ];
 
-  const monthlyComparison = positiveRepliesCurrentMonth - positiveRepliesLastMonth;
-  const monthlyTrend = monthlyComparison >= 0 ? "up" : "down";
+  const monthlyTrend = positiveRepliesLastVsThisMonth >= 0 ? "up" : "down";
 
   return (
     <Card className="bg-dashboard-card border-border">
@@ -138,7 +139,7 @@ export const RepliesTimelineView = ({
                 <TrendingDown className="h-4 w-4 text-dashboard-danger" />
               )}
               <span className={`text-lg font-bold ${monthlyTrend === 'up' ? 'text-dashboard-success' : 'text-dashboard-danger'}`}>
-                {monthlyComparison > 0 ? '+' : ''}{monthlyComparison}
+                {positiveRepliesLastVsThisMonth}
               </span>
               <span className="text-xs text-dashboard-secondary">
                 vs last month

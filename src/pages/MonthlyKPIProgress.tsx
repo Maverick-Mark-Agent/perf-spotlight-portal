@@ -137,8 +137,8 @@ const MonthlyKPIProgress = () => {
             <KPICard
               title="Projected Positive Replies (EOM)"
               value={selectedClientData.projectedReplies}
-              subtitle="On track"
-              trend="up"
+              subtitle={selectedClientData.projectedReplies >= selectedClientData.monthlyKPI ? "On Track" : "NOT On Track"}
+              trend={selectedClientData.projectedReplies >= selectedClientData.monthlyKPI ? "up" : "down"}
               icon={<Target className="h-5 w-5" />}
             />
             

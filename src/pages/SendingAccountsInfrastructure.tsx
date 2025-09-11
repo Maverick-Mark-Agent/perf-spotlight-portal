@@ -25,7 +25,7 @@ const SendingAccountsInfrastructure = () => {
   const [chartData, setChartData] = useState([]);
   const [selectedXAxis, setSelectedXAxis] = useState('Tag - Email Provider');
   const [selectedYAxis, setSelectedYAxis] = useState('Tag - Reseller');
-  const [selectedZAxis, setSelectedZAxis] = useState('Client');
+  const [selectedZAxis, setSelectedZAxis] = useState('Client Name (from Client)');
 
   const fetchEmailAccounts = async () => {
     setLoading(true);
@@ -446,7 +446,7 @@ const SendingAccountsInfrastructure = () => {
                     <SelectContent>
                       <SelectItem value="Tag - Email Provider">Email Provider</SelectItem>
                       <SelectItem value="Tag - Reseller">Reseller</SelectItem>
-                      <SelectItem value="Client">Client</SelectItem>
+                      <SelectItem value="Client Name (from Client)">Client Name (from Client)</SelectItem>
                       <SelectItem value="Account Type">Account Type</SelectItem>
                     </SelectContent>
                   </Select>
@@ -460,7 +460,7 @@ const SendingAccountsInfrastructure = () => {
                     <SelectContent>
                       <SelectItem value="Tag - Email Provider">Email Provider</SelectItem>
                       <SelectItem value="Tag - Reseller">Reseller</SelectItem>
-                      <SelectItem value="Client">Client</SelectItem>
+                      <SelectItem value="Client Name (from Client)">Client Name (from Client)</SelectItem>
                       <SelectItem value="Account Type">Account Type</SelectItem>
                     </SelectContent>
                   </Select>

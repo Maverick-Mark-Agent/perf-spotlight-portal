@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { ClientSelector } from "@/components/dashboard/ClientSelector";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { ProgressPieChart } from "@/components/dashboard/ProgressPieChart";
-import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
+import { RepliesTimelineView } from "@/components/dashboard/RepliesTimelineView";
 import { ComparisonMetrics } from "@/components/dashboard/ComparisonMetrics";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw } from "lucide-react";
@@ -190,10 +190,13 @@ const MonthlyKPIProgress = () => {
           </div>
         )}
 
-        {/* Performance Chart */}
-        <PerformanceChart 
-          selectedPeriod={selectedPeriod}
-          onPeriodChange={setSelectedPeriod}
+        {/* Replies Timeline View */}
+        <RepliesTimelineView 
+          positiveRepliesLast7Days={selectedClientData.positiveRepliesLast7Days}
+          positiveRepliesLast14Days={selectedClientData.positiveRepliesLast14Days}
+          positiveRepliesLast30Days={selectedClientData.positiveRepliesLast30Days}
+          positiveRepliesCurrentMonth={selectedClientData.positiveRepliesCurrentMonth}
+          positiveRepliesLastMonth={selectedClientData.positiveRepliesLastMonth}
         />
 
         {/* Comparison Metrics */}

@@ -25,7 +25,7 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
     positiveRepliesMTD: 0
   };
   
-  // Prepare chart data with the three requested metrics
+  // Prepare chart data with the two requested metrics
   const chartData = [
     {
       name: "MTD",
@@ -36,11 +36,6 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
       name: "Last 7 Days",
       value: clientData.positiveRepliesLast7Days || 0,
       fullName: "Positive Replies Last 7 Days"
-    },
-    {
-      name: "Last 14-7 Days", 
-      value: (clientData.positiveRepliesLast14Days || 0) - (clientData.positiveRepliesLast7Days || 0),
-      fullName: "Positive Replies Last 14-7 Days"
     }
   ];
 

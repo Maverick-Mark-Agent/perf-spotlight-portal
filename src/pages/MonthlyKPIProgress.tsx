@@ -127,10 +127,10 @@ const MonthlyKPIProgress = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <KPICard
-              title="Leads Generated This Month"
-              value={selectedClientData.leadsGenerated}
-              subtitle="+12% vs last month"
-              trend="up"
+              title="Positive Replies Last VS This Month"
+              value={selectedClientData.positiveRepliesLastVsThisMonth}
+              subtitle={`${selectedClientData.positiveRepliesLastVsThisMonth > selectedClientData.positiveRepliesLastMonth ? '+' : ''}${((selectedClientData.positiveRepliesLastVsThisMonth - selectedClientData.positiveRepliesLastMonth) / Math.max(selectedClientData.positiveRepliesLastMonth, 1) * 100).toFixed(1)}% vs last month`}
+              trend={selectedClientData.positiveRepliesLastVsThisMonth > selectedClientData.positiveRepliesLastMonth ? "up" : "down"}
               icon={<Users className="h-5 w-5" />}
             />
             

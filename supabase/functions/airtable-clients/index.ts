@@ -8,14 +8,19 @@ const corsHeaders = {
 interface AirtableRecord {
   id: string;
   fields: {
-    'Client Name'?: string;
-    'Leads Generated This Month'?: number;
-    'Projected Positive Replies (EOM)'?: number;
-    'Leads Target'?: number;
-    'Replies Target'?: number;
-    'Monthly KPI Target'?: number;
-    'Current Progress'?: number;
-    'Replies Progress'?: number;
+    'Client Company Name'?: string;
+    'Positive Replies MTD'?: number;
+    'Projection: Positive Replies Received (by EOM)'?: number;
+    'MTD - Leads Generated Progress'?: number;
+    'Projection Positive Replies % Progress'?: number;
+    'Monthly KPI'?: number;
+    'Positive Replies Last 30 Days'?: number;
+    'Positive Replies Last 7 Days'?: number;
+    'Positive Replies Last 14-7 Days'?: number;
+    'Positive Replies Current Month'?: number;
+    'Positive Replies Last Month'?: number;
+    'Last Week VS Week Before Positive Replies % Progress'?: number;
+    'Positive Replies Last VS This Month'?: number;
   };
 }
 
@@ -61,14 +66,21 @@ Deno.serve(async (req) => {
     // Transform Airtable data to match our app's format
     const clients = data.records.map(record => ({
       id: record.id,
-      name: record.fields['Client Name'] || 'Unknown Client',
-      leadsGenerated: record.fields['Leads Generated This Month'] || 0,
-      projectedReplies: record.fields['Projected Positive Replies (EOM)'] || 0,
-      leadsTarget: record.fields['Leads Target'] || 0,
-      repliesTarget: record.fields['Replies Target'] || 0,
-      monthlyKPI: record.fields['Monthly KPI Target'] || 0,
-      currentProgress: record.fields['Current Progress'] || 0,
-      repliesProgress: record.fields['Replies Progress'] || 0,
+      name: record.fields['Client Company Name'] || 'Unknown Client',
+      leadsGenerated: record.fields['Positive Replies MTD'] || 0,
+      projectedReplies: record.fields['Projection: Positive Replies Received (by EOM)'] || 0,
+      leadsTarget: 0, // Not provided in new mapping
+      repliesTarget: 0, // Not provided in new mapping
+      monthlyKPI: record.fields['Monthly KPI'] || 0,
+      currentProgress: record.fields['MTD - Leads Generated Progress'] || 0,
+      repliesProgress: record.fields['Projection Positive Replies % Progress'] || 0,
+      positiveRepliesLast30Days: record.fields['Positive Replies Last 30 Days'] || 0,
+      positiveRepliesLast7Days: record.fields['Positive Replies Last 7 Days'] || 0,
+      positiveRepliesLast14Days: record.fields['Positive Replies Last 14-7 Days'] || 0,
+      positiveRepliesCurrentMonth: record.fields['Positive Replies Current Month'] || 0,
+      positiveRepliesLastMonth: record.fields['Positive Replies Last Month'] || 0,
+      lastWeekVsWeekBeforeProgress: record.fields['Last Week VS Week Before Positive Replies % Progress'] || 0,
+      positiveRepliesLastVsThisMonth: record.fields['Positive Replies Last VS This Month'] || 0,
     }));
 
     return new Response(

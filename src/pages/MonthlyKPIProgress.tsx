@@ -18,6 +18,13 @@ interface ClientData {
   monthlyKPI: number;
   currentProgress: number;
   repliesProgress: number;
+  positiveRepliesLast30Days: number;
+  positiveRepliesLast7Days: number;
+  positiveRepliesLast14Days: number;
+  positiveRepliesCurrentMonth: number;
+  positiveRepliesLastMonth: number;
+  lastWeekVsWeekBeforeProgress: number;
+  positiveRepliesLastVsThisMonth: number;
 }
 
 const MonthlyKPIProgress = () => {
@@ -66,19 +73,26 @@ const MonthlyKPIProgress = () => {
     monthlyKPI: 0,
     currentProgress: 0,
     repliesProgress: 0,
+    positiveRepliesLast30Days: 0,
+    positiveRepliesLast7Days: 0,
+    positiveRepliesLast14Days: 0,
+    positiveRepliesCurrentMonth: 0,
+    positiveRepliesLastMonth: 0,
+    lastWeekVsWeekBeforeProgress: 0,
+    positiveRepliesLastVsThisMonth: 0,
   };
 
   const comparisonMetrics = [
     {
       title: "Last Week VS Week Before Positive Replies % Progress",
-      current: 15.2,
-      previous: 12.8,
+      current: selectedClientData.lastWeekVsWeekBeforeProgress,
+      previous: selectedClientData.positiveRepliesLast14Days,
       unit: "%",
     },
     {
       title: "Positive Replies Last VS This Month",
-      current: 42,
-      previous: 38,
+      current: selectedClientData.positiveRepliesCurrentMonth,
+      previous: selectedClientData.positiveRepliesLastMonth,
     },
   ];
 

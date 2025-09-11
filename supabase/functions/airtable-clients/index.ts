@@ -62,11 +62,17 @@ Deno.serve(async (req) => {
 
     const data: AirtableResponse = await response.json();
     console.log('Successfully fetched Airtable data:', data.records.length, 'records');
+    
+    // Log a sample record to debug field names
+    if (data.records.length > 0) {
+      console.log('Sample record fields:', Object.keys(data.records[0].fields));
+      console.log('Sample record data:', data.records[0].fields);
+    }
 
     // Transform Airtable data to match our app's format
     const clients = data.records.map(record => ({
       id: record.id,
-      name: record.fields['Client Company Name'] || 'Unknown Client',
+      name: record.fields['Client Company Name'] || record.fields['Client Name'] || 'Unknown Client',
       leadsGenerated: record.fields['Positive Replies MTD'] || 0,
       projectedReplies: record.fields['Projection: Positive Replies Received (by EOM)'] || 0,
       leadsTarget: 0, // Not provided in new mapping
@@ -82,6 +88,8 @@ Deno.serve(async (req) => {
       lastWeekVsWeekBeforeProgress: record.fields['Last Week VS Week Before Positive Replies % Progress'] || 0,
       positiveRepliesLastVsThisMonth: record.fields['Positive Replies Last VS This Month'] || 0,
     }));
+
+    console.log('Transformed clients:', clients.map(c => ({ id: c.id, name: c.name })));
 
     return new Response(
       JSON.stringify({ clients }),

@@ -169,7 +169,9 @@ const SendingAccountsInfrastructure = () => {
           totalAccounts: 0,
           connectedAccounts: 0,
           totalPrice: 0,
-          avgPrice: 0
+          avgPrice: 0,
+          maxSendingVolume: 0,
+          currentAvailableSending: 0
         };
       }
       
@@ -181,6 +183,12 @@ const SendingAccountsInfrastructure = () => {
       
       const price = parseFloat(account.fields['Price']) || 0;
       clientGroups[clientName].totalPrice += price;
+      
+      const volumePerAccount = parseFloat(account.fields['Volume Per Account']) || 0;
+      clientGroups[clientName].maxSendingVolume += volumePerAccount;
+      
+      const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
+      clientGroups[clientName].currentAvailableSending += dailyLimit;
     });
     
     // Calculate averages and sort by total accounts
@@ -638,10 +646,18 @@ const SendingAccountsInfrastructure = () => {
                             <p className="text-white/60 text-xs">{client.totalAccounts} accounts</p>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-4">
                           <div className="text-right">
                             <div className="text-white font-medium text-sm">${client.totalPrice.toFixed(2)}</div>
                             <div className="text-white/60 text-xs">Total Value</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white font-medium text-sm">{client.maxSendingVolume.toLocaleString()}</div>
+                            <div className="text-white/60 text-xs">Max Volume</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white font-medium text-sm">{client.currentAvailableSending.toLocaleString()}</div>
+                            <div className="text-white/60 text-xs">Daily Limit</div>
                           </div>
                           <Badge variant="outline" className={`text-xs ${
                             client.connectedAccounts === client.totalAccounts 

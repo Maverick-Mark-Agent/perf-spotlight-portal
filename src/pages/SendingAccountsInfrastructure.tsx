@@ -1,10 +1,72 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Server, Shield, Activity, Database, Mail, Settings, AlertTriangle, CheckCircle } from "lucide-react";
+import { ArrowLeft, Server, Shield, Activity, Database, Mail, Settings, AlertTriangle, CheckCircle, PieChart, BarChart } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, Legend } from "recharts";
 
 const SendingAccountsInfrastructure = () => {
+  const [emailAccounts, setEmailAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [accountStats, setAccountStats] = useState({
+    total: 0,
+    typeStats: [],
+    statusStats: []
+  });
+
+  useEffect(() => {
+    const fetchEmailAccounts = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('airtable-email-accounts');
+        
+        if (error) throw error;
+        
+        const accounts = data.records || [];
+        setEmailAccounts(accounts);
+        
+        // Process account type statistics
+        const typeCount = {};
+        const statusCount = {};
+        
+        accounts.forEach(account => {
+          const type = account.fields['Account Type'] || 'Unknown';
+          const status = account.fields['Status'] || 'Unknown';
+          
+          typeCount[type] = (typeCount[type] || 0) + 1;
+          statusCount[status] = (statusCount[status] || 0) + 1;
+        });
+        
+        const typeStats = Object.entries(typeCount).map(([name, count]) => ({
+          name,
+          value: count as number,
+          percentage: accounts.length > 0 ? (((count as number) / accounts.length) * 100).toFixed(1) : '0'
+        }));
+        
+        const statusStats = Object.entries(statusCount).map(([name, count]) => ({
+          name,
+          value: count as number
+        }));
+        
+        setAccountStats({
+          total: accounts.length,
+          typeStats,
+          statusStats
+        });
+        
+      } catch (error) {
+        console.error('Error fetching email accounts:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchEmailAccounts();
+  }, []);
+
+  const COLORS = ['hsl(var(--dashboard-primary))', 'hsl(var(--dashboard-accent))', 'hsl(var(--dashboard-success))', 'hsl(var(--dashboard-warning))'];
+
   return (
     <div className="min-h-screen bg-gradient-dashboard">
       {/* Header */}
@@ -64,8 +126,8 @@ const SendingAccountsInfrastructure = () => {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white mb-1">8</div>
-              <p className="text-white/70 text-sm">Email Accounts</p>
+              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.total}</div>
+              <p className="text-white/70 text-sm">Total Email Accounts</p>
             </CardContent>
           </Card>
 
@@ -96,6 +158,88 @@ const SendingAccountsInfrastructure = () => {
             <CardContent>
               <div className="text-2xl font-bold text-white mb-1">24/7</div>
               <p className="text-white/70 text-sm">Monitoring Active</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Analytics Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Account Types Pie Chart */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <PieChart className="h-5 w-5 text-dashboard-primary" />
+                Account Types Distribution
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="text-white/70">Loading...</div>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <RechartsPieChart>
+                    <Pie
+                      data={accountStats.typeStats}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                      label={({ name, percentage }) => `${name}: ${percentage}%`}
+                    >
+                      {accountStats.typeStats.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'rgba(0,0,0,0.8)', 
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '8px'
+                      }}
+                    />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Account Status Bar Chart */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <BarChart className="h-5 w-5 text-dashboard-accent" />
+                Account Status Overview
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="text-white/70">Loading...</div>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <RechartsBarChart data={accountStats.statusStats}>
+                    <XAxis 
+                      dataKey="name" 
+                      tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 12 }}
+                    />
+                    <YAxis 
+                      tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 12 }}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'rgba(0,0,0,0.8)', 
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Bar dataKey="value" fill="hsl(var(--dashboard-primary))" />
+                  </RechartsBarChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </div>

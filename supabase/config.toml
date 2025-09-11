@@ -2,3 +2,6 @@ project_id = "gjqbbgrfhijescaouqkx"
 
 [functions.airtable-clients]
 verify_jwt = false
+
+[functions.airtable-email-accounts]
+verify_jwt = false

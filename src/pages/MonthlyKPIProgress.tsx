@@ -92,16 +92,12 @@ const MonthlyKPIProgress = () => {
     positiveRepliesLastVsThisMonth: 0,
   };
 
+  // Pass selectedClientData to comparison metrics
   const comparisonMetrics = [
     {
-      title: "Last Week VS Week Before Positive Replies % Progress",
-      current: selectedClientData.lastWeekVsWeekBeforeProgress,
-      previous: selectedClientData.positiveRepliesLast14Days,
-      unit: "%",
-    },
-    {
-      title: "Positive Replies Last VS This Month",
-      current: selectedClientData.positiveRepliesLastVsThisMonth,
+      ...selectedClientData,
+      title: "Client Performance Data",
+      current: 0,
       previous: 0,
     },
   ];

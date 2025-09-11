@@ -6,6 +6,10 @@ interface ComparisonMetric {
   current: number;
   previous: number;
   unit?: string;
+  positiveRepliesLast7Days?: number;
+  positiveRepliesLast14Days?: number;
+  positiveRepliesCurrentMonth?: number;
+  positiveRepliesMTD?: number;
 }
 
 interface ComparisonMetricsProps {
@@ -13,17 +17,30 @@ interface ComparisonMetricsProps {
 }
 
 export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
-  // Prepare chart data
+  // Extract data from the first metric object which should contain all the client data
+  const clientData = metrics[0] || {
+    positiveRepliesLast7Days: 0,
+    positiveRepliesLast14Days: 0,
+    positiveRepliesCurrentMonth: 0,
+    positiveRepliesMTD: 0
+  };
+  
+  // Prepare chart data with the three requested metrics
   const chartData = [
     {
-      name: "Last Week vs Week Before",
-      value: metrics[0]?.current || 0,
-      fullName: "Last Week VS Week Before Positive Replies % Progress"
+      name: "Last 7 Days",
+      value: clientData.positiveRepliesLast7Days || 0,
+      fullName: "Positive Replies Last 7 Days"
     },
     {
-      name: "Last vs This Month", 
-      value: metrics.find(m => m.title.includes("Last VS This Month"))?.current || 0,
-      fullName: "Positive Replies Last VS This Month"
+      name: "Last 14-7 Days", 
+      value: (clientData.positiveRepliesLast14Days || 0) - (clientData.positiveRepliesLast7Days || 0),
+      fullName: "Positive Replies Last 14-7 Days"
+    },
+    {
+      name: "MTD",
+      value: clientData.positiveRepliesMTD || clientData.positiveRepliesCurrentMonth || 0,
+      fullName: "Positive Replies Month To Date"
     }
   ];
 
@@ -34,7 +51,7 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
         <div className="bg-dashboard-card border border-border p-3 rounded-lg shadow-lg">
           <p className="text-dashboard-primary font-medium text-sm mb-1">{data.fullName}</p>
           <p className="text-dashboard-primary text-lg font-bold">
-            {data.value > 0 ? '+' : ''}{data.value}%
+            {data.value}
           </p>
         </div>
       );
@@ -62,7 +79,7 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
               <YAxis 
                 className="text-dashboard-secondary text-xs"
                 tick={{ fontSize: 12 }}
-                label={{ value: 'Percentage (%)', angle: -90, position: 'insideLeft' }}
+                label={{ value: 'Replies Count', angle: -90, position: 'insideLeft' }}
               />
               <Tooltip content={<CustomTooltip />} />
               <ReferenceLine y={0} stroke="#666" strokeWidth={2} />

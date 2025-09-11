@@ -4,6 +4,7 @@ import { KPICard } from "@/components/dashboard/KPICard";
 import { ProgressPieChart } from "@/components/dashboard/ProgressPieChart";
 import { RepliesTimelineView } from "@/components/dashboard/RepliesTimelineView";
 import { ComparisonMetrics } from "@/components/dashboard/ComparisonMetrics";
+import { ClientPerformanceLists } from "@/components/dashboard/ClientPerformanceLists";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -208,6 +209,9 @@ const MonthlyKPIProgress = () => {
           </h2>
           <ComparisonMetrics metrics={comparisonMetrics} />
         </div>
+
+        {/* Client Performance Lists */}
+        <ClientPerformanceLists clients={clients} />
       </div>
     </div>
   );

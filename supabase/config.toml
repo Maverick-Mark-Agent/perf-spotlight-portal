@@ -1,1 +1,4 @@
 project_id = "gjqbbgrfhijescaouqkx"
+
+[functions.airtable-clients]
+verify_jwt = false

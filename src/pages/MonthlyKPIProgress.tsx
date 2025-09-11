@@ -1,42 +1,72 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ClientSelector } from "@/components/dashboard/ClientSelector";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { ProgressPieChart } from "@/components/dashboard/ProgressPieChart";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ComparisonMetrics } from "@/components/dashboard/ComparisonMetrics";
 import { BarChart3, Target, TrendingUp, Users, Zap } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data - in real app this would come from Airtable
-const getClientData = (clientId: string) => {
-  const baseData = {
-    leadsGenerated: 125,
-    projectedReplies: 45,
-    leadsTarget: 150,
-    repliesTarget: 50,
-    monthlyKPI: 200,
-    currentProgress: 83.3,
-    repliesProgress: 90,
-  };
-
-  // Simulate different data per client
-  const multiplier = clientId === "acme-corp" ? 1.2 : clientId === "techstart" ? 0.8 : 1.0;
-  
-  return {
-    leadsGenerated: Math.round(baseData.leadsGenerated * multiplier),
-    projectedReplies: Math.round(baseData.projectedReplies * multiplier),
-    leadsTarget: Math.round(baseData.leadsTarget * multiplier),
-    repliesTarget: Math.round(baseData.repliesTarget * multiplier),
-    monthlyKPI: Math.round(baseData.monthlyKPI * multiplier),
-    currentProgress: baseData.currentProgress,
-    repliesProgress: baseData.repliesProgress,
-  };
-};
+interface ClientData {
+  id: string;
+  name: string;
+  leadsGenerated: number;
+  projectedReplies: number;
+  leadsTarget: number;
+  repliesTarget: number;
+  monthlyKPI: number;
+  currentProgress: number;
+  repliesProgress: number;
+}
 
 const MonthlyKPIProgress = () => {
-  const [selectedClient, setSelectedClient] = useState("acme-corp");
+  const [clients, setClients] = useState<ClientData[]>([]);
+  const [selectedClient, setSelectedClient] = useState("");
   const [selectedPeriod, setSelectedPeriod] = useState("30-days");
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-  const clientData = getClientData(selectedClient);
+  const fetchAirtableData = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.functions.invoke('airtable-clients');
+      
+      if (error) throw error;
+      
+      if (data?.clients) {
+        setClients(data.clients);
+        if (data.clients.length > 0 && !selectedClient) {
+          setSelectedClient(data.clients[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching Airtable data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch client data from Airtable",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAirtableData();
+  }, []);
+
+  const selectedClientData = clients.find(client => client.id === selectedClient) || {
+    id: '',
+    name: '',
+    leadsGenerated: 0,
+    projectedReplies: 0,
+    leadsTarget: 0,
+    repliesTarget: 0,
+    monthlyKPI: 0,
+    currentProgress: 0,
+    repliesProgress: 0,
+  };
 
   const comparisonMetrics = [
     {
@@ -66,54 +96,64 @@ const MonthlyKPIProgress = () => {
             </p>
           </div>
           <ClientSelector 
+            clients={clients}
             selectedClient={selectedClient} 
-            onClientChange={setSelectedClient} 
+            onClientChange={setSelectedClient}
+            loading={loading}
           />
         </div>
 
         {/* KPI Overview Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <KPICard
-            title="Leads Generated This Month"
-            value={clientData.leadsGenerated}
-            subtitle="+12% vs last month"
-            trend="up"
-            icon={<Users className="h-5 w-5" />}
-          />
-          
-          <KPICard
-            title="Projected Positive Replies (EOM)"
-            value={clientData.projectedReplies}
-            subtitle="On track"
-            trend="up"
-            icon={<Target className="h-5 w-5" />}
-          />
-          
-          <KPICard
-            title="MTD Leads Progress"
-            value={`${clientData.currentProgress}%`}
-            subtitle={`${clientData.leadsGenerated} of ${clientData.leadsTarget}`}
-            type="progress"
-            progress={clientData.currentProgress}
-            target={clientData.leadsTarget}
-            icon={<BarChart3 className="h-5 w-5" />}
-          />
-          
-          <div className="md:col-span-1">
-            <ProgressPieChart
-              achieved={clientData.projectedReplies}
-              target={clientData.repliesTarget}
-              title="Positive Replies % Progress"
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-32 bg-dashboard-card rounded-lg animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <KPICard
+              title="Leads Generated This Month"
+              value={selectedClientData.leadsGenerated}
+              subtitle="+12% vs last month"
+              trend="up"
+              icon={<Users className="h-5 w-5" />}
+            />
+            
+            <KPICard
+              title="Projected Positive Replies (EOM)"
+              value={selectedClientData.projectedReplies}
+              subtitle="On track"
+              trend="up"
+              icon={<Target className="h-5 w-5" />}
+            />
+            
+            <KPICard
+              title="MTD Leads Progress"
+              value={`${selectedClientData.currentProgress}%`}
+              subtitle={`${selectedClientData.leadsGenerated} of ${selectedClientData.leadsTarget}`}
+              type="progress"
+              progress={selectedClientData.currentProgress}
+              target={selectedClientData.leadsTarget}
+              icon={<BarChart3 className="h-5 w-5" />}
+            />
+            
+            <div className="md:col-span-1">
+              <ProgressPieChart
+                achieved={selectedClientData.projectedReplies}
+                target={selectedClientData.repliesTarget}
+                title="Positive Replies % Progress"
+              />
+            </div>
+            
+            <KPICard
+              title="Monthly KPI Target"
+              value={selectedClientData.monthlyKPI}
+              subtitle="Static target"
+              icon={<Zap className="h-5 w-5" />}
             />
           </div>
-          
-          <KPICard
-            title="Monthly KPI Target"
-            value={clientData.monthlyKPI}
-            subtitle="Static target"
-            icon={<Zap className="h-5 w-5" />}
-          />
-        </div>
+        )}
 
         {/* Performance Chart */}
         <PerformanceChart 

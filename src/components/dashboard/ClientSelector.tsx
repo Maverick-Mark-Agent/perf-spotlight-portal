@@ -6,28 +6,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-interface ClientSelectorProps {
-  selectedClient: string;
-  onClientChange: (client: string) => void;
+interface Client {
+  id: string;
+  name: string;
 }
 
-const clients = [
-  { id: "acme-corp", name: "Acme Corporation" },
-  { id: "techstart", name: "TechStart Inc." },
-  { id: "globaldyne", name: "GlobalDyne Solutions" },
-  { id: "innovate", name: "Innovate Labs" },
-  { id: "nexus", name: "Nexus Enterprises" },
-];
+interface ClientSelectorProps {
+  clients: Client[];
+  selectedClient: string;
+  onClientChange: (client: string) => void;
+  loading?: boolean;
+}
 
-export const ClientSelector = ({ selectedClient, onClientChange }: ClientSelectorProps) => {
+export const ClientSelector = ({ clients, selectedClient, onClientChange, loading = false }: ClientSelectorProps) => {
   return (
     <div className="w-full max-w-xs">
       <label className="text-sm font-medium text-dashboard-secondary mb-2 block">
         Select Client
       </label>
-      <Select value={selectedClient} onValueChange={onClientChange}>
+      <Select value={selectedClient} onValueChange={onClientChange} disabled={loading}>
         <SelectTrigger className="bg-dashboard-card border-border">
-          <SelectValue placeholder="Choose a client..." />
+          <SelectValue placeholder={loading ? "Loading clients..." : "Choose a client..."} />
         </SelectTrigger>
         <SelectContent className="bg-dashboard-card border-border">
           {clients.map((client) => (

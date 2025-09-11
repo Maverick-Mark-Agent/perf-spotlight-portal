@@ -2,17 +2,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 interface ProgressPieChartProps {
-  achieved: number;
-  target: number;
+  percentage: number;
   title: string;
 }
 
-export const ProgressPieChart = ({ achieved, target, title }: ProgressPieChartProps) => {
-  const percentage = Math.min((achieved / target) * 100, 100);
-  const remaining = Math.max(100 - percentage, 0);
+export const ProgressPieChart = ({ percentage, title }: ProgressPieChartProps) => {
+  const displayPercentage = Math.min(percentage, 100);
+  const remaining = Math.max(100 - displayPercentage, 0);
 
   const data = [
-    { name: "Achieved", value: percentage, color: "hsl(var(--dashboard-success))" },
+    { name: "Achieved", value: displayPercentage, color: "hsl(var(--dashboard-success))" },
     { name: "Remaining", value: remaining, color: "hsl(var(--border))" },
   ];
 
@@ -47,7 +46,7 @@ export const ProgressPieChart = ({ achieved, target, title }: ProgressPieChartPr
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <div className="text-xl font-bold text-dashboard-primary">
-                {percentage.toFixed(1)}%
+                {displayPercentage.toFixed(1)}%
               </div>
               <div className="text-xs text-dashboard-secondary">Complete</div>
             </div>
@@ -55,7 +54,7 @@ export const ProgressPieChart = ({ achieved, target, title }: ProgressPieChartPr
         </div>
         <div className="mt-2 text-center">
           <div className="text-sm text-dashboard-secondary">
-            {percentage.toFixed(1)}%
+            {displayPercentage.toFixed(1)}%
           </div>
         </div>
       </CardContent>

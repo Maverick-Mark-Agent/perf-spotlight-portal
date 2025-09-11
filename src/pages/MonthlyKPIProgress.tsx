@@ -174,8 +174,7 @@ const MonthlyKPIProgress = () => {
             
             <div className="md:col-span-1">
               <ProgressPieChart
-                achieved={selectedClientData.projectedReplies}
-                target={selectedClientData.repliesTarget}
+                percentage={selectedClientData.repliesProgress * 100}
                 title="Positive Replies % Progress"
               />
             </div>

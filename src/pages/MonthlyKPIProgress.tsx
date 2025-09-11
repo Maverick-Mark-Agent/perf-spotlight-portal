@@ -129,7 +129,7 @@ const MonthlyKPIProgress = () => {
             <KPICard
               title="Leads Generated This Month"
               value={selectedClientData.leadsGenerated}
-              subtitle="+12% vs last month"
+              subtitle={selectedClientData.positiveRepliesLastVsThisMonth.toString()}
               trend="up"
               icon={<Users className="h-5 w-5" />}
             />

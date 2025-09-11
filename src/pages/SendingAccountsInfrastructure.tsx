@@ -3,11 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const SendingAccountsInfrastructure = () => {
   const [emailAccounts, setEmailAccounts] = useState([]);
@@ -26,7 +27,10 @@ const SendingAccountsInfrastructure = () => {
   const [priceAnalysisData, setPriceAnalysisData] = useState([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState('Email Provider');
   const [clientAccountsData, setClientAccountsData] = useState([]);
-  const [expandedClients, setExpandedClients] = useState(new Set());
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [expandedAccountTypes, setExpandedAccountTypes] = useState(new Set());
+  const [expandedStatuses, setExpandedStatuses] = useState(new Set());
 
   const fetchEmailAccounts = async () => {
     setLoading(true);
@@ -188,15 +192,41 @@ const SendingAccountsInfrastructure = () => {
     setClientAccountsData(clientData);
   };
 
-  const toggleClientExpansion = (clientName: string) => {
-    const newExpanded = new Set(expandedClients);
-    if (newExpanded.has(clientName)) {
-      newExpanded.delete(clientName);
-    } else {
-      newExpanded.add(clientName);
-    }
-    setExpandedClients(newExpanded);
-  };
+  const openClientModal = useCallback((client: any) => {
+    setSelectedClient(client);
+    setIsClientModalOpen(true);
+    setExpandedAccountTypes(new Set());
+    setExpandedStatuses(new Set());
+  }, []);
+
+  const closeClientModal = useCallback(() => {
+    setIsClientModalOpen(false);
+    setSelectedClient(null);
+  }, []);
+
+  const toggleAccountType = useCallback((accountType: string) => {
+    setExpandedAccountTypes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(accountType)) {
+        newSet.delete(accountType);
+      } else {
+        newSet.add(accountType);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const toggleStatus = useCallback((statusKey: string) => {
+    setExpandedStatuses(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(statusKey)) {
+        newSet.delete(statusKey);
+      } else {
+        newSet.add(statusKey);
+      }
+      return newSet;
+    });
+  }, []);
 
   useEffect(() => {
     fetchEmailAccounts();
@@ -593,106 +623,200 @@ const SendingAccountsInfrastructure = () => {
                   <div className="text-white/70">Loading client data...</div>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-2">
                   {clientAccountsData.map((client: any, index) => (
-                    <Collapsible 
+                    <div 
                       key={index}
-                      open={expandedClients.has(client.clientName)}
-                      onOpenChange={() => toggleClientExpansion(client.clientName)}
+                      onClick={() => openClientModal(client)}
+                      className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors"
                     >
-                      <CollapsibleTrigger asChild>
-                        <div className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
-                              {expandedClients.has(client.clientName) ? (
-                                <ChevronDown className="h-4 w-4 text-white/70" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4 text-white/70" />
-                              )}
-                              <div>
-                                <h3 className="text-white font-semibold">{client.clientName}</h3>
-                                <p className="text-white/70 text-sm">{client.totalAccounts} accounts</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-4">
-                              <div className="text-right">
-                                <div className="text-white font-medium">${client.totalPrice.toFixed(2)}</div>
-                                <div className="text-white/70 text-sm">Total Value</div>
-                              </div>
-                              <Badge variant="outline" className={`${
-                                client.connectedAccounts === client.totalAccounts 
-                                  ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
-                                  : 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
-                              }`}>
-                                {client.connectedAccounts}/{client.totalAccounts} Connected
-                              </Badge>
-                            </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <ChevronRight className="h-4 w-4 text-white/70" />
+                          <div>
+                            <h3 className="text-white font-medium text-sm">{client.clientName}</h3>
+                            <p className="text-white/60 text-xs">{client.totalAccounts} accounts</p>
                           </div>
                         </div>
-                      </CollapsibleTrigger>
-                      
-                      <CollapsibleContent>
-                        <div className="mt-4 ml-6 space-y-3">
-                          {client.accounts.map((account: any, accountIndex) => (
-                            <div key={accountIndex} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                <div className="col-span-2">
-                                  <div className="flex items-center space-x-2 mb-2">
-                                    <Mail className="h-4 w-4 text-dashboard-primary" />
-                                    <span className="text-white font-medium">{account.fields['Email Account']}</span>
-                                  </div>
-                                  <div className="text-white/70 text-sm">
-                                    <div>Name: {account.fields['Name']}</div>
-                                    <div>Domain: {account.fields['Domain']}</div>
-                                    <div>Provider: {account.fields['Tag - Email Provider']}</div>
-                                  </div>
-                                </div>
-                                
-                                <div className="space-y-2">
-                                  <div className="flex items-center space-x-2">
-                                    <Badge variant="outline" className={`${
-                                      account.fields['Status'] === 'Connected'
-                                        ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
-                                        : 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
-                                    }`}>
-                                      {account.fields['Status']}
-                                    </Badge>
-                                    <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
-                                      {account.fields['Account Type']}
-                                    </Badge>
-                                  </div>
-                                  <div className="text-white/70 text-sm">
-                                    <div>Daily Limit: {account.fields['Daily Limit'] || 'N/A'}</div>
-                                    <div>Volume: {account.fields['Volume Per Account'] || 'N/A'}</div>
-                                  </div>
-                                </div>
-                                
-                                <div className="space-y-2">
-                                  <div className="flex items-center space-x-2">
-                                    <DollarSign className="h-4 w-4 text-dashboard-accent" />
-                                    <span className="text-white font-semibold">
-                                      ${parseFloat(account.fields['Price'] || 0).toFixed(2)}
-                                    </span>
-                                  </div>
-                                  <div className="text-white/70 text-sm">
-                                    <div>Sent: {account.fields['Total Sent'] || 0}</div>
-                                    <div>Replied: {account.fields['Total Replied'] || 0}</div>
-                                    <div>Bounced: {account.fields['Total Bounced'] || 0}</div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                        <div className="flex items-center space-x-3">
+                          <div className="text-right">
+                            <div className="text-white font-medium text-sm">${client.totalPrice.toFixed(2)}</div>
+                            <div className="text-white/60 text-xs">Total Value</div>
+                          </div>
+                          <Badge variant="outline" className={`text-xs ${
+                            client.connectedAccounts === client.totalAccounts 
+                              ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
+                              : 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
+                          }`}>
+                            {client.connectedAccounts}/{client.totalAccounts}
+                          </Badge>
                         </div>
-                      </CollapsibleContent>
-                    </Collapsible>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
+
+        {/* Client Detail Modal */}
+        <Dialog open={isClientModalOpen} onOpenChange={setIsClientModalOpen}>
+          <DialogContent className="max-w-6xl max-h-[80vh] overflow-hidden bg-gray-900 border-white/20">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-accent" />
+                <span>{selectedClient?.clientName} - Email Accounts</span>
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="overflow-y-auto flex-1 space-y-4">
+              {selectedClient && (
+                <ClientAccountsModal 
+                  client={selectedClient}
+                  expandedAccountTypes={expandedAccountTypes}
+                  expandedStatuses={expandedStatuses}
+                  toggleAccountType={toggleAccountType}
+                  toggleStatus={toggleStatus}
+                />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
+    </div>
+  );
+};
+
+// Separate component for better performance
+const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, toggleAccountType, toggleStatus }) => {
+  const organizedAccounts = useMemo(() => {
+    const accountsByType = {};
+    
+    client.accounts.forEach(account => {
+      const accountType = account.fields['Account Type'] || 'Unknown';
+      if (!accountsByType[accountType]) {
+        accountsByType[accountType] = {
+          Connected: [],
+          Disconnected: []
+        };
+      }
+      
+      const status = account.fields['Status'] === 'Connected' ? 'Connected' : 'Disconnected';
+      accountsByType[accountType][status].push(account);
+    });
+    
+    return accountsByType;
+  }, [client.accounts]);
+
+  return (
+    <div className="space-y-3">
+      {Object.entries(organizedAccounts).map(([accountType, statusGroups]) => (
+        <Collapsible 
+          key={accountType}
+          open={expandedAccountTypes.has(accountType)}
+          onOpenChange={() => toggleAccountType(accountType)}
+        >
+          <CollapsibleTrigger asChild>
+            <div className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  {expandedAccountTypes.has(accountType) ? (
+                    <ChevronDown className="h-4 w-4 text-white/70" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-white/70" />
+                  )}
+                  <span className="text-white font-medium">{accountType}</span>
+                </div>
+                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                  {((statusGroups as any).Connected?.length || 0) + ((statusGroups as any).Disconnected?.length || 0)} accounts
+                </Badge>
+              </div>
+            </div>
+          </CollapsibleTrigger>
+          
+          <CollapsibleContent>
+            <div className="ml-4 mt-2 space-y-2">
+              {Object.entries(statusGroups).map(([status, accounts]) => 
+                accounts.length > 0 && (
+                  <Collapsible 
+                    key={`${accountType}-${status}`}
+                    open={expandedStatuses.has(`${accountType}-${status}`)}
+                    onOpenChange={() => toggleStatus(`${accountType}-${status}`)}
+                  >
+                    <CollapsibleTrigger asChild>
+                      <div className="bg-white/5 rounded-lg p-2 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            {expandedStatuses.has(`${accountType}-${status}`) ? (
+                              <ChevronDown className="h-3 w-3 text-white/70" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3 text-white/70" />
+                            )}
+                            <span className="text-white text-sm">{status}</span>
+                          </div>
+                          <Badge variant="outline" className={`text-xs ${
+                            status === 'Connected'
+                              ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
+                              : 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
+                          }`}>
+                            {accounts.length} accounts
+                          </Badge>
+                        </div>
+                      </div>
+                    </CollapsibleTrigger>
+                    
+                    <CollapsibleContent>
+                      <div className="ml-4 mt-2 space-y-1">
+                        {accounts.map((account, accountIndex) => (
+                          <div key={accountIndex} className="bg-white/5 rounded-lg p-2 border border-white/10">
+                            <div className="grid grid-cols-12 gap-2 items-center text-xs">
+                              <div className="col-span-4">
+                                <div className="flex items-center space-x-1">
+                                  <Mail className="h-3 w-3 text-dashboard-primary" />
+                                  <span className="text-white font-medium truncate">{account.fields['Email Account']}</span>
+                                </div>
+                                <div className="text-white/60 truncate">{account.fields['Name']}</div>
+                              </div>
+                              
+                              <div className="col-span-2 text-white/70">
+                                <div>{account.fields['Domain']}</div>
+                                <div>{account.fields['Tag - Email Provider']}</div>
+                              </div>
+                              
+                              <div className="col-span-2 text-white/70">
+                                <div>Limit: {account.fields['Daily Limit'] || 'N/A'}</div>
+                                <div>Vol: {account.fields['Volume Per Account'] || 'N/A'}</div>
+                              </div>
+                              
+                              <div className="col-span-2 text-white/70">
+                                <div>Sent: {account.fields['Total Sent'] || 0}</div>
+                                <div>Replies: {account.fields['Total Replied'] || 0}</div>
+                              </div>
+                              
+                              <div className="col-span-2 text-right">
+                                <div className="flex items-center justify-end space-x-1">
+                                  <DollarSign className="h-3 w-3 text-dashboard-accent" />
+                                  <span className="text-white font-semibold">
+                                    ${parseFloat(account.fields['Price'] || 0).toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="text-white/60">
+                                  Bounced: {account.fields['Total Bounced'] || 0}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )
+              )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      ))}
     </div>
   );
 };

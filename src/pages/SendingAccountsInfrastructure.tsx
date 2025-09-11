@@ -1,12 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity } from "lucide-react";
+import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const SendingAccountsInfrastructure = () => {
   const [emailAccounts, setEmailAccounts] = useState([]);
@@ -24,6 +25,8 @@ const SendingAccountsInfrastructure = () => {
   const [accountTypeData, setAccountTypeData] = useState([]);
   const [priceAnalysisData, setPriceAnalysisData] = useState([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState('Email Provider');
+  const [clientAccountsData, setClientAccountsData] = useState([]);
+  const [expandedClients, setExpandedClients] = useState(new Set());
 
   const fetchEmailAccounts = async () => {
     setLoading(true);
@@ -102,6 +105,9 @@ const SendingAccountsInfrastructure = () => {
       // Generate simplified price analysis data
       generatePriceAnalysisData(accounts);
       
+      // Generate client accounts data
+      generateClientAccountsData(accounts);
+      
     } catch (error) {
       console.error('Error fetching email accounts:', error);
     } finally {
@@ -144,6 +150,52 @@ const SendingAccountsInfrastructure = () => {
     })).sort((a: any, b: any) => b.totalPrice - a.totalPrice);
     
     setPriceAnalysisData(analysisData);
+  };
+
+  const generateClientAccountsData = (accounts) => {
+    const clientGroups = {};
+    
+    accounts.forEach(account => {
+      const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
+      
+      if (!clientGroups[clientName]) {
+        clientGroups[clientName] = {
+          clientName,
+          accounts: [],
+          totalAccounts: 0,
+          connectedAccounts: 0,
+          totalPrice: 0,
+          avgPrice: 0
+        };
+      }
+      
+      clientGroups[clientName].accounts.push(account);
+      clientGroups[clientName].totalAccounts += 1;
+      if (account.fields['Status'] === 'Connected') {
+        clientGroups[clientName].connectedAccounts += 1;
+      }
+      
+      const price = parseFloat(account.fields['Price']) || 0;
+      clientGroups[clientName].totalPrice += price;
+    });
+    
+    // Calculate averages and sort by total accounts
+    const clientData = Object.values(clientGroups).map((client: any) => ({
+      ...client,
+      avgPrice: client.totalAccounts > 0 ? client.totalPrice / client.totalAccounts : 0
+    })).sort((a: any, b: any) => b.totalAccounts - a.totalAccounts);
+    
+    setClientAccountsData(clientData);
+  };
+
+  const toggleClientExpansion = (clientName: string) => {
+    const newExpanded = new Set(expandedClients);
+    if (newExpanded.has(clientName)) {
+      newExpanded.delete(clientName);
+    } else {
+      newExpanded.add(clientName);
+    }
+    setExpandedClients(newExpanded);
   };
 
   useEffect(() => {
@@ -520,6 +572,121 @@ const SendingAccountsInfrastructure = () => {
                       ))}
                     </div>
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Client Accounts View */}
+        <div className="mt-8">
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-accent" />
+                <span>Client Email Accounts</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-white/70">Loading client data...</div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {clientAccountsData.map((client: any, index) => (
+                    <Collapsible 
+                      key={index}
+                      open={expandedClients.has(client.clientName)}
+                      onOpenChange={() => toggleClientExpansion(client.clientName)}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <div className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              {expandedClients.has(client.clientName) ? (
+                                <ChevronDown className="h-4 w-4 text-white/70" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4 text-white/70" />
+                              )}
+                              <div>
+                                <h3 className="text-white font-semibold">{client.clientName}</h3>
+                                <p className="text-white/70 text-sm">{client.totalAccounts} accounts</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-4">
+                              <div className="text-right">
+                                <div className="text-white font-medium">${client.totalPrice.toFixed(2)}</div>
+                                <div className="text-white/70 text-sm">Total Value</div>
+                              </div>
+                              <Badge variant="outline" className={`${
+                                client.connectedAccounts === client.totalAccounts 
+                                  ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
+                                  : 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
+                              }`}>
+                                {client.connectedAccounts}/{client.totalAccounts} Connected
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      
+                      <CollapsibleContent>
+                        <div className="mt-4 ml-6 space-y-3">
+                          {client.accounts.map((account: any, accountIndex) => (
+                            <div key={accountIndex} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div className="col-span-2">
+                                  <div className="flex items-center space-x-2 mb-2">
+                                    <Mail className="h-4 w-4 text-dashboard-primary" />
+                                    <span className="text-white font-medium">{account.fields['Email Account']}</span>
+                                  </div>
+                                  <div className="text-white/70 text-sm">
+                                    <div>Name: {account.fields['Name']}</div>
+                                    <div>Domain: {account.fields['Domain']}</div>
+                                    <div>Provider: {account.fields['Tag - Email Provider']}</div>
+                                  </div>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                  <div className="flex items-center space-x-2">
+                                    <Badge variant="outline" className={`${
+                                      account.fields['Status'] === 'Connected'
+                                        ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
+                                        : 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
+                                    }`}>
+                                      {account.fields['Status']}
+                                    </Badge>
+                                    <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                                      {account.fields['Account Type']}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-white/70 text-sm">
+                                    <div>Daily Limit: {account.fields['Daily Limit'] || 'N/A'}</div>
+                                    <div>Volume: {account.fields['Volume Per Account'] || 'N/A'}</div>
+                                  </div>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                  <div className="flex items-center space-x-2">
+                                    <DollarSign className="h-4 w-4 text-dashboard-accent" />
+                                    <span className="text-white font-semibold">
+                                      ${parseFloat(account.fields['Price'] || 0).toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <div className="text-white/70 text-sm">
+                                    <div>Sent: {account.fields['Total Sent'] || 0}</div>
+                                    <div>Replied: {account.fields['Total Replied'] || 0}</div>
+                                    <div>Bounced: {account.fields['Total Bounced'] || 0}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  ))}
                 </div>
               )}
             </CardContent>

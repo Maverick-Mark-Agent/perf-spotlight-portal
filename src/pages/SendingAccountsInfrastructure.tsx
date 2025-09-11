@@ -5,7 +5,8 @@ import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity } fro
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const SendingAccountsInfrastructure = () => {
   const [emailAccounts, setEmailAccounts] = useState([]);
@@ -15,10 +16,16 @@ const SendingAccountsInfrastructure = () => {
     total: 0,
     avgPerClient: '0',
     connected: 0,
-    disconnected: 0
+    disconnected: 0,
+    totalPrice: 0,
+    avgCostPerClient: '0'
   });
   const [resellerData, setResellerData] = useState([]);
   const [accountTypeData, setAccountTypeData] = useState([]);
+  const [chartData, setChartData] = useState([]);
+  const [selectedXAxis, setSelectedXAxis] = useState('Tag - Email Provider');
+  const [selectedYAxis, setSelectedYAxis] = useState('Tag - Reseller');
+  const [selectedZAxis, setSelectedZAxis] = useState('Client');
 
   const fetchEmailAccounts = async () => {
     setLoading(true);
@@ -47,11 +54,21 @@ const SendingAccountsInfrastructure = () => {
       const connectedCount = accounts.filter(account => account.fields['Status'] === 'Connected').length;
       const disconnectedCount = totalAccounts - connectedCount;
       
+      // Calculate price metrics
+      const totalPrice = accounts.reduce((sum, account) => {
+        const price = parseFloat(account.fields['Price']) || 0;
+        return sum + price;
+      }, 0);
+      
+      const avgCostPerClient = uniqueClients > 0 ? (totalPrice / uniqueClients).toFixed(2) : '0';
+      
       setAccountStats({
         total: totalAccounts,
         avgPerClient: avgAccountsPerClient,
         connected: connectedCount,
-        disconnected: disconnectedCount
+        disconnected: disconnectedCount,
+        totalPrice: totalPrice,
+        avgCostPerClient: avgCostPerClient
       });
 
       // Calculate reseller distribution
@@ -84,6 +101,9 @@ const SendingAccountsInfrastructure = () => {
 
       setAccountTypeData(accountTypeChartData);
       
+      // Generate chart data for interactive chart
+      generateChartData(accounts);
+      
     } catch (error) {
       console.error('Error fetching email accounts:', error);
     } finally {
@@ -91,9 +111,48 @@ const SendingAccountsInfrastructure = () => {
     }
   };
 
+  const generateChartData = (accounts) => {
+    const groupedData = {};
+    
+    accounts.forEach(account => {
+      const xValue = account.fields[selectedXAxis] || 'Unknown';
+      const yValue = account.fields[selectedYAxis] || 'Unknown';
+      const zValue = account.fields[selectedZAxis] || 'Unknown';
+      const price = parseFloat(account.fields['Price']) || 0;
+      
+      const key = `${xValue} | ${yValue} | ${zValue}`;
+      
+      if (!groupedData[key]) {
+        groupedData[key] = {
+          name: key,
+          xAxis: xValue,
+          yAxis: yValue,
+          zAxis: zValue,
+          totalPrice: 0,
+          count: 0
+        };
+      }
+      
+      groupedData[key].totalPrice += price;
+      groupedData[key].count += 1;
+    });
+    
+    const chartDataArray = Object.values(groupedData)
+      .sort((a: any, b: any) => b.totalPrice - a.totalPrice)
+      .slice(0, 20); // Show top 20 combinations
+    
+    setChartData(chartDataArray);
+  };
+
   useEffect(() => {
     fetchEmailAccounts();
   }, []);
+
+  useEffect(() => {
+    if (emailAccounts.length > 0) {
+      generateChartData(emailAccounts);
+    }
+  }, [selectedXAxis, selectedYAxis, selectedZAxis, emailAccounts]);
 
   return (
     <div className="min-h-screen bg-gradient-dashboard">
@@ -137,8 +196,8 @@ const SendingAccountsInfrastructure = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Status Overview - Only 4 Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* Status Overview - 6 Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
           {/* Card 1: Total Email Accounts Owned */}
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader className="pb-3">
@@ -200,6 +259,42 @@ const SendingAccountsInfrastructure = () => {
             <CardContent>
               <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.disconnected}</div>
               <p className="text-white/70 text-sm">Disconnected Accounts</p>
+            </CardContent>
+          </Card>
+
+          {/* Card 5: Total Price */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <Mail className="h-6 w-6 text-dashboard-primary" />
+                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                  Revenue
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">
+                ${loading ? '...' : accountStats.totalPrice.toFixed(2)}
+              </div>
+              <p className="text-white/70 text-sm">Total Account Value</p>
+            </CardContent>
+          </Card>
+
+          {/* Card 6: Average Cost per Client */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <Users className="h-6 w-6 text-dashboard-accent" />
+                <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40">
+                  Average
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">
+                ${loading ? '...' : accountStats.avgCostPerClient}
+              </div>
+              <p className="text-white/70 text-sm">Avg Cost per Client</p>
             </CardContent>
           </Card>
         </div>
@@ -326,6 +421,102 @@ const SendingAccountsInfrastructure = () => {
                         }}
                       />
                     </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Interactive Price Analysis Chart */}
+        <div className="mt-8">
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Activity className="h-5 w-5 text-dashboard-primary" />
+                <span>Price Analysis by Dimensions</span>
+              </CardTitle>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div>
+                  <label className="text-white/70 text-sm mb-2 block">X-Axis (Primary)</label>
+                  <Select value={selectedXAxis} onValueChange={setSelectedXAxis}>
+                    <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Tag - Email Provider">Email Provider</SelectItem>
+                      <SelectItem value="Tag - Reseller">Reseller</SelectItem>
+                      <SelectItem value="Client">Client</SelectItem>
+                      <SelectItem value="Account Type">Account Type</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-white/70 text-sm mb-2 block">Y-Axis (Secondary)</label>
+                  <Select value={selectedYAxis} onValueChange={setSelectedYAxis}>
+                    <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Tag - Email Provider">Email Provider</SelectItem>
+                      <SelectItem value="Tag - Reseller">Reseller</SelectItem>
+                      <SelectItem value="Client">Client</SelectItem>
+                      <SelectItem value="Account Type">Account Type</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-white/70 text-sm mb-2 block">Z-Axis (Tertiary)</label>
+                  <Select value={selectedZAxis} onValueChange={setSelectedZAxis}>
+                    <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Tag - Email Provider">Email Provider</SelectItem>
+                      <SelectItem value="Tag - Reseller">Reseller</SelectItem>
+                      <SelectItem value="Client">Client</SelectItem>
+                      <SelectItem value="Account Type">Account Type</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-96 flex items-center justify-center">
+                  <div className="text-white/70">Loading chart data...</div>
+                </div>
+              ) : (
+                <div className="h-96">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis 
+                        dataKey="name" 
+                        stroke="rgba(255,255,255,0.7)"
+                        angle={-45}
+                        textAnchor="end"
+                        height={100}
+                        interval={0}
+                        fontSize={12}
+                      />
+                      <YAxis stroke="rgba(255,255,255,0.7)" />
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '8px',
+                          color: 'white'
+                        }}
+                        formatter={(value: number) => [`$${value.toFixed(2)}`, 'Total Price']}
+                        labelFormatter={(label) => `Combination: ${label}`}
+                      />
+                      <Bar 
+                        dataKey="totalPrice" 
+                        fill="hsl(var(--dashboard-primary))"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               )}

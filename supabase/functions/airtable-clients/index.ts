@@ -28,6 +28,15 @@ interface AirtableResponse {
   records: AirtableRecord[];
 }
 
+const parsePercent = (v: unknown) => {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === 'number') return v;
+  const s = String(v).trim();
+  const cleaned = s.endsWith('%') ? s.slice(0, -1) : s;
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
+};
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -86,7 +95,7 @@ Deno.serve(async (req) => {
       positiveRepliesCurrentMonth: record.fields['Positive Replies Current Month'] || 0,
       positiveRepliesLastMonth: record.fields['Positive Replies Last Month'] || 0,
       lastWeekVsWeekBeforeProgress: record.fields['Last Week VS Week Before Positive Replies % Progress'] || 0,
-      positiveRepliesLastVsThisMonth: record.fields['Positive Replies Last VS This Month'] || 0,
+      positiveRepliesLastVsThisMonth: parsePercent(record.fields['Positive Replies Last VS This Month']),
     }));
 
     console.log('Transformed clients:', clients.map(c => ({ id: c.id, name: c.name })));

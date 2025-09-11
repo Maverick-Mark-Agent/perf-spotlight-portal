@@ -100,8 +100,8 @@ const MonthlyKPIProgress = () => {
     },
     {
       title: "Positive Replies Last VS This Month",
-      current: selectedClientData.positiveRepliesCurrentMonth,
-      previous: selectedClientData.positiveRepliesLastMonth,
+      current: selectedClientData.positiveRepliesLastVsThisMonth,
+      previous: 0,
     },
   ];
 

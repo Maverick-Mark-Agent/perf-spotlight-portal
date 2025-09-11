@@ -61,7 +61,10 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-dashboard-primary">
-                    {(metric.current * 100).toFixed(1)}%
+                    {metric.title === "Positive Replies Last VS This Month" 
+                      ? metric.current 
+                      : (metric.current * 100).toFixed(1) + "%"
+                    }
                   </div>
                 </div>
               </div>

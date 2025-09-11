@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Server, Shield, Activity, Database, Mail, Settings, AlertTriangle, CheckCircle, PieChart, BarChart } from "lucide-react";
+import { ArrowLeft, Server, Shield, Activity, Database, Mail, Settings, AlertTriangle, CheckCircle, PieChart, BarChart, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,52 +16,53 @@ const SendingAccountsInfrastructure = () => {
     statusStats: []
   });
 
+  const fetchEmailAccounts = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('airtable-email-accounts');
+      
+      if (error) throw error;
+      
+      const accounts = data.records || [];
+      setEmailAccounts(accounts);
+      
+      // Process account type statistics
+      const typeCount = {};
+      const statusCount = {};
+      
+      accounts.forEach(account => {
+        const type = account.fields['Account Type'] || 'Unknown';
+        const status = account.fields['Status'] || 'Unknown';
+        
+        typeCount[type] = (typeCount[type] || 0) + 1;
+        statusCount[status] = (statusCount[status] || 0) + 1;
+      });
+      
+      const typeStats = Object.entries(typeCount).map(([name, count]) => ({
+        name,
+        value: count as number,
+        percentage: accounts.length > 0 ? (((count as number) / accounts.length) * 100).toFixed(1) : '0'
+      }));
+      
+      const statusStats = Object.entries(statusCount).map(([name, count]) => ({
+        name,
+        value: count as number
+      }));
+      
+      setAccountStats({
+        total: accounts.length,
+        typeStats,
+        statusStats
+      });
+      
+    } catch (error) {
+      console.error('Error fetching email accounts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchEmailAccounts = async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke('airtable-email-accounts');
-        
-        if (error) throw error;
-        
-        const accounts = data.records || [];
-        setEmailAccounts(accounts);
-        
-        // Process account type statistics
-        const typeCount = {};
-        const statusCount = {};
-        
-        accounts.forEach(account => {
-          const type = account.fields['Account Type'] || 'Unknown';
-          const status = account.fields['Status'] || 'Unknown';
-          
-          typeCount[type] = (typeCount[type] || 0) + 1;
-          statusCount[status] = (statusCount[status] || 0) + 1;
-        });
-        
-        const typeStats = Object.entries(typeCount).map(([name, count]) => ({
-          name,
-          value: count as number,
-          percentage: accounts.length > 0 ? (((count as number) / accounts.length) * 100).toFixed(1) : '0'
-        }));
-        
-        const statusStats = Object.entries(statusCount).map(([name, count]) => ({
-          name,
-          value: count as number
-        }));
-        
-        setAccountStats({
-          total: accounts.length,
-          typeStats,
-          statusStats
-        });
-        
-      } catch (error) {
-        console.error('Error fetching email accounts:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchEmailAccounts();
   }, []);
 
@@ -93,6 +94,16 @@ const SendingAccountsInfrastructure = () => {
                 <Activity className="h-3 w-3 mr-1" />
                 All Systems Operational
               </Badge>
+              <Button 
+                onClick={fetchEmailAccounts} 
+                disabled={loading}
+                variant="ghost" 
+                size="sm" 
+                className="text-white/70 hover:text-white hover:bg-white/10"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                Refresh Data
+              </Button>
             </div>
           </div>
         </div>

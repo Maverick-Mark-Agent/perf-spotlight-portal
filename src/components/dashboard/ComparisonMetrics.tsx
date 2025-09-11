@@ -62,7 +62,9 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
                 <div>
                   <div className="text-2xl font-bold text-dashboard-primary">
                     {metric.title === "Positive Replies Last VS This Month" 
-                      ? `${metric.current}%`
+                      ? (metric.current === 0 ? "0%" : 
+                         metric.current > 0 ? `+${metric.current}%` : 
+                         `${metric.current}%`)
                       : (metric.current * 100).toFixed(1) + "%"
                     }
                   </div>

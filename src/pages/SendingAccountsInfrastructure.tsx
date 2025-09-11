@@ -22,10 +22,8 @@ const SendingAccountsInfrastructure = () => {
   });
   const [resellerData, setResellerData] = useState([]);
   const [accountTypeData, setAccountTypeData] = useState([]);
-  const [chartData, setChartData] = useState([]);
-  const [selectedXAxis, setSelectedXAxis] = useState('Tag - Email Provider');
-  const [selectedYAxis, setSelectedYAxis] = useState('Tag - Reseller');
-  const [selectedZAxis, setSelectedZAxis] = useState('Client Name (from Client)');
+  const [priceAnalysisData, setPriceAnalysisData] = useState([]);
+  const [selectedAnalysis, setSelectedAnalysis] = useState('Email Provider');
 
   const fetchEmailAccounts = async () => {
     setLoading(true);
@@ -101,8 +99,8 @@ const SendingAccountsInfrastructure = () => {
 
       setAccountTypeData(accountTypeChartData);
       
-      // Generate chart data for interactive chart
-      generateChartData(accounts);
+      // Generate simplified price analysis data
+      generatePriceAnalysisData(accounts);
       
     } catch (error) {
       console.error('Error fetching email accounts:', error);
@@ -111,37 +109,41 @@ const SendingAccountsInfrastructure = () => {
     }
   };
 
-  const generateChartData = (accounts) => {
+  const generatePriceAnalysisData = (accounts) => {
+    const fieldMap = {
+      'Email Provider': 'Tag - Email Provider',
+      'Reseller': 'Tag - Reseller', 
+      'Client': 'Client Name (from Client)',
+      'Account Type': 'Account Type'
+    };
+    
+    const field = fieldMap[selectedAnalysis];
     const groupedData = {};
     
     accounts.forEach(account => {
-      const xValue = account.fields[selectedXAxis] || 'Unknown';
-      const yValue = account.fields[selectedYAxis] || 'Unknown';
-      const zValue = account.fields[selectedZAxis] || 'Unknown';
+      const value = account.fields[field] || 'Unknown';
       const price = parseFloat(account.fields['Price']) || 0;
       
-      const key = `${xValue} | ${yValue} | ${zValue}`;
-      
-      if (!groupedData[key]) {
-        groupedData[key] = {
-          name: key,
-          xAxis: xValue,
-          yAxis: yValue,
-          zAxis: zValue,
+      if (!groupedData[value]) {
+        groupedData[value] = {
+          name: value,
           totalPrice: 0,
-          count: 0
+          count: 0,
+          avgPrice: 0
         };
       }
       
-      groupedData[key].totalPrice += price;
-      groupedData[key].count += 1;
+      groupedData[value].totalPrice += price;
+      groupedData[value].count += 1;
     });
     
-    const chartDataArray = Object.values(groupedData)
-      .sort((a: any, b: any) => b.totalPrice - a.totalPrice)
-      .slice(0, 20); // Show top 20 combinations
+    // Calculate average price and sort by total price
+    const analysisData = Object.values(groupedData).map((item: any) => ({
+      ...item,
+      avgPrice: item.totalPrice / item.count
+    })).sort((a: any, b: any) => b.totalPrice - a.totalPrice);
     
-    setChartData(chartDataArray);
+    setPriceAnalysisData(analysisData);
   };
 
   useEffect(() => {
@@ -150,9 +152,9 @@ const SendingAccountsInfrastructure = () => {
 
   useEffect(() => {
     if (emailAccounts.length > 0) {
-      generateChartData(emailAccounts);
+      generatePriceAnalysisData(emailAccounts);
     }
-  }, [selectedXAxis, selectedYAxis, selectedZAxis, emailAccounts]);
+  }, [selectedAnalysis, emailAccounts]);
 
   return (
     <div className="min-h-screen bg-gradient-dashboard">
@@ -428,96 +430,96 @@ const SendingAccountsInfrastructure = () => {
           </Card>
         </div>
 
-        {/* Interactive Price Analysis Chart */}
+        {/* Simplified Price Analysis */}
         <div className="mt-8">
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
                 <Activity className="h-5 w-5 text-dashboard-primary" />
-                <span>Price Analysis by Dimensions</span>
+                <span>Price Analysis</span>
               </CardTitle>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                <div>
-                  <label className="text-white/70 text-sm mb-2 block">X-Axis (Primary)</label>
-                  <Select value={selectedXAxis} onValueChange={setSelectedXAxis}>
-                    <SelectTrigger className="bg-white/10 border-white/20 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Tag - Email Provider">Email Provider</SelectItem>
-                      <SelectItem value="Tag - Reseller">Reseller</SelectItem>
-                      <SelectItem value="Client Name (from Client)">Client Name (from Client)</SelectItem>
-                      <SelectItem value="Account Type">Account Type</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-white/70 text-sm mb-2 block">Y-Axis (Secondary)</label>
-                  <Select value={selectedYAxis} onValueChange={setSelectedYAxis}>
-                    <SelectTrigger className="bg-white/10 border-white/20 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Tag - Email Provider">Email Provider</SelectItem>
-                      <SelectItem value="Tag - Reseller">Reseller</SelectItem>
-                      <SelectItem value="Client Name (from Client)">Client Name (from Client)</SelectItem>
-                      <SelectItem value="Account Type">Account Type</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-white/70 text-sm mb-2 block">Z-Axis (Tertiary)</label>
-                  <Select value={selectedZAxis} onValueChange={setSelectedZAxis}>
-                    <SelectTrigger className="bg-white/10 border-white/20 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Tag - Email Provider">Email Provider</SelectItem>
-                      <SelectItem value="Tag - Reseller">Reseller</SelectItem>
-                      <SelectItem value="Client">Client</SelectItem>
-                      <SelectItem value="Account Type">Account Type</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="flex items-center space-x-4 mt-4">
+                <label className="text-white/70 text-sm">Analyze by:</label>
+                <Select value={selectedAnalysis} onValueChange={setSelectedAnalysis}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Email Provider">Email Provider</SelectItem>
+                    <SelectItem value="Reseller">Reseller</SelectItem>
+                    <SelectItem value="Client">Client</SelectItem>
+                    <SelectItem value="Account Type">Account Type</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </CardHeader>
             <CardContent>
               {loading ? (
                 <div className="h-96 flex items-center justify-center">
-                  <div className="text-white/70">Loading chart data...</div>
+                  <div className="text-white/70">Loading analysis...</div>
                 </div>
               ) : (
-                <div className="h-96">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                      <XAxis 
-                        dataKey="name" 
-                        stroke="rgba(255,255,255,0.7)"
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        interval={0}
-                        fontSize={12}
-                      />
-                      <YAxis stroke="rgba(255,255,255,0.7)" />
-                      <Tooltip 
-                        contentStyle={{
-                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          borderRadius: '8px',
-                          color: 'white'
-                        }}
-                        formatter={(value: number) => [`$${value.toFixed(2)}`, 'Total Price']}
-                        labelFormatter={(label) => `Combination: ${label}`}
-                      />
-                      <Bar 
-                        dataKey="totalPrice" 
-                        fill="hsl(var(--dashboard-primary))"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Bar Chart */}
+                  <div className="h-80">
+                    <h3 className="text-white/90 text-lg font-semibold mb-4">Total Price by {selectedAnalysis}</h3>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={priceAnalysisData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                        <XAxis 
+                          dataKey="name" 
+                          stroke="rgba(255,255,255,0.7)"
+                          angle={-45}
+                          textAnchor="end"
+                          height={80}
+                          interval={0}
+                          fontSize={11}
+                        />
+                        <YAxis stroke="rgba(255,255,255,0.7)" />
+                        <Tooltip 
+                          contentStyle={{
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '8px',
+                            color: 'white'
+                          }}
+                          formatter={(value: number) => [`$${value.toFixed(2)}`, 'Total Price']}
+                        />
+                        <Bar 
+                          dataKey="totalPrice" 
+                          fill="hsl(var(--dashboard-primary))"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  
+                  {/* Summary Table */}
+                  <div className="h-80 overflow-y-auto">
+                    <h3 className="text-white/90 text-lg font-semibold mb-4">Summary by {selectedAnalysis}</h3>
+                    <div className="space-y-3">
+                      {priceAnalysisData.map((item: any, index) => (
+                        <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="text-white font-medium truncate">{item.name}</h4>
+                            <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40 ml-2">
+                              {item.count} accounts
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-white/70">Total Value:</span>
+                              <div className="text-white font-semibold">${item.totalPrice.toFixed(2)}</div>
+                            </div>
+                            <div>
+                              <span className="text-white/70">Avg per Account:</span>
+                              <div className="text-white font-semibold">${item.avgPrice.toFixed(2)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>

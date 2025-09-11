@@ -32,7 +32,10 @@ const SendingAccountsInfrastructure = () => {
       
       // Count unique clients
       const uniqueClients = new Set(
-        accounts.map(account => account.fields['Client'] || 'Unknown')
+        accounts.map(account => {
+          const clientField = account.fields['Client'];
+          return clientField && clientField.length > 0 ? clientField[0] : 'Unknown';
+        })
       ).size;
       
       const avgAccountsPerClient = uniqueClients > 0 ? (totalAccounts / uniqueClients).toFixed(1) : '0';

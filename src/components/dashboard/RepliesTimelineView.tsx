@@ -9,6 +9,7 @@ interface RepliesTimelineViewProps {
   positiveRepliesCurrentMonth: number;
   positiveRepliesLastMonth: number;
   positiveRepliesLastVsThisMonth: number;
+  monthlyKpiTarget: number;
 }
 
 export const RepliesTimelineView = ({
@@ -18,16 +19,8 @@ export const RepliesTimelineView = ({
   positiveRepliesCurrentMonth,
   positiveRepliesLastMonth,
   positiveRepliesLastVsThisMonth,
+  monthlyKpiTarget,
 }: RepliesTimelineViewProps) => {
-  // Find the maximum value to normalize the progress bars
-  const maxValue = Math.max(
-    positiveRepliesLast7Days,
-    positiveRepliesLast14Days,
-    positiveRepliesLast30Days,
-    positiveRepliesCurrentMonth,
-    positiveRepliesLastMonth
-  );
-
   const periods = [
     {
       label: "Last 7 Days",
@@ -79,10 +72,9 @@ export const RepliesTimelineView = ({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Timeline Bars */}
         <div className="space-y-4">
           {periods.map((period, index) => {
-            const percentage = maxValue > 0 ? (period.value / maxValue) * 100 : 0;
+            const progressPercentage = monthlyKpiTarget > 0 ? Math.min((period.value / monthlyKpiTarget) * 100, 100) : 0;
             
             return (
               <div key={index} className="space-y-2">
@@ -109,14 +101,17 @@ export const RepliesTimelineView = ({
                   <div className="w-full bg-gray-200 rounded-full h-3 dark:bg-gray-700">
                     <div 
                       className={`h-3 rounded-full ${period.color} transition-all duration-500 ease-in-out`}
-                      style={{ width: `${percentage}%` }}
+                      style={{ width: `${progressPercentage}%` }}
                     />
                   </div>
                   <div className="absolute right-2 top-0 h-3 flex items-center">
                     <span className="text-xs text-white font-medium">
-                      {percentage.toFixed(0)}%
+                      {progressPercentage.toFixed(0)}%
                     </span>
                   </div>
+                </div>
+                <div className="text-xs text-dashboard-secondary text-right">
+                  {period.value} of {monthlyKpiTarget} target ({progressPercentage.toFixed(1)}%)
                 </div>
               </div>
             );

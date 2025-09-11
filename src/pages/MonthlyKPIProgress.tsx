@@ -198,6 +198,7 @@ const MonthlyKPIProgress = () => {
           positiveRepliesCurrentMonth={selectedClientData.positiveRepliesCurrentMonth}
           positiveRepliesLastMonth={selectedClientData.positiveRepliesLastMonth}
           positiveRepliesLastVsThisMonth={selectedClientData.positiveRepliesLastVsThisMonth}
+          monthlyKpiTarget={selectedClientData.monthlyKPI}
         />
 
         {/* Comparison Metrics */}

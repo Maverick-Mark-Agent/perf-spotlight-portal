@@ -55,7 +55,7 @@ export const ProgressPieChart = ({ achieved, target, title }: ProgressPieChartPr
         </div>
         <div className="mt-2 text-center">
           <div className="text-sm text-dashboard-secondary">
-            {achieved} of {target} target
+            {percentage.toFixed(1)}%
           </div>
         </div>
       </CardContent>

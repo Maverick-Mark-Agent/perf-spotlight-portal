@@ -133,17 +133,14 @@ export const RepliesTimelineView = ({
               </span>
             </div>
             <div className="flex items-center gap-2">
-              {monthlyTrend === 'up' ? (
-                <TrendingUp className="h-4 w-4 text-dashboard-success" />
-              ) : (
-                <TrendingDown className="h-4 w-4 text-dashboard-danger" />
-              )}
-              <span className={`text-lg font-bold ${monthlyTrend === 'up' ? 'text-dashboard-success' : 'text-dashboard-danger'}`}>
-                {positiveRepliesLastVsThisMonth}
-              </span>
-              <span className="text-xs text-dashboard-secondary">
-                vs last month
-              </span>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-dashboard-primary">
+                  {positiveRepliesLastVsThisMonth}
+                </div>
+                <div className="text-xs text-dashboard-secondary">
+                  Last vs This Month
+                </div>
+              </div>
             </div>
           </div>
         </div>

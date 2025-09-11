@@ -5,7 +5,6 @@ import { ProgressPieChart } from "@/components/dashboard/ProgressPieChart";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ComparisonMetrics } from "@/components/dashboard/ComparisonMetrics";
 import { BarChart3, Target, TrendingUp, Users, Zap } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 // Mock data - in real app this would come from Airtable
 const getClientData = (clientId: string) => {
@@ -32,20 +31,6 @@ const getClientData = (clientId: string) => {
     repliesProgress: baseData.repliesProgress,
   };
 };
-const underperformingData = [
-  { name: "Client A", projectedReplies: 25, monthlyKPI: 50, leadsGenerated: 45 },
-  { name: "Client B", projectedReplies: 30, monthlyKPI: 55, leadsGenerated: 52 },
-  { name: "Client C", projectedReplies: 20, monthlyKPI: 45, leadsGenerated: 38 },
-  { name: "Client D", projectedReplies: 35, monthlyKPI: 60, leadsGenerated: 47 },
-];
-
-// Mock data for overperforming clients
-const overperformingData = [
-  { name: "Client E", projectedReplies: 65, monthlyKPI: 50, leadsGenerated: 78 },
-  { name: "Client F", projectedReplies: 70, monthlyKPI: 55, leadsGenerated: 82 },
-  { name: "Client G", projectedReplies: 55, monthlyKPI: 45, leadsGenerated: 71 },
-  { name: "Client H", projectedReplies: 75, monthlyKPI: 60, leadsGenerated: 89 },
-];
 
 const MonthlyKPIProgress = () => {
   const [selectedClient, setSelectedClient] = useState("acme-corp");
@@ -135,171 +120,6 @@ const MonthlyKPIProgress = () => {
           selectedPeriod={selectedPeriod}
           onPeriodChange={setSelectedPeriod}
         />
-
-        {/* Client Performance Analysis */}
-        <div>
-          <h2 className="text-xl font-semibold text-dashboard-primary mb-4">
-            Client Performance Analysis
-          </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Underperforming Clients Chart */}
-            <div className="bg-dashboard-card rounded-lg p-6 border shadow-sm">
-              <h3 className="text-lg font-medium text-dashboard-primary mb-4">
-                Underperforming Clients (Below Monthly KPI)
-              </h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={underperformingData}>
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip 
-                      content={({ active, payload, label }) => {
-                        if (active && payload && payload.length) {
-                          return (
-                            <div className="bg-white p-3 border rounded shadow-lg">
-                              <p className="font-medium">{label}</p>
-                              <p className="text-dashboard-primary">
-                                Projected Positive Replies: {payload[0]?.value}
-                              </p>
-                              <p className="text-dashboard-secondary">
-                                Monthly KPI Target: {payload[1]?.value}
-                              </p>
-                              <p className="text-dashboard-accent">
-                                Leads Generated This Month: {payload[0]?.payload?.leadsGenerated}
-                              </p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="projectedReplies" 
-                      stroke="hsl(var(--dashboard-primary))" 
-                      strokeWidth={2}
-                      name="Projected Positive Replies"
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="monthlyKPI" 
-                      stroke="hsl(var(--dashboard-secondary))" 
-                      strokeWidth={2} 
-                      strokeDasharray="5 5"
-                      name="Monthly KPI Target"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Overperforming Clients Chart */}
-            <div className="bg-dashboard-card rounded-lg p-6 border shadow-sm">
-              <h3 className="text-lg font-medium text-dashboard-primary mb-4">
-                Overperforming Clients (Above KPI Target)
-              </h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={overperformingData}>
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip 
-                      content={({ active, payload, label }) => {
-                        if (active && payload && payload.length) {
-                          return (
-                            <div className="bg-white p-3 border rounded shadow-lg">
-                              <p className="font-medium">{label}</p>
-                              <p className="text-dashboard-success">
-                                Projected Positive Replies: {payload[0]?.value}
-                              </p>
-                              <p className="text-dashboard-secondary">
-                                Monthly KPI Target: {payload[1]?.value}
-                              </p>
-                              <p className="text-dashboard-accent">
-                                Leads Generated This Month: {payload[0]?.payload?.leadsGenerated}
-                              </p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="projectedReplies" 
-                      stroke="hsl(var(--dashboard-success))" 
-                      strokeWidth={2}
-                      name="Projected Positive Replies"
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="monthlyKPI" 
-                      stroke="hsl(var(--dashboard-secondary))" 
-                      strokeWidth={2} 
-                      strokeDasharray="5 5"
-                      name="Monthly KPI Target"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Weekly Comparison Metrics */}
-        <div>
-          <h2 className="text-xl font-semibold text-dashboard-primary mb-4">
-            Weekly Performance Comparison
-          </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Last Week vs Week Before */}
-            <div className="bg-dashboard-card rounded-lg p-6 border shadow-sm">
-              <h3 className="text-lg font-medium text-dashboard-primary mb-4">
-                Last Week vs Week Before Positive Replies
-              </h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-dashboard-secondary">Last Week</span>
-                  <span className="text-2xl font-bold text-dashboard-primary">42</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-dashboard-secondary">Week Before</span>
-                  <span className="text-2xl font-bold text-dashboard-secondary">38</span>
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t">
-                  <span className="text-dashboard-secondary">Difference</span>
-                  <span className="text-xl font-semibold text-dashboard-success">+4</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Percentage Progress */}
-            <div className="bg-dashboard-card rounded-lg p-6 border shadow-sm">
-              <h3 className="text-lg font-medium text-dashboard-primary mb-4">
-                Last Week VS Week Before Positive Replies % Progress
-              </h3>
-              <div className="space-y-4">
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-dashboard-success mb-2">
-                    +10.5%
-                  </div>
-                  <div className="text-dashboard-secondary">
-                    Improvement over previous week
-                  </div>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div 
-                    className="bg-gradient-to-r from-dashboard-success to-dashboard-accent h-3 rounded-full transition-all duration-300"
-                    style={{ width: '67%' }}
-                  ></div>
-                </div>
-                <div className="text-sm text-dashboard-secondary text-center">
-                  67% of weekly improvement target achieved
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Comparison Metrics */}
         <div>

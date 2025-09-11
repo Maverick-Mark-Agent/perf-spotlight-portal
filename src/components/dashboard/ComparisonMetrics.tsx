@@ -61,17 +61,8 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-2xl font-bold text-dashboard-primary">
-                    {metric.current}{metric.unit}
+                    {(metric.current * 100).toFixed(1)}%
                   </div>
-                  <div className="text-sm text-dashboard-secondary">
-                    vs {metric.previous}{metric.unit} previous
-                  </div>
-                </div>
-                <div className={cn("flex items-center space-x-1", getTrendColor(trend.direction))}>
-                  {getTrendIcon(trend.direction)}
-                  <span className="text-sm font-medium">
-                    {trend.percentage.toFixed(1)}%
-                  </span>
                 </div>
               </div>
             </CardContent>

@@ -150,16 +150,18 @@ const MonthlyKPIProgress = () => {
             <KPICard
               title="Leads Generated This Month"
               value={selectedClientData.leadsGenerated}
-              subtitle={selectedClientData.positiveRepliesLastVsThisMonth.toString()}
-              trend="up"
+              subtitle={`vs ${selectedClientData.monthlyKPI} target: ${selectedClientData.leadsGenerated >= selectedClientData.monthlyKPI ? "Above Target 🎯" : "Below Target ⚠️"}`}
+              trend={selectedClientData.leadsGenerated >= selectedClientData.monthlyKPI ? "up" : "down"}
+              status={selectedClientData.leadsGenerated >= selectedClientData.monthlyKPI ? "above-target" : "below-target"}
               icon={<Users className="h-5 w-5" />}
             />
             
             <KPICard
               title="Projected Positive Replies (EOM)"
               value={selectedClientData.projectedReplies}
-              subtitle={selectedClientData.projectedReplies >= selectedClientData.monthlyKPI ? "On Track" : "NOT On Track"}
+              subtitle={`vs ${selectedClientData.monthlyKPI} target: ${selectedClientData.projectedReplies >= selectedClientData.monthlyKPI ? "On Track 🎯" : "NOT On Track ⚠️"}`}
               trend={selectedClientData.projectedReplies >= selectedClientData.monthlyKPI ? "up" : "down"}
+              status={selectedClientData.projectedReplies >= selectedClientData.monthlyKPI ? "on-target" : "below-target"}
               icon={<Target className="h-5 w-5" />}
             />
             

@@ -106,32 +106,39 @@ const MonthlyKPIProgress = () => {
     <div className="min-h-screen bg-gradient-dashboard p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-dashboard-primary">
-              Monthly Lead KPI Progress
-            </h1>
-            <p className="text-dashboard-secondary mt-1">
-              Track lead generation and positive reply metrics
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button
-              onClick={handleRefresh}
-              disabled={loading}
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Refresh Data
-            </Button>
-            <ClientSelector 
-              clients={clients}
-              selectedClient={selectedClient} 
-              onClientChange={setSelectedClient}
-              loading={loading}
-            />
+        <div className="relative overflow-hidden bg-gradient-to-r from-dashboard-card/10 via-dashboard-primary/5 to-dashboard-accent/10 backdrop-blur-sm rounded-2xl border border-white/10 shadow-2xl mb-8">
+          <div className="absolute inset-0 bg-gradient-to-br from-dashboard-primary/5 via-transparent to-dashboard-accent/5"></div>
+          <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-6 p-8">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-3 h-3 bg-gradient-to-r from-dashboard-success to-dashboard-primary rounded-full animate-pulse"></div>
+                <span className="text-xs font-medium text-dashboard-primary/70 uppercase tracking-wider">Real-time Dashboard</span>
+              </div>
+              <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-dashboard-primary via-dashboard-accent to-dashboard-primary bg-clip-text text-transparent leading-tight">
+                Monthly Lead KPI Progress
+              </h1>
+              <p className="text-lg text-dashboard-secondary/80 font-medium max-w-2xl leading-relaxed">
+                Track lead generation and positive reply metrics with advanced analytics and performance insights
+              </p>
+            </div>
+            <div className="flex items-center gap-4 shrink-0">
+              <Button
+                onClick={handleRefresh}
+                disabled={loading}
+                variant="outline"
+                size="lg"
+                className="bg-white/5 border-white/20 hover:bg-white/10 hover:border-dashboard-primary/40 text-dashboard-primary font-semibold shadow-lg transition-all duration-300 hover:shadow-xl"
+              >
+                <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+                Refresh Data
+              </Button>
+              <ClientSelector 
+                clients={clients}
+                selectedClient={selectedClient} 
+                onClientChange={setSelectedClient}
+                loading={loading}
+              />
+            </div>
           </div>
         </div>
 

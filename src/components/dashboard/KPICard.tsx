@@ -45,9 +45,9 @@ export const KPICard = ({
           <div className="text-2xl font-bold text-dashboard-primary">{value}</div>
           {subtitle}
           {type === "progress" && progress !== undefined && <div className="space-y-1">
-              <Progress value={progress} className="h-2" />
+              <Progress value={progress * 100} className="h-2" />
               <div className="text-xs text-dashboard-secondary">
-                {progress}% of {target} target
+                {Math.round(progress * 100)}% of {target} target
               </div>
             </div>}
         </div>

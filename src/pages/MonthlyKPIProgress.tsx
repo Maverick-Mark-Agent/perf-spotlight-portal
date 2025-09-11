@@ -165,7 +165,7 @@ const MonthlyKPIProgress = () => {
             
             <KPICard
               title="MTD Leads Progress"
-              value={`${selectedClientData.currentProgress}%`}
+              value={`${Math.round(selectedClientData.currentProgress * 100)}%`}
               type="progress"
               progress={selectedClientData.currentProgress}
               target={100}

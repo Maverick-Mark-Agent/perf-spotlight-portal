@@ -148,7 +148,7 @@ const MonthlyKPIProgress = () => {
               subtitle={`${selectedClientData.leadsGenerated} of ${selectedClientData.leadsTarget}`}
               type="progress"
               progress={selectedClientData.currentProgress}
-              target={selectedClientData.leadsTarget}
+              target={100}
               icon={<BarChart3 className="h-5 w-5" />}
             />
             

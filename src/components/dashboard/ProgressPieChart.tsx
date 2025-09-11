@@ -48,7 +48,6 @@ export const ProgressPieChart = ({ percentage, title }: ProgressPieChartProps) =
               <div className="text-xl font-bold text-dashboard-primary">
                 {displayPercentage.toFixed(1)}%
               </div>
-              <div className="text-xs text-dashboard-secondary">Complete</div>
             </div>
           </div>
         </div>

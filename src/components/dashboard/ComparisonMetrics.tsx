@@ -28,6 +28,11 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
   // Prepare chart data with the three requested metrics
   const chartData = [
     {
+      name: "MTD",
+      value: clientData.positiveRepliesMTD || clientData.positiveRepliesCurrentMonth || 0,
+      fullName: "Positive Replies Month To Date"
+    },
+    {
       name: "Last 7 Days",
       value: clientData.positiveRepliesLast7Days || 0,
       fullName: "Positive Replies Last 7 Days"
@@ -36,11 +41,6 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
       name: "Last 14-7 Days", 
       value: (clientData.positiveRepliesLast14Days || 0) - (clientData.positiveRepliesLast7Days || 0),
       fullName: "Positive Replies Last 14-7 Days"
-    },
-    {
-      name: "MTD",
-      value: clientData.positiveRepliesMTD || clientData.positiveRepliesCurrentMonth || 0,
-      fullName: "Positive Replies Month To Date"
     }
   ];
 

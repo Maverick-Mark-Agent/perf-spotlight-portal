@@ -5,6 +5,7 @@ import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity } fro
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 
 const SendingAccountsInfrastructure = () => {
   const [emailAccounts, setEmailAccounts] = useState([]);
@@ -16,6 +17,8 @@ const SendingAccountsInfrastructure = () => {
     connected: 0,
     disconnected: 0
   });
+  const [resellerData, setResellerData] = useState([]);
+  const [accountTypeData, setAccountTypeData] = useState([]);
 
   const fetchEmailAccounts = async () => {
     setLoading(true);
@@ -50,6 +53,36 @@ const SendingAccountsInfrastructure = () => {
         connected: connectedCount,
         disconnected: disconnectedCount
       });
+
+      // Calculate reseller distribution
+      const resellerCounts = {};
+      accounts.forEach(account => {
+        const reseller = account.fields['Tag - Reseller'] || 'Unknown';
+        resellerCounts[reseller] = (resellerCounts[reseller] || 0) + 1;
+      });
+
+      const resellerChartData = Object.entries(resellerCounts).map(([name, count]) => ({
+        name,
+        value: count as number,
+        percentage: (((count as number) / totalAccounts) * 100).toFixed(1)
+      }));
+
+      setResellerData(resellerChartData);
+
+      // Calculate account type distribution
+      const accountTypeCounts = {};
+      accounts.forEach(account => {
+        const accountType = account.fields['Account Type'] || 'Unknown';
+        accountTypeCounts[accountType] = (accountTypeCounts[accountType] || 0) + 1;
+      });
+
+      const accountTypeChartData = Object.entries(accountTypeCounts).map(([name, count]) => ({
+        name,
+        value: count as number,
+        percentage: (((count as number) / totalAccounts) * 100).toFixed(1)
+      }));
+
+      setAccountTypeData(accountTypeChartData);
       
     } catch (error) {
       console.error('Error fetching email accounts:', error);
@@ -167,6 +200,135 @@ const SendingAccountsInfrastructure = () => {
             <CardContent>
               <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.disconnected}</div>
               <p className="text-white/70 text-sm">Disconnected Accounts</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Visual Analytics Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+          {/* Resellers Distribution */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-primary" />
+                <span>Resellers Distribution</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-64 flex items-center justify-center">
+                  <div className="text-white/70">Loading chart data...</div>
+                </div>
+              ) : (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={resellerData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={40}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({name, percentage}) => `${name}: ${percentage}%`}
+                      >
+                        {resellerData.map((entry, index) => (
+                          <Cell 
+                            key={`reseller-${index}`} 
+                            fill={index === 0 ? 'hsl(var(--dashboard-primary))' : 
+                                  index === 1 ? 'hsl(var(--dashboard-accent))' : 
+                                  index === 2 ? 'hsl(var(--dashboard-success))' : 
+                                  'hsl(var(--dashboard-warning))'} 
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '8px',
+                          color: 'white'
+                        }}
+                        formatter={(value, name) => [
+                          `${value} accounts (${resellerData.find(d => d.value === value)?.percentage}%)`,
+                          'Count'
+                        ]}
+                      />
+                      <Legend 
+                        wrapperStyle={{ color: 'white' }}
+                        formatter={(value) => {
+                          const item = resellerData.find(d => d.name === value);
+                          return `${value} (${item?.value} accounts)`;
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Account Types Distribution */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Mail className="h-5 w-5 text-dashboard-accent" />
+                <span>Account Types Distribution</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-64 flex items-center justify-center">
+                  <div className="text-white/70">Loading chart data...</div>
+                </div>
+              ) : (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={accountTypeData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={40}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({name, percentage}) => `${name}: ${percentage}%`}
+                      >
+                        {accountTypeData.map((entry, index) => (
+                          <Cell 
+                            key={`type-${index}`} 
+                            fill={index === 0 ? 'hsl(var(--dashboard-success))' : 
+                                  index === 1 ? 'hsl(var(--dashboard-primary))' : 
+                                  index === 2 ? 'hsl(var(--dashboard-accent))' : 
+                                  'hsl(var(--dashboard-warning))'} 
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '8px',
+                          color: 'white'
+                        }}
+                        formatter={(value, name) => [
+                          `${value} accounts (${accountTypeData.find(d => d.value === value)?.percentage}%)`,
+                          'Count'
+                        ]}
+                      />
+                      <Legend 
+                        wrapperStyle={{ color: 'white' }}
+                        formatter={(value) => {
+                          const item = accountTypeData.find(d => d.name === value);
+                          return `${value} (${item?.value} accounts)`;
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

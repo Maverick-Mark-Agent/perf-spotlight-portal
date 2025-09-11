@@ -122,48 +122,6 @@ export const RepliesTimelineView = ({
             );
           })}
         </div>
-
-        {/* Monthly Comparison Summary */}
-        <div className="mt-6 p-4 bg-dashboard-card border border-border rounded-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${monthlyTrend === 'up' ? 'bg-dashboard-success' : 'bg-dashboard-danger'} animate-pulse`} />
-              <span className="text-sm font-medium text-dashboard-secondary">
-                Monthly Trend
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-dashboard-primary">
-                  {positiveRepliesLastVsThisMonth}
-                </div>
-                <div className="text-xs text-dashboard-secondary">
-                  Last vs This Month
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Stats Grid */}
-        <div className="grid grid-cols-2 gap-4 mt-6">
-          <div className="text-center p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border">
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {positiveRepliesLast7Days}
-            </div>
-            <div className="text-xs text-blue-500 dark:text-blue-300">
-              Weekly Average
-            </div>
-          </div>
-          <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border">
-            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-              {positiveRepliesCurrentMonth}
-            </div>
-            <div className="text-xs text-green-500 dark:text-green-300">
-              This Month
-            </div>
-          </div>
-        </div>
       </CardContent>
     </Card>
   );

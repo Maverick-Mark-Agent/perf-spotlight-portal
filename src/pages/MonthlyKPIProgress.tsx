@@ -4,7 +4,8 @@ import { KPICard } from "@/components/dashboard/KPICard";
 import { ProgressPieChart } from "@/components/dashboard/ProgressPieChart";
 import { PerformanceChart } from "@/components/dashboard/PerformanceChart";
 import { ComparisonMetrics } from "@/components/dashboard/ComparisonMetrics";
-import { BarChart3, Target, TrendingUp, Users, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -59,6 +60,14 @@ const MonthlyKPIProgress = () => {
     }
   };
 
+  const handleRefresh = async () => {
+    await fetchAirtableData();
+    toast({
+      title: "Success",
+      description: "Data refreshed successfully",
+    });
+  };
+
   useEffect(() => {
     fetchAirtableData();
   }, []);
@@ -109,12 +118,24 @@ const MonthlyKPIProgress = () => {
               Track lead generation and positive reply metrics
             </p>
           </div>
-          <ClientSelector 
-            clients={clients}
-            selectedClient={selectedClient} 
-            onClientChange={setSelectedClient}
-            loading={loading}
-          />
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleRefresh}
+              disabled={loading}
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh Data
+            </Button>
+            <ClientSelector 
+              clients={clients}
+              selectedClient={selectedClient} 
+              onClientChange={setSelectedClient}
+              loading={loading}
+            />
+          </div>
         </div>
 
         {/* KPI Overview Grid */}

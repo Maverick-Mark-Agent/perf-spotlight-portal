@@ -389,8 +389,7 @@ const SendingAccountsInfrastructure = () => {
                         
                         const sortedData = Object.entries(clientCounts)
                           .map(([name, count]) => ({ name, count: count as number }))
-                          .sort((a, b) => b.count - a.count)
-                          .slice(0, 12); // Show top 12 clients for better readability
+                          .sort((a, b) => b.count - a.count); // Show ALL clients
                         
                         // Add ranking and colors
                         return sortedData.map((item, index) => ({
@@ -434,8 +433,7 @@ const SendingAccountsInfrastructure = () => {
                           
                           const sortedData = Object.entries(clientCounts)
                             .map(([name, count]) => ({ name, count: count as number }))
-                            .sort((a, b) => b.count - a.count)
-                            .slice(0, 12);
+                            .sort((a, b) => b.count - a.count); // Show ALL clients
                           
                           return sortedData.map((item, index) => (
                             <Cell 
@@ -451,20 +449,7 @@ const SendingAccountsInfrastructure = () => {
                   </ResponsiveContainer>
                   
                   {/* Top 3 Legend */}
-                  <div className="mt-2 flex items-center justify-center space-x-6">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                      <span className="text-white/70 text-sm">Top 3 Clients</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                      <span className="text-white/70 text-sm">Mid-tier Clients</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="w-3 h-3 rounded-full bg-gray-500"></div>
-                      <span className="text-white/70 text-sm">Lower Volume</span>
-                    </div>
-                  </div>
+                  <div className="mt-1"></div>
                 </div>
               )}
             </CardContent>

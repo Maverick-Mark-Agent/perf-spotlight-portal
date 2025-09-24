@@ -460,15 +460,15 @@ const SendingAccountsInfrastructure = () => {
                         <Pie
                           data={(() => {
                             const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Tag - Reseller'] === 'Maverick'
+                              account.fields['Workspace'] === 'Maverick'
                             ).length;
                             const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Tag - Reseller'] === 'Longrun'
+                              account.fields['Workspace'] === 'LongRun'
                             ).length;
                             
                             return [
                               { name: 'Maverick', value: maverickCount, color: 'hsl(var(--dashboard-primary))' },
-                              { name: 'Longrun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
+                              { name: 'LongRun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
                             ];
                           })()}
                           cx="50%"
@@ -479,15 +479,15 @@ const SendingAccountsInfrastructure = () => {
                         >
                           {(() => {
                             const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Tag - Reseller'] === 'Maverick'
+                              account.fields['Workspace'] === 'Maverick'
                             ).length;
                             const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Tag - Reseller'] === 'Longrun'
+                              account.fields['Workspace'] === 'LongRun'
                             ).length;
                             
                             return [
                               { name: 'Maverick', value: maverickCount, color: 'hsl(var(--dashboard-primary))' },
-                              { name: 'Longrun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
+                              { name: 'LongRun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
                             ];
                           })().map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
@@ -502,10 +502,10 @@ const SendingAccountsInfrastructure = () => {
                         <div className="text-3xl font-bold text-white">
                           {(() => {
                             const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Tag - Reseller'] === 'Maverick'
+                              account.fields['Workspace'] === 'Maverick'
                             ).length;
                             const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Tag - Reseller'] === 'Longrun'
+                              account.fields['Workspace'] === 'LongRun'
                             ).length;
                             return maverickCount > longrunCount ? maverickCount : longrunCount;
                           })()}
@@ -513,12 +513,12 @@ const SendingAccountsInfrastructure = () => {
                         <div className="text-white/70 text-sm">
                           {(() => {
                             const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Tag - Reseller'] === 'Maverick'
+                              account.fields['Workspace'] === 'Maverick'
                             ).length;
                             const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Tag - Reseller'] === 'Longrun'
+                              account.fields['Workspace'] === 'LongRun'
                             ).length;
-                            return maverickCount > longrunCount ? 'Maverick' : 'Longrun';
+                            return maverickCount > longrunCount ? 'Maverick' : 'LongRun';
                           })()} Lead
                         </div>
                       </div>
@@ -532,16 +532,16 @@ const SendingAccountsInfrastructure = () => {
                       <div className="text-white text-sm">
                         <div className="font-medium">Maverick</div>
                         <div className="text-white/70">
-                          {emailAccounts.filter(account => account.fields['Tag - Reseller'] === 'Maverick').length} accounts
+                          {emailAccounts.filter(account => account.fields['Workspace'] === 'Maverick').length} accounts
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
                       <div className="w-4 h-4 rounded-full bg-dashboard-accent"></div>
                       <div className="text-white text-sm">
-                        <div className="font-medium">Longrun</div>
+                        <div className="font-medium">LongRun</div>
                         <div className="text-white/70">
-                          {emailAccounts.filter(account => account.fields['Tag - Reseller'] === 'Longrun').length} accounts
+                          {emailAccounts.filter(account => account.fields['Workspace'] === 'LongRun').length} accounts
                         </div>
                       </div>
                     </div>

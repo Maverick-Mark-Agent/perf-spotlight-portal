@@ -25,7 +25,7 @@ const SendingAccountsInfrastructure = () => {
   const [resellerData, setResellerData] = useState([]);
   const [accountTypeData, setAccountTypeData] = useState([]);
   const [priceAnalysisData, setPriceAnalysisData] = useState([]);
-  const [selectedAnalysis, setSelectedAnalysis] = useState('Email Provider');
+  const [selectedAnalysis, setSelectedAnalysis] = useState('Account Type');
   const [clientAccountsData, setClientAccountsData] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);

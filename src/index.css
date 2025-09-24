@@ -2,122 +2,244 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
+/* NEXUS - The Intelligence Hub Design System
+   Production-ready token system with semantic values
+   Portfolio-worthy implementation with accessibility focus
 */
 
 @layer base {
   :root {
-    --background: 220 15% 10%;
-    --foreground: 220 13% 91%;
+    /* === PRIMITIVE TOKENS === */
+    
+    /* NEXUS Core Palette - HSL Values */
+    --nexus-neural-50: 220 40% 98%;
+    --nexus-neural-100: 220 30% 95%;
+    --nexus-neural-200: 220 25% 88%;
+    --nexus-neural-300: 220 20% 75%;
+    --nexus-neural-400: 220 15% 60%;
+    --nexus-neural-500: 220 25% 15%;  /* Deep Neural Blue #0A1628 */
+    --nexus-neural-600: 220 30% 12%;
+    --nexus-neural-700: 220 35% 10%;
+    --nexus-neural-800: 220 40% 8%;
+    --nexus-neural-900: 220 45% 6%;
+    
+    --nexus-cognitive-50: 214 100% 97%;
+    --nexus-cognitive-100: 214 95% 93%;
+    --nexus-cognitive-200: 213 97% 87%;
+    --nexus-cognitive-300: 212 96% 78%;
+    --nexus-cognitive-400: 213 94% 68%;
+    --nexus-cognitive-500: 217 91% 60%;  /* Cognitive Blue #1E40AF */
+    --nexus-cognitive-600: 221 83% 53%;
+    --nexus-cognitive-700: 224 76% 48%;
+    --nexus-cognitive-800: 226 71% 40%;
+    --nexus-cognitive-900: 224 64% 33%;
+    
+    --nexus-synaptic-50: 151 100% 95%;
+    --nexus-synaptic-100: 154 100% 90%;
+    --nexus-synaptic-200: 156 100% 87%;
+    --nexus-synaptic-300: 158 100% 81%;
+    --nexus-synaptic-400: 160 84% 74%;
+    --nexus-synaptic-500: 159 100% 51%;  /* Synaptic Green #06FFA5 */
+    --nexus-synaptic-600: 159 100% 45%;
+    --nexus-synaptic-700: 159 100% 39%;
+    --nexus-synaptic-800: 159 100% 32%;
+    --nexus-synaptic-900: 159 100% 25%;
+    
+    --nexus-alert-50: 48 100% 96%;
+    --nexus-alert-100: 48 96% 89%;
+    --nexus-alert-200: 48 97% 77%;
+    --nexus-alert-300: 46 96% 64%;
+    --nexus-alert-400: 43 96% 56%;
+    --nexus-alert-500: 38 92% 50%;  /* Alert Amber #F59E0B */
+    --nexus-alert-600: 32 95% 44%;
+    --nexus-alert-700: 26 90% 37%;
+    --nexus-alert-800: 23 83% 31%;
+    --nexus-alert-900: 22 78% 26%;
+    
+    --nexus-critical-50: 0 86% 97%;
+    --nexus-critical-100: 0 93% 94%;
+    --nexus-critical-200: 0 96% 89%;
+    --nexus-critical-300: 0 94% 82%;
+    --nexus-critical-400: 0 91% 71%;
+    --nexus-critical-500: 0 84% 60%;  /* Critical Red #DC2626 */
+    --nexus-critical-600: 0 72% 51%;
+    --nexus-critical-700: 0 74% 42%;
+    --nexus-critical-800: 0 70% 35%;
+    --nexus-critical-900: 0 63% 31%;
+    
+    --nexus-slate-50: 210 40% 98%;   /* Clean Slate #F8FAFC */
+    --nexus-slate-100: 210 40% 96%;
+    --nexus-slate-200: 214 32% 91%;
+    --nexus-slate-300: 213 27% 84%;
+    --nexus-slate-400: 215 20% 65%;
+    --nexus-slate-500: 215 16% 47%;
+    --nexus-slate-600: 215 19% 35%;
+    --nexus-slate-700: 215 25% 27%;
+    --nexus-slate-800: 217 33% 17%;
+    --nexus-slate-900: 222 47% 11%;
+    
+    /* === SEMANTIC TOKENS === */
+    
+    /* Surface System */
+    --background: var(--nexus-slate-50);
+    --background-elevated: var(--nexus-slate-100);
+    --background-panel: var(--nexus-neural-500);
+    --background-overlay: var(--nexus-neural-800);
+    --foreground: var(--nexus-neural-800);
+    --foreground-muted: var(--nexus-slate-600);
+    --foreground-subtle: var(--nexus-slate-500);
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 9% 46%;
+    /* Interactive Elements */
+    --primary: var(--nexus-cognitive-500);
+    --primary-foreground: var(--nexus-slate-50);
+    --primary-hover: var(--nexus-cognitive-600);
+    --primary-active: var(--nexus-cognitive-700);
+    
+    --secondary: var(--nexus-slate-200);
+    --secondary-foreground: var(--nexus-neural-700);
+    --secondary-hover: var(--nexus-slate-300);
+    --secondary-active: var(--nexus-slate-400);
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 9% 46%;
+    /* Feedback System */
+    --success: var(--nexus-synaptic-500);
+    --success-foreground: var(--nexus-neural-800);
+    --success-surface: var(--nexus-synaptic-50);
+    
+    --warning: var(--nexus-alert-500);
+    --warning-foreground: var(--nexus-neural-800);
+    --warning-surface: var(--nexus-alert-50);
+    
+    --destructive: var(--nexus-critical-500);
+    --destructive-foreground: var(--nexus-slate-50);
+    --destructive-surface: var(--nexus-critical-50);
 
-    --primary: 220 91% 60%;
-    --primary-foreground: 220 9% 9%;
+    /* Component Tokens */
+    --card: var(--nexus-slate-50);
+    --card-foreground: var(--nexus-neural-700);
+    --card-border: var(--nexus-slate-200);
+    
+    --popover: var(--nexus-slate-50);
+    --popover-foreground: var(--nexus-neural-700);
+    
+    --muted: var(--nexus-slate-100);
+    --muted-foreground: var(--nexus-slate-600);
+    
+    --accent: var(--nexus-synaptic-500);
+    --accent-foreground: var(--nexus-neural-800);
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 220 9% 46%;
+    /* Interactive States */
+    --border: var(--nexus-slate-300);
+    --border-input: var(--nexus-slate-300);
+    --border-focus: var(--nexus-cognitive-500);
+    --input: var(--nexus-slate-50);
+    --ring: var(--nexus-cognitive-500);
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    /* === MOTION TOKENS === */
+    --duration-instant: 0ms;
+    --duration-fast: 150ms;
+    --duration-normal: 200ms;
+    --duration-moderate: 300ms;
+    --duration-slow: 400ms;
+    --duration-slower: 600ms;
+    
+    --easing-nexus: cubic-bezier(0.4, 0.0, 0.2, 1);  /* Signature easing */
+    --easing-enter: cubic-bezier(0.0, 0.0, 0.2, 1);
+    --easing-exit: cubic-bezier(0.4, 0.0, 1, 1);
+    --easing-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
 
-    --accent: 220 14% 96%;
-    --accent-foreground: 220 9% 9%;
+    /* === ELEVATION TOKENS === */
+    --shadow-connection: 0 0 20px hsl(var(--nexus-cognitive-500) / 0.2);
+    --shadow-data-node: 0 4px 20px hsl(var(--nexus-neural-900) / 0.15);
+    --shadow-elevated: 0 8px 32px hsl(var(--nexus-neural-900) / 0.12);
+    --shadow-floating: 0 16px 64px hsl(var(--nexus-neural-900) / 0.15);
+    
+    /* === SPACING TOKENS === */
+    --space-1: 0.25rem;  /* 4px */
+    --space-2: 0.5rem;   /* 8px - Base unit */
+    --space-3: 0.75rem;  /* 12px */
+    --space-4: 1rem;     /* 16px */
+    --space-5: 1.25rem;  /* 20px */
+    --space-6: 1.5rem;   /* 24px */
+    --space-8: 2rem;     /* 32px */
+    --space-10: 2.5rem;  /* 40px */
+    --space-12: 3rem;    /* 48px */
+    --space-16: 4rem;    /* 64px */
+    --space-20: 5rem;    /* 80px */
+    --space-24: 6rem;    /* 96px */
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-
-    --success: 142 71% 45%;
-    --success-foreground: 0 0% 98%;
-
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 98%;
-
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 220 91% 60%;
-
-    /* Dashboard specific tokens */
-    --dashboard-bg: 240 21% 12%;
-    --dashboard-card: 0 0% 100%;
-    --dashboard-primary: 220 91% 60%;
-    --dashboard-secondary: 220 9% 46%;
-    --dashboard-accent: 220 91% 60%;
-    --dashboard-success: 142 71% 45%;
-    --dashboard-warning: 38 92% 50%;
-    --dashboard-danger: 0 84% 60%;
-
-    /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%), hsl(212 97% 87%));
-    --gradient-success: linear-gradient(135deg, hsl(142 71% 45%), hsl(160 84% 39%));
-    --gradient-warning: linear-gradient(135deg, hsl(32 95% 44%), hsl(45 93% 47%));
-    --gradient-dashboard: linear-gradient(135deg, hsl(240 21% 12%), hsl(280 25% 15%), hsl(240 25% 18%), hsl(220 20% 22%));
-
-    /* Shadows */
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-
+    /* === RADIUS TOKENS === */
+    --radius-sm: 0.25rem;
     --radius: 0.5rem;
+    --radius-md: 0.75rem;
+    --radius-lg: 1rem;
+    --radius-xl: 1.5rem;
+    --radius-full: 9999px;
+    --radius-hexagon: 0.375rem;  /* Signature hexagonal radius */
 
-    --sidebar-background: 0 0% 98%;
+    /* === NEXUS SIGNATURE ELEMENTS === */
+    --connection-width: 2px;
+    --connection-glow: 4px;
+    --node-size: 48px;
+    --node-size-sm: 32px;
+    --node-size-lg: 64px;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Sidebar System - Nexus Intelligence Panel */
+    --sidebar-background: var(--nexus-neural-500);
+    --sidebar-foreground: var(--nexus-slate-300);
+    --sidebar-primary: var(--nexus-cognitive-500);
+    --sidebar-primary-foreground: var(--nexus-slate-50);
+    --sidebar-accent: var(--nexus-neural-600);
+    --sidebar-accent-foreground: var(--nexus-slate-200);
+    --sidebar-border: var(--nexus-neural-400);
+    --sidebar-ring: var(--nexus-cognitive-500);
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    /* Dark Mode: Neural Network Theme */
+    --background: var(--nexus-neural-800);
+    --background-elevated: var(--nexus-neural-700);
+    --background-panel: var(--nexus-neural-900);
+    --background-overlay: var(--nexus-neural-900);
+    --foreground: var(--nexus-slate-100);
+    --foreground-muted: var(--nexus-slate-400);
+    --foreground-subtle: var(--nexus-slate-500);
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: var(--nexus-neural-700);
+    --card-foreground: var(--nexus-slate-100);
+    --card-border: var(--nexus-neural-600);
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: var(--nexus-neural-700);
+    --popover-foreground: var(--nexus-slate-100);
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: var(--nexus-cognitive-400);
+    --primary-foreground: var(--nexus-neural-900);
+    --primary-hover: var(--nexus-cognitive-300);
+    --primary-active: var(--nexus-cognitive-200);
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: var(--nexus-neural-600);
+    --secondary-foreground: var(--nexus-slate-200);
+    --secondary-hover: var(--nexus-neural-500);
+    --secondary-active: var(--nexus-neural-400);
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: var(--nexus-neural-600);
+    --muted-foreground: var(--nexus-slate-400);
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: var(--nexus-synaptic-400);
+    --accent-foreground: var(--nexus-neural-900);
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --border: var(--nexus-neural-600);
+    --border-input: var(--nexus-neural-500);
+    --input: var(--nexus-neural-700);
+    --ring: var(--nexus-cognitive-400);
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: var(--nexus-neural-900);
+    --sidebar-foreground: var(--nexus-slate-300);
+    --sidebar-primary: var(--nexus-cognitive-400);
+    --sidebar-primary-foreground: var(--nexus-neural-900);
+    --sidebar-accent: var(--nexus-neural-800);
+    --sidebar-accent-foreground: var(--nexus-slate-200);
+    --sidebar-border: var(--nexus-neural-700);
+    --sidebar-ring: var(--nexus-cognitive-400);
   }
 }
 
@@ -127,6 +249,254 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-body antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
+
+  /* Typography Scale */
+  h1 { @apply font-display text-4xl font-bold leading-tight tracking-tight; }
+  h2 { @apply font-display text-3xl font-semibold leading-tight tracking-tight; }
+  h3 { @apply font-display text-2xl font-semibold leading-snug; }
+  h4 { @apply font-display text-xl font-medium leading-snug; }
+  h5 { @apply font-display text-lg font-medium; }
+  h6 { @apply font-display text-base font-medium; }
+  
+  /* Code and Data Typography */
+  code, kbd, samp { @apply font-mono text-sm; }
+  .metric { @apply font-mono font-medium tabular-nums; }
+  .data-label { @apply font-mono text-xs uppercase tracking-wider text-foreground-muted; }
+}
+
+@layer components {
+  /* === NEXUS SIGNATURE COMPONENTS === */
+  
+  /* Hexagonal Containers */
+  .nexus-hexagon {
+    @apply relative overflow-hidden bg-gradient-to-br from-primary/10 to-accent/5;
+    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+    aspect-ratio: 1;
+  }
+  
+  .nexus-hexagon-inner {
+    @apply absolute inset-1 bg-background;
+    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+  }
+
+  /* Connection Lines */
+  .nexus-connection {
+    @apply relative;
+  }
+  
+  .nexus-connection::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-r from-primary/20 via-accent/40 to-primary/20;
+    height: var(--connection-width);
+    top: 50%;
+    transform: translateY(-50%);
+    border-radius: var(--radius-full);
+    animation: nexus-pulse 2s ease-in-out infinite;
+  }
+  
+  .nexus-connection::after {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-r from-transparent via-accent to-transparent;
+    height: var(--connection-glow);
+    top: 50%;
+    transform: translateY(-50%);
+    border-radius: var(--radius-full);
+    filter: blur(2px);
+    opacity: 0.6;
+    animation: nexus-flow 3s ease-in-out infinite;
+  }
+
+  /* Data Nodes */
+  .nexus-node {
+    @apply relative rounded-full bg-gradient-to-br from-primary to-accent;
+    @apply flex items-center justify-center text-primary-foreground;
+    @apply shadow-data-node transition-all duration-200;
+    width: var(--node-size);
+    height: var(--node-size);
+  }
+  
+  .nexus-node:hover {
+    @apply scale-110 shadow-connection;
+    animation: nexus-glow 0.6s ease-out;
+  }
+  
+  .nexus-node-sm {
+    width: var(--node-size-sm);
+    height: var(--node-size-sm);
+  }
+  
+  .nexus-node-lg {
+    width: var(--node-size-lg);
+    height: var(--node-size-lg);
+  }
+
+  /* Intelligence Panel */
+  .nexus-panel {
+    @apply bg-background-panel backdrop-blur-sm;
+    @apply border border-border/50 rounded-lg;
+    @apply shadow-elevated;
+    background: linear-gradient(135deg, 
+      hsl(var(--background-panel) / 0.9) 0%, 
+      hsl(var(--background-panel) / 0.95) 100%);
+  }
+
+  /* Metric Cards */
+  .nexus-metric {
+    @apply nexus-panel p-6 space-y-2;
+    @apply hover:shadow-floating transition-all duration-200;
+  }
+  
+  .nexus-metric:hover {
+    @apply border-primary/30;
+    transform: translateY(-1px);
+  }
+
+  /* Interactive Buttons */
+  .nexus-button {
+    @apply inline-flex items-center justify-center rounded-md font-medium;
+    @apply transition-all duration-200 focus-visible:outline-none;
+    @apply focus-visible:ring-2 focus-visible:ring-ring;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+  }
+  
+  .nexus-button-primary {
+    @apply nexus-button bg-primary text-primary-foreground;
+    @apply hover:bg-primary-hover active:bg-primary-active;
+    @apply shadow-sm hover:shadow-md;
+  }
+  
+  .nexus-button-secondary {
+    @apply nexus-button bg-secondary text-secondary-foreground;
+    @apply hover:bg-secondary-hover active:bg-secondary-active;
+    @apply border border-border;
+  }
+  
+  .nexus-button-ghost {
+    @apply nexus-button hover:bg-accent hover:text-accent-foreground;
+  }
+
+  /* Status Indicators */
+  .nexus-status-connected {
+    @apply w-2 h-2 rounded-full bg-success animate-pulse;
+    box-shadow: 0 0 8px hsl(var(--success) / 0.6);
+  }
+  
+  .nexus-status-warning {
+    @apply w-2 h-2 rounded-full bg-warning animate-pulse;
+    box-shadow: 0 0 8px hsl(var(--warning) / 0.6);
+  }
+  
+  .nexus-status-error {
+    @apply w-2 h-2 rounded-full bg-destructive animate-pulse;
+    box-shadow: 0 0 8px hsl(var(--destructive) / 0.6);
+  }
+
+  /* Input System */
+  .nexus-input {
+    @apply flex h-10 w-full rounded-md border border-border-input bg-input;
+    @apply px-3 py-2 text-sm placeholder:text-muted-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    @apply transition-all duration-200;
+  }
+  
+  .nexus-input:focus {
+    @apply border-border-focus shadow-connection;
+  }
+}
+
+@layer utilities {
+  /* === NEXUS ANIMATIONS === */
+  
+  /* Signature Animations */
+  @keyframes nexus-pulse {
+    0%, 100% { opacity: 0.4; transform: translateY(-50%) scaleX(1); }
+    50% { opacity: 1; transform: translateY(-50%) scaleX(1.05); }
+  }
+  
+  @keyframes nexus-flow {
+    0% { transform: translateY(-50%) translateX(-100%); opacity: 0; }
+    50% { opacity: 1; }
+    100% { transform: translateY(-50%) translateX(100%); opacity: 0; }
+  }
+  
+  @keyframes nexus-glow {
+    0% { box-shadow: var(--shadow-data-node); }
+    50% { box-shadow: var(--shadow-connection), var(--shadow-floating); }
+    100% { box-shadow: var(--shadow-data-node); }
+  }
+  
+  @keyframes nexus-connect {
+    0% { stroke-dashoffset: 100; opacity: 0; }
+    50% { opacity: 1; }
+    100% { stroke-dashoffset: 0; opacity: 1; }
+  }
+  
+  @keyframes nexus-data-flow {
+    0% { transform: translateX(-100%) scale(0); opacity: 0; }
+    10% { transform: translateX(-80%) scale(0.5); opacity: 0.5; }
+    50% { transform: translateX(0%) scale(1); opacity: 1; }
+    90% { transform: translateX(80%) scale(0.5); opacity: 0.5; }
+    100% { transform: translateX(100%) scale(0); opacity: 0; }
+  }
+
+  /* Motion Utilities */
+  .animate-nexus-pulse { animation: nexus-pulse 2s ease-in-out infinite; }
+  .animate-nexus-flow { animation: nexus-flow 3s ease-in-out infinite; }
+  .animate-nexus-glow { animation: nexus-glow 0.6s ease-out; }
+  .animate-nexus-connect { animation: nexus-connect 1.2s var(--easing-nexus) forwards; }
+  .animate-nexus-data-flow { animation: nexus-data-flow 2s var(--easing-nexus) infinite; }
+
+  /* Transition Utilities */
+  .transition-nexus { transition-duration: var(--duration-normal); transition-timing-function: var(--easing-nexus); }
+  .transition-nexus-fast { transition-duration: var(--duration-fast); transition-timing-function: var(--easing-nexus); }
+  .transition-nexus-slow { transition-duration: var(--duration-slow); transition-timing-function: var(--easing-nexus); }
+
+  /* Focus States */
+  .focus-nexus {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    @apply focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  /* Responsive Grid System */
+  .nexus-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--space-6);
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 0 var(--space-6);
+  }
+  
+  .nexus-grid-dense {
+    grid-auto-flow: dense;
+  }
+
+  /* Typography Utilities */
+  .font-display { font-family: 'Inter', system-ui, sans-serif; }
+  .font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+  .font-body { font-family: system-ui, -apple-system, sans-serif; }
+  
+  /* Performance Optimizations */
+  .will-change-transform { will-change: transform; }
+  .will-change-opacity { will-change: opacity; }
+  .gpu-acceleration { transform: translateZ(0); }
+  
+  /* Accessibility Utilities */
+  .sr-only-nexus {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  
+  .motion-safe { @media (prefers-reduced-motion: no-preference) { animation-play-state: running; }}
+  .motion-reduce { @media (prefers-reduced-motion: reduce) { animation-play-state: paused; }}
 }

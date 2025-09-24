@@ -1,13 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign, TrendingUp, AlertTriangle, Zap, Globe, Server } from "lucide-react";
+import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const SendingAccountsInfrastructure = () => {
   const [emailAccounts, setEmailAccounts] = useState([]);
@@ -15,22 +16,21 @@ const SendingAccountsInfrastructure = () => {
   const [loadingMessage, setLoadingMessage] = useState('Fetching all records...');
   const [accountStats, setAccountStats] = useState({
     total: 0,
-    maverick: 0,
-    longrun: 0,
-    dailyCapacity: 0,
+    avgPerClient: '0',
     connected: 0,
     disconnected: 0,
     totalPrice: 0,
     avgCostPerClient: '0'
   });
-  const [providerData, setProviderData] = useState([]);
-  const [connectionData, setConnectionData] = useState([]);
-  const [capacityData, setCapacityData] = useState({ total: 0, used: 0, percentage: '0' });
-  const [costAnalysisData, setCostAnalysisData] = useState([]);
-  const [performanceData, setPerformanceData] = useState([]);
-  const [alertAccounts, setAlertAccounts] = useState({ total: 0, breakdown: [] });
-  const [historicalData, setHistoricalData] = useState([]);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [resellerData, setResellerData] = useState([]);
+  const [accountTypeData, setAccountTypeData] = useState([]);
+  const [priceAnalysisData, setPriceAnalysisData] = useState([]);
+  const [selectedAnalysis, setSelectedAnalysis] = useState('Email Provider');
+  const [clientAccountsData, setClientAccountsData] = useState([]);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [expandedAccountTypes, setExpandedAccountTypes] = useState(new Set());
+  const [expandedStatuses, setExpandedStatuses] = useState(new Set());
 
   const fetchEmailAccounts = async () => {
     setLoading(true);
@@ -42,23 +42,18 @@ const SendingAccountsInfrastructure = () => {
       const accounts = data.records || [];
       setEmailAccounts(accounts);
       
-      // Calculate header KPI metrics
+      // Calculate metrics
       const totalAccounts = accounts.length;
       
-      // Count by provider types
-      const maverickCount = accounts.filter(account => 
-        account.fields['Tag - Reseller'] === 'Maverick'
-      ).length;
+      // Count unique clients
+      const uniqueClients = new Set(
+        accounts.map(account => {
+          const clientField = account.fields['Client'];
+          return clientField && clientField.length > 0 ? clientField[0] : 'Unknown';
+        })
+      ).size;
       
-      const longrunCount = accounts.filter(account => 
-        account.fields['Tag - Reseller'] === 'Longrun'
-      ).length;
-      
-      // Calculate daily capacity
-      const dailyCapacity = accounts.reduce((sum, account) => {
-        const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
-        return sum + dailyLimit;
-      }, 0);
+      const avgAccountsPerClient = uniqueClients > 0 ? (totalAccounts / uniqueClients).toFixed(1) : '0';
       
       // Count connected vs disconnected
       const connectedCount = accounts.filter(account => account.fields['Status'] === 'Connected').length;
@@ -70,25 +65,52 @@ const SendingAccountsInfrastructure = () => {
         return sum + price;
       }, 0);
       
+      const avgCostPerClient = uniqueClients > 0 ? (totalPrice / uniqueClients).toFixed(2) : '0';
+      
       setAccountStats({
         total: totalAccounts,
-        maverick: maverickCount,
-        longrun: longrunCount,
-        dailyCapacity: dailyCapacity,
+        avgPerClient: avgAccountsPerClient,
         connected: connectedCount,
         disconnected: disconnectedCount,
         totalPrice: totalPrice,
-        avgCostPerClient: '0'
+        avgCostPerClient: avgCostPerClient
       });
 
-      // Generate dashboard data
-      generateProviderData(accounts);
-      generateConnectionData(accounts);
-      generateCapacityData(accounts);
-      generateCostAnalysisData(accounts);
-      generatePerformanceData(accounts);
-      generateAlertAccounts(accounts);
-      generateHistoricalData();
+      // Calculate reseller distribution
+      const resellerCounts = {};
+      accounts.forEach(account => {
+        const reseller = account.fields['Tag - Reseller'] || 'Unknown';
+        resellerCounts[reseller] = (resellerCounts[reseller] || 0) + 1;
+      });
+
+      const resellerChartData = Object.entries(resellerCounts).map(([name, count]) => ({
+        name,
+        value: count as number,
+        percentage: (((count as number) / totalAccounts) * 100).toFixed(1)
+      }));
+
+      setResellerData(resellerChartData);
+
+      // Calculate account type distribution
+      const accountTypeCounts = {};
+      accounts.forEach(account => {
+        const accountType = account.fields['Account Type'] || 'Unknown';
+        accountTypeCounts[accountType] = (accountTypeCounts[accountType] || 0) + 1;
+      });
+
+      const accountTypeChartData = Object.entries(accountTypeCounts).map(([name, count]) => ({
+        name,
+        value: count as number,
+        percentage: (((count as number) / totalAccounts) * 100).toFixed(1)
+      }));
+
+      setAccountTypeData(accountTypeChartData);
+      
+      // Generate simplified price analysis data
+      generatePriceAnalysisData(accounts);
+      
+      // Generate client accounts data
+      generateClientAccountsData(accounts);
       
     } catch (error) {
       console.error('Error fetching email accounts:', error);
@@ -97,145 +119,156 @@ const SendingAccountsInfrastructure = () => {
     }
   };
 
-  const generateProviderData = (accounts) => {
-    const providerCounts = {};
-    const providerCosts = {};
+  const generatePriceAnalysisData = (accounts) => {
+    const fieldMap = {
+      'Email Provider': 'Tag - Email Provider',
+      'Reseller': 'Tag - Reseller', 
+      'Client': 'Client Name (from Client)',
+      'Account Type': 'Account Type'
+    };
+    
+    const field = fieldMap[selectedAnalysis];
+    const groupedData = {};
     
     accounts.forEach(account => {
-      const provider = account.fields['Tag - Email Provider'] || 'Unknown';
+      const value = account.fields[field] || 'Unknown';
       const price = parseFloat(account.fields['Price']) || 0;
       
-      providerCounts[provider] = (providerCounts[provider] || 0) + 1;
-      providerCosts[provider] = (providerCosts[provider] || 0) + price;
+      if (!groupedData[value]) {
+        groupedData[value] = {
+          name: value,
+          totalPrice: 0,
+          count: 0,
+          avgPrice: 0
+        };
+      }
+      
+      groupedData[value].totalPrice += price;
+      groupedData[value].count += 1;
     });
-
-    const providerChartData = Object.entries(providerCounts).map(([name, count]) => ({
-      name,
-      value: count as number,
-      cost: providerCosts[name],
-      percentage: (((count as number) / accounts.length) * 100).toFixed(1)
-    }));
-
-    setProviderData(providerChartData);
+    
+    // Calculate average price and sort by total price
+    const analysisData = Object.values(groupedData).map((item: any) => ({
+      ...item,
+      avgPrice: item.totalPrice / item.count
+    })).sort((a: any, b: any) => b.totalPrice - a.totalPrice);
+    
+    setPriceAnalysisData(analysisData);
   };
 
-  const generateConnectionData = (accounts) => {
-    const connected = accounts.filter(account => account.fields['Status'] === 'Connected').length;
-    const disconnected = accounts.length - connected;
+  const generateClientAccountsData = (accounts) => {
+    const clientGroups = {};
     
-    setConnectionData([
-      { name: 'Connected', value: connected, color: '#10B981' },
-      { name: 'Disconnected', value: disconnected, color: '#EF4444' }
-    ]);
-  };
-
-  const generateCapacityData = (accounts) => {
-    const totalCapacity = accounts.reduce((sum, account) => {
-      return sum + (parseFloat(account.fields['Daily Limit']) || 0);
-    }, 0);
-    
-    const usedCapacity = Math.floor(totalCapacity * 0.746); // 74.6% utilization
-    
-    setCapacityData({
-      total: totalCapacity,
-      used: usedCapacity,
-      percentage: ((usedCapacity / totalCapacity) * 100).toFixed(1)
+    accounts.forEach(account => {
+      const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
+      
+      if (!clientGroups[clientName]) {
+        clientGroups[clientName] = {
+          clientName,
+          accounts: [],
+          totalAccounts: 0,
+          connectedAccounts: 0,
+          totalPrice: 0,
+          avgPrice: 0,
+          maxSendingVolume: 0,
+          currentAvailableSending: 0
+        };
+      }
+      
+      clientGroups[clientName].accounts.push(account);
+      clientGroups[clientName].totalAccounts += 1;
+      if (account.fields['Status'] === 'Connected') {
+        clientGroups[clientName].connectedAccounts += 1;
+      }
+      
+      const price = parseFloat(account.fields['Price']) || 0;
+      clientGroups[clientName].totalPrice += price;
+      
+      const volumePerAccount = parseFloat(account.fields['Volume Per Account']) || 0;
+      clientGroups[clientName].maxSendingVolume += volumePerAccount;
+      
+      const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
+      clientGroups[clientName].currentAvailableSending += dailyLimit;
     });
-  };
-
-  const generateCostAnalysisData = (accounts) => {
-    const costData = [
-      { provider: 'Google', current: 3842, projected6mo: 4150, annual: 8300, costPerInbox: 3.00, accounts: 892 },
-      { provider: 'Outlook', current: 2156, projected6mo: 2400, annual: 4800, costPerInbox: 'Variable', accounts: 156 },
-      { provider: 'Microsoft 365', current: 1890, projected6mo: 2100, annual: 4200, costPerInbox: 3.00, accounts: 347 },
-      { provider: 'SMTP', current: 538, projected6mo: 580, annual: 1160, costPerInbox: 0.94, accounts: 234 },
-      { provider: 'Warmy', current: 2960, projected6mo: 2960, annual: 2960, costPerInbox: 'Fixed', accounts: 0 }
-    ];
     
-    setCostAnalysisData(costData);
-  };
-
-  const generatePerformanceData = (accounts) => {
-    const performanceData = [
-      { provider: 'Microsoft 365', replyRate: 12.4, accounts: 347, color: '#10B981' },
-      { provider: 'Google', replyRate: 8.7, accounts: 892, color: '#F59E0B' },
-      { provider: 'SMTP', replyRate: 6.2, accounts: 234, color: '#F59E0B' },
-      { provider: 'Outlook', replyRate: 4.1, accounts: 156, color: '#EF4444' }
-    ];
+    // Calculate averages and sort by total accounts
+    const clientData = Object.values(clientGroups).map((client: any) => ({
+      ...client,
+      avgPrice: client.totalAccounts > 0 ? client.totalPrice / client.totalAccounts : 0
+    })).sort((a: any, b: any) => b.totalAccounts - a.totalAccounts);
     
-    setPerformanceData(performanceData);
+    setClientAccountsData(clientData);
   };
 
-  const generateAlertAccounts = (accounts) => {
-    const alertData = {
-      total: 89,
-      breakdown: [
-        { provider: 'Google', count: 34 },
-        { provider: 'Outlook', count: 28 },
-        { provider: 'Microsoft', count: 19 },
-        { provider: 'SMTP', count: 8 }
-      ]
-    };
-    
-    setAlertAccounts(alertData);
-  };
+  const openClientModal = useCallback((client: any) => {
+    setSelectedClient(client);
+    setIsClientModalOpen(true);
+    setExpandedAccountTypes(new Set());
+    setExpandedStatuses(new Set());
+  }, []);
 
-  const generateHistoricalData = () => {
-    const historicalData = [
-      { date: '2024-01-01', total: 18500, google: 11500, microsoft: 4200, outlook: 1800, smtp: 1000 },
-      { date: '2024-02-01', total: 19200, google: 12000, microsoft: 4400, outlook: 1850, smtp: 950 },
-      { date: '2024-03-01', total: 20100, google: 12800, microsoft: 4600, outlook: 1900, smtp: 800 },
-      { date: '2024-04-01', total: 21500, google: 13500, microsoft: 4800, outlook: 2000, smtp: 1200 },
-      { date: '2024-05-01', total: 22800, google: 14200, microsoft: 5100, outlook: 2100, smtp: 1400 },
-      { date: '2024-06-01', total: 24100, google: 15000, microsoft: 5300, outlook: 2200, smtp: 1600 }
-    ];
-    
-    setHistoricalData(historicalData);
-  };
+  const closeClientModal = useCallback(() => {
+    setIsClientModalOpen(false);
+    setSelectedClient(null);
+  }, []);
 
-  // Provider color mapping
-  const getProviderColor = (provider: string) => {
-    const colors = {
-      'Google': '#4285f4',
-      'Outlook': '#0078d4', 
-      'Microsoft 365': '#00bcf2',
-      'SMTP': '#ff6b35'
-    };
-    return colors[provider] || '#6b7280';
-  };
+  const toggleAccountType = useCallback((accountType: string) => {
+    setExpandedAccountTypes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(accountType)) {
+        newSet.delete(accountType);
+      } else {
+        newSet.add(accountType);
+      }
+      return newSet;
+    });
+  }, []);
 
-  // Helper function to format numbers
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat().format(num);
-  };
+  const toggleStatus = useCallback((statusKey: string) => {
+    setExpandedStatuses(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(statusKey)) {
+        newSet.delete(statusKey);
+      } else {
+        newSet.add(statusKey);
+      }
+      return newSet;
+    });
+  }, []);
 
   useEffect(() => {
     fetchEmailAccounts();
   }, []);
 
+  useEffect(() => {
+    if (emailAccounts.length > 0) {
+      generatePriceAnalysisData(emailAccounts);
+    }
+  }, [selectedAnalysis, emailAccounts]);
+
   return (
-    <div className="min-h-screen bg-nexus-neural">
+    <div className="min-h-screen bg-gradient-dashboard">
       {/* Header */}
-      <div className="bg-nexus-surface/5 backdrop-blur-md border-b border-nexus-slate/20 shadow-2xl">
+      <div className="bg-white/5 backdrop-blur-md border-b border-white/10 shadow-xl">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Button asChild variant="ghost" size="sm" className="text-nexus-slate hover:text-nexus-clean hover:bg-nexus-slate/10">
+              <Button asChild variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10">
                 <Link to="/">
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to Portal
                 </Link>
               </Button>
-              <div className="h-6 w-px bg-nexus-slate/30"></div>
+              <div className="h-6 w-px bg-white/20"></div>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-nexus-clean via-nexus-cognitive to-nexus-synaptic bg-clip-text text-transparent">
-                  Email Outreach Infrastructure Dashboard
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-white via-dashboard-primary to-dashboard-accent bg-clip-text text-transparent">
+                  Sending Accounts Infrastructure
                 </h1>
-                <p className="text-nexus-slate mt-1">Comprehensive Infrastructure Management & Analytics</p>
+                <p className="text-white/70 mt-1">Email Infrastructure Management & Monitoring</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <Badge variant="secondary" className="bg-nexus-synaptic/20 text-nexus-synaptic border-nexus-synaptic/40">
+              <Badge variant="secondary" className="bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40">
                 <Activity className="h-3 w-3 mr-1" />
                 All Systems Operational
               </Badge>
@@ -244,7 +277,7 @@ const SendingAccountsInfrastructure = () => {
                 disabled={loading}
                 variant="ghost" 
                 size="sm" 
-                className="text-nexus-slate hover:text-nexus-clean hover:bg-nexus-slate/10"
+                className="text-white/70 hover:text-white hover:bg-white/10"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh Data
@@ -255,480 +288,551 @@ const SendingAccountsInfrastructure = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Header KPI Strip */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Total Accounts */}
-          <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20 hover:bg-nexus-surface/15 transition-all duration-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-nexus-cognitive/20 rounded-lg">
-                  <Mail className="h-6 w-6 text-nexus-cognitive" />
-                </div>
-                <div className="text-xs text-nexus-synaptic font-medium">+2.4%</div>
+        {/* Status Overview - 6 Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
+          {/* Card 1: Total Email Accounts Owned */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <Mail className="h-6 w-6 text-dashboard-primary" />
+                <Badge variant="outline" className="bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40">
+                  Active
+                </Badge>
               </div>
-              <div className="text-3xl font-bold text-nexus-clean mb-1">
-                {loading ? '...' : formatNumber(accountStats.total)}
-              </div>
-              <p className="text-nexus-slate text-sm">Total Accounts</p>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.total}</div>
+              <p className="text-white/70 text-sm">{loading ? loadingMessage : 'Total Email Accounts Owned'}</p>
             </CardContent>
           </Card>
 
-          {/* Maverick Accounts */}
-          <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20 hover:bg-nexus-surface/15 transition-all duration-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-blue-500/20 rounded-lg">
-                  <Globe className="h-6 w-6 text-blue-400" />
-                </div>
-                <div className="text-xs text-nexus-synaptic font-medium">+1.8%</div>
+          {/* Card 2: Average Email Accounts per Client */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <Users className="h-6 w-6 text-dashboard-accent" />
+                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                  Balanced
+                </Badge>
               </div>
-              <div className="text-3xl font-bold text-nexus-clean mb-1">
-                {loading ? '...' : formatNumber(accountStats.maverick)}
-              </div>
-              <p className="text-nexus-slate text-sm">Maverick</p>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.avgPerClient}</div>
+              <p className="text-white/70 text-sm">Avg Accounts per Client</p>
             </CardContent>
           </Card>
 
-          {/* Longrun Accounts */}
-          <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20 hover:bg-nexus-surface/15 transition-all duration-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-purple-500/20 rounded-lg">
-                  <Server className="h-6 w-6 text-purple-400" />
-                </div>
-                <div className="text-xs text-nexus-synaptic font-medium">+3.1%</div>
+          {/* Card 3: Connected Accounts */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CheckCircle className="h-6 w-6 text-dashboard-success" />
+                <Badge variant="outline" className="bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40">
+                  Connected
+                </Badge>
               </div>
-              <div className="text-3xl font-bold text-nexus-clean mb-1">
-                {loading ? '...' : formatNumber(accountStats.longrun)}
-              </div>
-              <p className="text-nexus-slate text-sm">Longrun</p>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.connected}</div>
+              <p className="text-white/70 text-sm">Connected Accounts</p>
             </CardContent>
           </Card>
 
-          {/* Daily Capacity */}
-          <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20 hover:bg-nexus-surface/15 transition-all duration-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-2 bg-nexus-synaptic/20 rounded-lg">
-                  <Zap className="h-6 w-6 text-nexus-synaptic" />
-                </div>
-                <div className="text-xs text-nexus-synaptic font-medium">+5.2%</div>
+          {/* Card 4: Disconnected Accounts */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <XCircle className="h-6 w-6 text-dashboard-warning" />
+                <Badge variant="outline" className="bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40">
+                  {accountStats.disconnected > 0 ? 'Attention' : 'All Good'}
+                </Badge>
               </div>
-              <div className="text-3xl font-bold text-nexus-clean mb-1">
-                {loading ? '...' : formatNumber(accountStats.dailyCapacity)}
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.disconnected}</div>
+              <p className="text-white/70 text-sm">Disconnected Accounts</p>
+            </CardContent>
+          </Card>
+
+          {/* Card 5: Total Price */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <Mail className="h-6 w-6 text-dashboard-primary" />
+                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                  Revenue
+                </Badge>
               </div>
-              <p className="text-nexus-slate text-sm">Daily Capacity</p>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">
+                ${loading ? '...' : accountStats.totalPrice.toFixed(2)}
+              </div>
+              <p className="text-white/70 text-sm">Total Account Value</p>
+            </CardContent>
+          </Card>
+
+          {/* Card 6: Average Cost per Client */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <Users className="h-6 w-6 text-dashboard-accent" />
+                <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40">
+                  Average
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">
+                ${loading ? '...' : accountStats.avgCostPerClient}
+              </div>
+              <p className="text-white/70 text-sm">Avg Cost per Client</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Dashboard Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-nexus-surface/10 border-nexus-slate/20">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-nexus-cognitive data-[state=active]:text-nexus-clean">
-              Infrastructure Overview
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="data-[state=active]:bg-nexus-cognitive data-[state=active]:text-nexus-clean">
-              Performance Analytics
-            </TabsTrigger>
-            <TabsTrigger value="detailed" className="data-[state=active]:bg-nexus-cognitive data-[state=active]:text-nexus-clean">
-              Detailed Stats
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="space-y-8">
-            {/* Section 1: Infrastructure Health Overview */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Connection Status Donut Chart */}
-              <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20">
-                <CardHeader>
-                  <CardTitle className="text-nexus-clean flex items-center space-x-2">
-                    <Activity className="h-5 w-5 text-nexus-synaptic" />
-                    <span>Connection Status</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={connectionData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={100}
-                            paddingAngle={2}
-                            dataKey="value"
-                          >
-                            {connectionData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip 
-                            contentStyle={{
-                              backgroundColor: 'rgba(10, 22, 40, 0.95)',
-                              border: '1px solid rgba(148, 163, 184, 0.2)',
-                              borderRadius: '8px',
-                              color: '#f8fafc'
-                            }}
+        {/* Visual Analytics Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+          {/* Resellers Distribution */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-primary" />
+                <span>Resellers Distribution</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-64 flex items-center justify-center">
+                  <div className="text-white/70">Loading chart data...</div>
+                </div>
+              ) : (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={resellerData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={40}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({name, percentage}) => `${name}: ${percentage}%`}
+                      >
+                        {resellerData.map((entry, index) => (
+                          <Cell 
+                            key={`reseller-${index}`} 
+                            fill={index === 0 ? 'hsl(var(--dashboard-primary))' : 
+                                  index === 1 ? 'hsl(var(--dashboard-accent))' : 
+                                  index === 2 ? 'hsl(var(--dashboard-success))' : 
+                                  'hsl(var(--dashboard-warning))'} 
                           />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="text-center mt-4">
-                        <div className="text-2xl font-bold text-nexus-synaptic">
-                          {connectionData.length > 0 ? 
-                            ((connectionData[0]?.value / (connectionData[0]?.value + connectionData[1]?.value)) * 100).toFixed(1) : '0'}%
-                        </div>
-                        <div className="text-nexus-slate text-sm">Connected</div>
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                      <div className="p-4 bg-nexus-alert/10 border border-nexus-alert/20 rounded-lg">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <AlertTriangle className="h-5 w-5 text-nexus-alert" />
-                          <span className="text-nexus-clean font-medium">Attention Required</span>
-                        </div>
-                        <div className="text-xl font-bold text-nexus-alert mb-1">
-                          {accountStats.disconnected}
-                        </div>
-                        <div className="text-nexus-slate text-sm">Disconnected Accounts</div>
-                        <Button size="sm" className="mt-3 bg-nexus-alert hover:bg-nexus-alert/80">
-                          View Disconnected
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Current vs Maximum Capacity */}
-              <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20">
-                <CardHeader>
-                  <CardTitle className="text-nexus-clean flex items-center space-x-2">
-                    <TrendingUp className="h-5 w-5 text-nexus-cognitive" />
-                    <span>Sending Capacity</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-nexus-slate">Available Capacity</span>
-                        <span className="text-nexus-clean font-mono">
-                          {capacityData.used ? formatNumber(capacityData.used) : '0'} / {capacityData.total ? formatNumber(capacityData.total) : '0'} emails
-                        </span>
-                      </div>
-                      <Progress 
-                        value={capacityData.percentage ? parseFloat(capacityData.percentage) : 0} 
-                        className="h-4 bg-nexus-neural"
-                      />
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="text-nexus-synaptic font-bold">
-                          {capacityData.percentage}% utilized
-                        </span>
-                        <span className="text-nexus-slate text-sm">Daily limit</span>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 bg-nexus-synaptic/10 rounded-lg">
-                        <div className="text-xl font-bold text-nexus-synaptic">
-                          {capacityData.used ? formatNumber(capacityData.used) : '0'}
-                        </div>
-                        <div className="text-nexus-slate text-sm">Current Usage</div>
-                      </div>
-                      <div className="p-3 bg-nexus-cognitive/10 rounded-lg">
-                        <div className="text-xl font-bold text-nexus-cognitive">
-                          {capacityData.total ? formatNumber(capacityData.total - capacityData.used) : '0'}
-                        </div>
-                        <div className="text-nexus-slate text-sm">Available</div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Section 2: Cost Analysis & Provider Distribution */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Email Account Distribution with Cost Overlay */}
-              <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20 lg:col-span-1">
-                <CardHeader>
-                  <CardTitle className="text-nexus-clean flex items-center space-x-2">
-                    <DollarSign className="h-5 w-5 text-nexus-synaptic" />
-                    <span>Provider Distribution</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={providerData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={50}
-                          outerRadius={90}
-                          paddingAngle={2}
-                          dataKey="value"
-                        >
-                          {providerData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={getProviderColor(entry.name)} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          contentStyle={{
-                            backgroundColor: 'rgba(10, 22, 40, 0.95)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            borderRadius: '8px',
-                            color: '#f8fafc'
-                          }}
-                          formatter={(value, name) => [`${value} accounts`, `${name}`]}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="text-center mt-4">
-                    <div className="text-2xl font-bold text-nexus-synaptic">
-                      ${accountStats.totalPrice ? accountStats.totalPrice.toFixed(0) : '0'}/month
-                    </div>
-                    <div className="text-nexus-slate text-sm">Total Monthly Cost</div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Cost Projection Table */}
-              <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20 lg:col-span-2">
-                <CardHeader>
-                  <CardTitle className="text-nexus-clean">Cost Projection Analysis</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-nexus-slate/20">
-                          <th className="text-left text-nexus-slate text-sm font-medium pb-3">Provider</th>
-                          <th className="text-right text-nexus-slate text-sm font-medium pb-3">Current</th>
-                          <th className="text-right text-nexus-slate text-sm font-medium pb-3">Projected 6mo</th>
-                          <th className="text-right text-nexus-slate text-sm font-medium pb-3">Annual</th>
-                          <th className="text-right text-nexus-slate text-sm font-medium pb-3">Cost/Inbox</th>
-                        </tr>
-                      </thead>
-                      <tbody className="space-y-2">
-                        {costAnalysisData.map((provider, index) => (
-                          <tr key={index} className="border-b border-nexus-slate/10">
-                            <td className="py-3">
-                              <div className="flex items-center space-x-2">
-                                <div 
-                                  className="w-3 h-3 rounded-full" 
-                                  style={{ backgroundColor: getProviderColor(provider.provider) }}
-                                ></div>
-                                <span className="text-nexus-clean font-medium">{provider.provider}</span>
-                              </div>
-                            </td>
-                            <td className="text-right text-nexus-clean font-mono">${provider.current.toLocaleString()}</td>
-                            <td className="text-right text-nexus-clean font-mono">${provider.projected6mo.toLocaleString()}</td>
-                            <td className="text-right text-nexus-clean font-mono">${provider.annual.toLocaleString()}</td>
-                            <td className="text-right text-nexus-slate font-mono">
-                              {typeof provider.costPerInbox === 'number' ? `$${provider.costPerInbox.toFixed(2)}` : provider.costPerInbox}
-                            </td>
-                          </tr>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-4 text-xs text-nexus-slate">
-                    *Outlook costs vary by package type (196 vs 100 inbox packages)
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '8px',
+                          color: 'white'
+                        }}
+                        formatter={(value, name) => [
+                          `${value} accounts (${resellerData.find(d => d.value === value)?.percentage}%)`,
+                          'Count'
+                        ]}
+                      />
+                      <Legend 
+                        wrapperStyle={{ color: 'white' }}
+                        formatter={(value) => {
+                          const item = resellerData.find(d => d.name === value);
+                          return `${value} (${item?.value} accounts)`;
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-            {/* Section 3: Daily Sending Analytics */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Daily Sending Availability by Provider */}
-              <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20">
-                <CardHeader>
-                  <CardTitle className="text-nexus-clean flex items-center space-x-2">
-                    <Mail className="h-5 w-5 text-nexus-cognitive" />
-                    <span>Daily Sending Availability</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {[
-                      { name: 'Google', capacity: 15225, percentage: 61.4, color: '#4285f4' },
-                      { name: 'Microsoft 365', capacity: 9450, percentage: 38.2, color: '#00bcf2' },
-                      { name: 'SMTP', capacity: 5720, percentage: 23.1, color: '#ff6b35' },
-                      { name: 'Outlook', capacity: 1560, percentage: 6.3, color: '#0078d4' }
-                    ].map((provider, index) => (
-                      <div key={index} className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-nexus-clean font-medium">{provider.name}</span>
-                          <span className="text-nexus-slate text-sm">
-                            {formatNumber(provider.capacity)} emails/day ({provider.percentage}%)
-                          </span>
-                        </div>
-                        <Progress 
-                          value={provider.percentage} 
-                          className="h-2 bg-nexus-neural"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+          {/* Account Types Distribution */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Mail className="h-5 w-5 text-dashboard-accent" />
+                <span>Account Types Distribution</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-64 flex items-center justify-center">
+                  <div className="text-white/70">Loading chart data...</div>
+                </div>
+              ) : (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={accountTypeData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={40}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({name, percentage}) => `${name}: ${percentage}%`}
+                      >
+                        {accountTypeData.map((entry, index) => (
+                          <Cell 
+                            key={`type-${index}`} 
+                            fill={index === 0 ? 'hsl(var(--dashboard-success))' : 
+                                  index === 1 ? 'hsl(var(--dashboard-primary))' : 
+                                  index === 2 ? 'hsl(var(--dashboard-accent))' : 
+                                  'hsl(var(--dashboard-warning))'} 
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{
+                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '8px',
+                          color: 'white'
+                        }}
+                        formatter={(value, name) => [
+                          `${value} accounts (${accountTypeData.find(d => d.value === value)?.percentage}%)`,
+                          'Count'
+                        ]}
+                      />
+                      <Legend 
+                        wrapperStyle={{ color: 'white' }}
+                        formatter={(value) => {
+                          const item = accountTypeData.find(d => d.name === value);
+                          return `${value} (${item?.value} accounts)`;
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-              {/* Historical Email Volume */}
-              <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20">
-                <CardHeader>
-                  <CardTitle className="text-nexus-clean flex items-center space-x-2">
-                    <TrendingUp className="h-5 w-5 text-nexus-synaptic" />
-                    <span>Historical Volume</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-64">
+        {/* Simplified Price Analysis */}
+        <div className="mt-8">
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Activity className="h-5 w-5 text-dashboard-primary" />
+                <span>Price Analysis</span>
+              </CardTitle>
+              <div className="flex items-center space-x-4 mt-4">
+                <label className="text-white/70 text-sm">Analyze by:</label>
+                <Select value={selectedAnalysis} onValueChange={setSelectedAnalysis}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Email Provider">Email Provider</SelectItem>
+                    <SelectItem value="Reseller">Reseller</SelectItem>
+                    <SelectItem value="Client">Client</SelectItem>
+                    <SelectItem value="Account Type">Account Type</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-96 flex items-center justify-center">
+                  <div className="text-white/70">Loading analysis...</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Bar Chart */}
+                  <div className="h-80">
+                    <h3 className="text-white/90 text-lg font-semibold mb-4">Total Price by {selectedAnalysis}</h3>
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={historicalData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
+                      <BarChart data={priceAnalysisData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                         <XAxis 
-                          dataKey="date" 
-                          stroke="#94a3b8"
-                          fontSize={12}
-                          tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short' })}
+                          dataKey="name" 
+                          stroke="rgba(255,255,255,0.7)"
+                          angle={-45}
+                          textAnchor="end"
+                          height={80}
+                          interval={0}
+                          fontSize={11}
                         />
-                        <YAxis stroke="#94a3b8" fontSize={12} />
+                        <YAxis stroke="rgba(255,255,255,0.7)" />
                         <Tooltip 
                           contentStyle={{
-                            backgroundColor: 'rgba(10, 22, 40, 0.95)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
                             borderRadius: '8px',
-                            color: '#f8fafc'
+                            color: 'white'
                           }}
+                          formatter={(value: number) => [`$${value.toFixed(2)}`, 'Total Price']}
                         />
-                        <Line type="monotone" dataKey="total" stroke="#06FFA5" strokeWidth={3} name="Total Volume" />
-                        <Line type="monotone" dataKey="google" stroke="#4285f4" strokeWidth={2} name="Google" />
-                        <Line type="monotone" dataKey="microsoft" stroke="#00bcf2" strokeWidth={2} name="Microsoft" />
-                        <Line type="monotone" dataKey="outlook" stroke="#0078d4" strokeWidth={2} name="Outlook" />
-                        <Line type="monotone" dataKey="smtp" stroke="#ff6b35" strokeWidth={2} name="SMTP" />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="mt-4 p-3 bg-nexus-cognitive/10 rounded-lg">
-                    <div className="text-sm text-nexus-slate">Total emails sent all time:</div>
-                    <div className="text-xl font-bold text-nexus-cognitive">2.4M emails</div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="analytics" className="space-y-8">
-            {/* Section 4: Performance Analytics */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Reply Rate Performance */}
-              <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20">
-                <CardHeader>
-                  <CardTitle className="text-nexus-clean flex items-center space-x-2">
-                    <Activity className="h-5 w-5 text-nexus-synaptic" />
-                    <span>Reply Rate Performance</span>
-                  </CardTitle>
-                  <p className="text-nexus-slate text-sm">Accounts with 50+ emails sent</p>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={performanceData} layout="horizontal">
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
-                        <XAxis type="number" domain={[0, 15]} stroke="#94a3b8" fontSize={12} />
-                        <YAxis type="category" dataKey="provider" stroke="#94a3b8" fontSize={12} width={100} />
-                        <Tooltip 
-                          contentStyle={{
-                            backgroundColor: 'rgba(10, 22, 40, 0.95)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            borderRadius: '8px',
-                            color: '#f8fafc'
-                          }}
-                          formatter={(value, name) => [`${value}% reply rate`, `${name}`]}
+                        <Bar 
+                          dataKey="totalPrice" 
+                          fill="hsl(var(--dashboard-primary))"
+                          radius={[4, 4, 0, 0]}
                         />
-                        <Bar dataKey="replyRate" fill="#06FFA5" />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="mt-4 space-y-2">
-                    {performanceData.map((provider, index) => (
-                      <div key={index} className="flex justify-between items-center text-sm">
-                        <span className="text-nexus-clean">{provider.provider}</span>
-                        <span className="text-nexus-slate">({provider.accounts} accounts)</span>
-                      </div>
-                    ))}
+                  
+                  {/* Summary Table */}
+                  <div className="h-80 overflow-y-auto">
+                    <h3 className="text-white/90 text-lg font-semibold mb-4">Summary by {selectedAnalysis}</h3>
+                    <div className="space-y-3">
+                      {priceAnalysisData.map((item: any, index) => (
+                        <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="text-white font-medium truncate">{item.name}</h4>
+                            <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40 ml-2">
+                              {item.count} accounts
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-white/70">Total Value:</span>
+                              <div className="text-white font-semibold">${item.totalPrice.toFixed(2)}</div>
+                            </div>
+                            <div>
+                              <span className="text-white/70">Avg per Account:</span>
+                              <div className="text-white font-semibold">${item.avgPrice.toFixed(2)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-              {/* Account Health Alert Panel */}
-              <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-alert/20">
-                <CardHeader>
-                  <CardTitle className="text-nexus-alert flex items-center space-x-2">
-                    <AlertTriangle className="h-5 w-5" />
-                    <span>ATTENTION REQUIRED</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="p-4 bg-nexus-alert/10 border border-nexus-alert/20 rounded-lg">
-                      <div className="text-lg font-bold text-nexus-alert mb-2">
-                        Zero Reply Rate (50+ emails sent): {alertAccounts.total} accounts
+        {/* Client Accounts View */}
+        <div className="mt-8">
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-accent" />
+                <span>Client Email Accounts</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-white/70">Loading client data...</div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {clientAccountsData.map((client: any, index) => (
+                    <div 
+                      key={index}
+                      onClick={() => openClientModal(client)}
+                      className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <ChevronRight className="h-4 w-4 text-white/70" />
+                          <div>
+                            <h3 className="text-white font-medium text-sm">{client.clientName}</h3>
+                            <p className="text-white/60 text-xs">{client.totalAccounts} accounts</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                          <div className="text-right">
+                            <div className="text-white font-medium text-sm">${client.totalPrice.toFixed(2)}</div>
+                            <div className="text-white/60 text-xs">Total Value</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white font-medium text-sm">{client.maxSendingVolume.toLocaleString()}</div>
+                            <div className="text-white/60 text-xs">Max Volume</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white font-medium text-sm">{client.currentAvailableSending.toLocaleString()}</div>
+                            <div className="text-white/60 text-xs">Daily Limit</div>
+                          </div>
+                          <Badge variant="outline" className={`text-xs ${
+                            client.connectedAccounts === client.totalAccounts 
+                              ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
+                              : 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
+                          }`}>
+                            {client.connectedAccounts}/{client.totalAccounts}
+                          </Badge>
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        {alertAccounts.breakdown?.map((item, index) => (
-                          <div key={index} className="flex justify-between items-center text-sm">
-                            <span className="text-nexus-clean">├── {item.provider}:</span>
-                            <span className="text-nexus-alert font-medium">{item.count} accounts</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Client Detail Modal */}
+        <Dialog open={isClientModalOpen} onOpenChange={setIsClientModalOpen}>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden bg-gray-900 border-white/20 flex flex-col">
+            <DialogHeader className="flex-shrink-0">
+              <DialogTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-accent" />
+                <span>{selectedClient?.clientName} - Email Accounts</span>
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="overflow-y-auto flex-1 pr-2 space-y-4">
+              {selectedClient && (
+                <ClientAccountsModal 
+                  client={selectedClient}
+                  expandedAccountTypes={expandedAccountTypes}
+                  expandedStatuses={expandedStatuses}
+                  toggleAccountType={toggleAccountType}
+                  toggleStatus={toggleStatus}
+                />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+};
+
+// Separate component for better performance
+const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, toggleAccountType, toggleStatus }) => {
+  const organizedAccounts = useMemo(() => {
+    const accountsByType = {};
+    
+    client.accounts.forEach(account => {
+      const accountType = account.fields['Account Type'] || 'Unknown';
+      if (!accountsByType[accountType]) {
+        accountsByType[accountType] = {
+          Connected: [],
+          Disconnected: []
+        };
+      }
+      
+      const status = account.fields['Status'] === 'Connected' ? 'Connected' : 'Disconnected';
+      accountsByType[accountType][status].push(account);
+    });
+    
+    return accountsByType;
+  }, [client.accounts]);
+
+  return (
+    <div className="space-y-3">
+      {Object.entries(organizedAccounts).map(([accountType, statusGroups]) => (
+        <Collapsible 
+          key={accountType}
+          open={expandedAccountTypes.has(accountType)}
+          onOpenChange={() => toggleAccountType(accountType)}
+        >
+          <CollapsibleTrigger asChild>
+            <div className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  {expandedAccountTypes.has(accountType) ? (
+                    <ChevronDown className="h-4 w-4 text-white/70" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-white/70" />
+                  )}
+                  <span className="text-white font-medium">{accountType}</span>
+                </div>
+                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                  {((statusGroups as any).Connected?.length || 0) + ((statusGroups as any).Disconnected?.length || 0)} accounts
+                </Badge>
+              </div>
+            </div>
+          </CollapsibleTrigger>
+          
+          <CollapsibleContent>
+            <div className="ml-4 mt-2 space-y-2">
+              {Object.entries(statusGroups).map(([status, accounts]) => 
+                accounts.length > 0 && (
+                  <Collapsible 
+                    key={`${accountType}-${status}`}
+                    open={expandedStatuses.has(`${accountType}-${status}`)}
+                    onOpenChange={() => toggleStatus(`${accountType}-${status}`)}
+                  >
+                    <CollapsibleTrigger asChild>
+                      <div className="bg-white/5 rounded-lg p-2 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            {expandedStatuses.has(`${accountType}-${status}`) ? (
+                              <ChevronDown className="h-3 w-3 text-white/70" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3 text-white/70" />
+                            )}
+                            <span className="text-white text-sm">{status}</span>
+                          </div>
+                          <Badge variant="outline" className={`text-xs ${
+                            status === 'Connected'
+                              ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
+                              : 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
+                          }`}>
+                            {accounts.length} accounts
+                          </Badge>
+                        </div>
+                      </div>
+                    </CollapsibleTrigger>
+                    
+                    <CollapsibleContent>
+                      <div className="ml-4 mt-2 space-y-1">
+                        {accounts.map((account, accountIndex) => (
+                          <div key={accountIndex} className="bg-white/5 rounded-lg p-2 border border-white/10">
+                            <div className="grid grid-cols-12 gap-2 items-center text-xs">
+                              <div className="col-span-4">
+                                <div className="flex items-center space-x-1">
+                                  <Mail className="h-3 w-3 text-dashboard-primary" />
+                                  <span className="text-white font-medium truncate">{account.fields['Email Account']}</span>
+                                </div>
+                                <div className="text-white/60 truncate">{account.fields['Name']}</div>
+                              </div>
+                              
+                              <div className="col-span-2 text-white/70">
+                                <div>{account.fields['Domain']}</div>
+                                <div>{account.fields['Tag - Email Provider']}</div>
+                              </div>
+                              
+                              <div className="col-span-2 text-white/70">
+                                <div>Limit: {account.fields['Daily Limit'] || 'N/A'}</div>
+                                <div>Vol: {account.fields['Volume Per Account'] || 'N/A'}</div>
+                              </div>
+                              
+                              <div className="col-span-2 text-white/70">
+                                <div>Sent: {account.fields['Total Sent'] || 0}</div>
+                                <div>Replies: {account.fields['Total Replied'] || 0}</div>
+                              </div>
+                              
+                              <div className="col-span-2 text-right">
+                                <div className="flex items-center justify-end space-x-1">
+                                  <DollarSign className="h-3 w-3 text-dashboard-accent" />
+                                  <span className="text-white font-semibold">
+                                    ${parseFloat(account.fields['Price'] || 0).toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="text-white/60">
+                                  Bounced: {account.fields['Total Bounced'] || 0}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-                    
-                    <div className="flex space-x-3">
-                      <Button size="sm" className="bg-nexus-alert hover:bg-nexus-alert/80 flex-1">
-                        Send Alert to Infra Channel
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-nexus-alert text-nexus-alert hover:bg-nexus-alert/10 flex-1">
-                        View Problem Accounts
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                    </CollapsibleContent>
+                  </Collapsible>
+                )
+              )}
             </div>
-          </TabsContent>
-
-          <TabsContent value="detailed" className="space-y-8">
-            {/* Section 5: Detailed Account Stats */}
-            <Card className="bg-nexus-surface/10 backdrop-blur-sm border-nexus-slate/20">
-              <CardHeader>
-                <CardTitle className="text-nexus-clean">Detailed Email Account Statistics</CardTitle>
-                <p className="text-nexus-slate">Comprehensive account performance and utilization metrics</p>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-12">
-                  <div className="text-nexus-slate mb-4">
-                    <Server className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-nexus-clean mb-2">Detailed Analytics Coming Soon</h3>
-                  <p className="text-nexus-slate max-w-md mx-auto">
-                    Advanced account analytics including provider performance matrix, utilization dashboard, 
-                    and scatter plot analysis will be available in this section.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
+          </CollapsibleContent>
+        </Collapsible>
+      ))}
     </div>
   );
 };

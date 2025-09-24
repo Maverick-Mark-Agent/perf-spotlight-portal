@@ -984,7 +984,7 @@ const SendingAccountsInfrastructure = () => {
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
                 <Mail className="h-5 w-5 text-dashboard-primary" />
-                <span>Email Provider Performance</span>
+                <span>Tag - Email Provider Performance</span>
               </CardTitle>
               <div className="flex items-center space-x-4 mt-4">
                 <label className="text-white/70 text-sm">Sort by:</label>

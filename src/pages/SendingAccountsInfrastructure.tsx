@@ -451,7 +451,7 @@ const SendingAccountsInfrastructure = () => {
                   </ResponsiveContainer>
                   
                   {/* Top 3 Legend */}
-                  <div className="mt-4 flex items-center justify-center space-x-6">
+                  <div className="mt-2 flex items-center justify-center space-x-6">
                     <div className="flex items-center space-x-2">
                       <div className="w-3 h-3 rounded-full bg-green-500"></div>
                       <span className="text-white/70 text-sm">Top 3 Clients</span>

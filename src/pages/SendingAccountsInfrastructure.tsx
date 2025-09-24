@@ -1163,6 +1163,29 @@ const SendingAccountsInfrastructure = () => {
                               style={{ width: `${client.utilizationPercentage}%` }}
                             ></div>
                           </div>
+                          
+                          <div className="flex justify-between text-xs">
+                            <span className="text-white/70">Daily Target</span>
+                            <span className={`font-semibold ${
+                              client.medianDailyTarget > client.availableSending 
+                                ? 'text-dashboard-warning' 
+                                : 'text-dashboard-success'
+                            }`}>
+                              {client.medianDailyTarget.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="w-full bg-white/10 rounded-full h-2">
+                            <div 
+                              className={`h-2 rounded-full ${
+                                client.medianDailyTarget > client.availableSending 
+                                  ? 'bg-dashboard-warning' 
+                                  : 'bg-dashboard-success'
+                              }`}
+                              style={{ 
+                                width: `${Math.min((client.medianDailyTarget / client.maxSending) * 100, 100)}%` 
+                              }}
+                            ></div>
+                          </div>
                         </div>
                         
                         {/* Metrics */}

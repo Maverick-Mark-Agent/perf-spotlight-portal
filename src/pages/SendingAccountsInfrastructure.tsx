@@ -209,6 +209,13 @@ const SendingAccountsInfrastructure = () => {
     
     accounts.forEach(account => {
       const provider = account.fields['Tag - Email Provider'] || 'Unknown';
+      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+      const replyRatePercent = parseFloat(account.fields['Reply Rate Per Account %']);
+      
+      // Filter: Only include accounts with 50+ emails sent and valid reply rate
+      if (totalSent < 50 || isNaN(replyRatePercent) || replyRatePercent === null || replyRatePercent === undefined) {
+        return; // Skip this account
+      }
       
       if (!providerGroups[provider]) {
         providerGroups[provider] = {
@@ -216,35 +223,37 @@ const SendingAccountsInfrastructure = () => {
           accounts: [],
           totalDailyLimit: 0,
           totalSent: 0,
-          replyRates: [], // Store all reply rates for averaging
-          accountCount: 0,
+          replyRates: [],
+          qualifyingAccountCount: 0, // Only accounts with 50+ emails sent
           avgReplyRate: 0
         };
       }
       
       const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
-      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-      const replyRatePercent = parseFloat(account.fields['Reply Rate Per Account %']) || 0;
       
       providerGroups[provider].accounts.push(account);
       providerGroups[provider].totalDailyLimit += dailyLimit;
       providerGroups[provider].totalSent += totalSent;
-      
-      // Add ALL reply rates for proper averaging (including zeros)
-      if (!isNaN(replyRatePercent)) {
-        providerGroups[provider].replyRates.push(replyRatePercent);
-      }
-      
-      providerGroups[provider].accountCount += 1;
+      providerGroups[provider].replyRates.push(replyRatePercent);
+      providerGroups[provider].qualifyingAccountCount += 1;
     });
     
     // Calculate averages and sort by selected metric
-    const providerData = Object.values(providerGroups).map((provider: any) => ({
-      ...provider,
-      avgReplyRate: provider.replyRates.length > 0 
-        ? provider.replyRates.reduce((sum, rate) => sum + rate, 0) / provider.replyRates.length
-        : 0
-    }));
+    const providerData = Object.values(providerGroups).map((provider: any) => {
+      let avgReplyRate = 0;
+      
+      if (provider.qualifyingAccountCount > 0 && provider.replyRates.length > 0) {
+        // Calculate: SUM(all reply_rate_percentage values) ÷ COUNT(records in group)
+        const sum = provider.replyRates.reduce((total, rate) => total + rate, 0);
+        avgReplyRate = Math.round((sum / provider.replyRates.length) * 10) / 10; // Round to 1 decimal
+      }
+      
+      return {
+        ...provider,
+        avgReplyRate,
+        hasData: provider.qualifyingAccountCount > 0
+      };
+    }).filter(provider => provider.hasData); // Only show providers with qualifying data
     
     // Sort based on selected metric
     let sortedData;
@@ -898,7 +907,7 @@ const SendingAccountsInfrastructure = () => {
                           <div className="flex justify-between items-start mb-2">
                             <h4 className="text-white font-medium">{provider.name}</h4>
                             <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40 ml-2">
-                              {provider.accountCount} accounts
+                              {provider.qualifyingAccountCount} qualifying accounts
                             </Badge>
                           </div>
                           <div className="grid grid-cols-1 gap-3 text-sm">
@@ -911,8 +920,8 @@ const SendingAccountsInfrastructure = () => {
                               <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-white/70">Avg Reply Rate:</span>
-                              <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(2)}%</div>
+                              <span className="text-white/70">Avg Reply Rate (≥50 sent):</span>
+                              <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(1)}%</div>
                             </div>
                           </div>
                         </div>

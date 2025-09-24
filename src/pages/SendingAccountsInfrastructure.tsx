@@ -208,18 +208,8 @@ const SendingAccountsInfrastructure = () => {
     const providerGroups = {};
     
     accounts.forEach(account => {
-      // Normalize provider based on Accounts Type first, then fallback
-      const rawType = (account.fields['Accounts Type'] || account.fields['Account Type'] || account.fields['Tag - Email Provider'] || 'Unknown') as string;
-      const lower = String(rawType).toLowerCase();
-      const provider = lower.includes('google')
-        ? 'Google'
-        : lower.includes('outlook')
-        ? 'Outlook'
-        : lower.includes('microsoft')
-        ? 'Microsoft'
-        : lower.includes('smtp') || lower.includes('custom')
-        ? 'SMTP'
-        : 'Unknown';
+      // Use Tag - Email Provider field specifically
+      const provider = account.fields['Tag - Email Provider'] || 'Unknown';
       const totalSent = parseFloat(account.fields['Total Sent']) || 0;
       const rrRaw = account.fields['Reply Rate Per Account %'];
       const replyRateRaw = typeof rrRaw === 'number' ? rrRaw : parseFloat(rrRaw);

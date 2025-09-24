@@ -359,14 +359,14 @@ const SendingAccountsInfrastructure = () => {
           </Card>
         </div>
 
-        {/* Visual Analytics Section */}
+        {/* Connection Status & Provider Distribution */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-          {/* Resellers Distribution */}
+          {/* Connection Status Chart */}
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
-                <Users className="h-5 w-5 text-dashboard-primary" />
-                <span>Resellers Distribution</span>
+                <CheckCircle className="h-5 w-5 text-dashboard-success" />
+                <span>Connection Status</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -375,27 +375,25 @@ const SendingAccountsInfrastructure = () => {
                   <div className="text-white/70">Loading chart data...</div>
                 </div>
               ) : (
-                <div className="h-64">
+                <div className="relative h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={resellerData}
+                        data={[
+                          { name: 'Connected', value: accountStats.connected, color: 'hsl(var(--dashboard-success))' },
+                          { name: 'Disconnected', value: accountStats.disconnected, color: 'hsl(var(--dashboard-warning))' }
+                        ]}
                         cx="50%"
                         cy="50%"
-                        innerRadius={40}
-                        outerRadius={80}
-                        paddingAngle={5}
+                        innerRadius={60}
+                        outerRadius={90}
                         dataKey="value"
-                        label={({name, percentage}) => `${name}: ${percentage}%`}
                       >
-                        {resellerData.map((entry, index) => (
-                          <Cell 
-                            key={`reseller-${index}`} 
-                            fill={index === 0 ? 'hsl(var(--dashboard-primary))' : 
-                                  index === 1 ? 'hsl(var(--dashboard-accent))' : 
-                                  index === 2 ? 'hsl(var(--dashboard-success))' : 
-                                  'hsl(var(--dashboard-warning))'} 
-                          />
+                        {[
+                          { name: 'Connected', value: accountStats.connected, color: 'hsl(var(--dashboard-success))' },
+                          { name: 'Disconnected', value: accountStats.disconnected, color: 'hsl(var(--dashboard-warning))' }
+                        ].map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
                       <Tooltip 
@@ -405,31 +403,34 @@ const SendingAccountsInfrastructure = () => {
                           borderRadius: '8px',
                           color: 'white'
                         }}
-                        formatter={(value, name) => [
-                          `${value} accounts (${resellerData.find(d => d.value === value)?.percentage}%)`,
-                          'Count'
+                        formatter={(value: number, name: string) => [
+                          `${value} accounts (${((value / accountStats.total) * 100).toFixed(1)}%)`,
+                          name
                         ]}
-                      />
-                      <Legend 
-                        wrapperStyle={{ color: 'white' }}
-                        formatter={(value) => {
-                          const item = resellerData.find(d => d.name === value);
-                          return `${value} (${item?.value} accounts)`;
-                        }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
+                  
+                  {/* Center Text */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-white">
+                        {((accountStats.connected / accountStats.total) * 100).toFixed(1)}%
+                      </div>
+                      <div className="text-white/70 text-sm">Connected</div>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Account Types Distribution */}
+          {/* Maverick vs Longrun Distribution */}
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
-                <Mail className="h-5 w-5 text-dashboard-accent" />
-                <span>Account Types Distribution</span>
+                <Users className="h-5 w-5 text-dashboard-primary" />
+                <span>Provider Distribution</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -438,27 +439,43 @@ const SendingAccountsInfrastructure = () => {
                   <div className="text-white/70">Loading chart data...</div>
                 </div>
               ) : (
-                <div className="h-64">
+                <div className="relative h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={accountTypeData}
+                        data={(() => {
+                          const maverickCount = emailAccounts.filter(account => 
+                            account.fields['Tag - Reseller'] === 'Maverick'
+                          ).length;
+                          const longrunCount = emailAccounts.filter(account => 
+                            account.fields['Tag - Reseller'] === 'Longrun'
+                          ).length;
+                          
+                          return [
+                            { name: 'Maverick', value: maverickCount, color: 'hsl(var(--dashboard-primary))' },
+                            { name: 'Longrun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
+                          ];
+                        })()}
                         cx="50%"
                         cy="50%"
-                        innerRadius={40}
-                        outerRadius={80}
-                        paddingAngle={5}
+                        innerRadius={60}
+                        outerRadius={90}
                         dataKey="value"
-                        label={({name, percentage}) => `${name}: ${percentage}%`}
                       >
-                        {accountTypeData.map((entry, index) => (
-                          <Cell 
-                            key={`type-${index}`} 
-                            fill={index === 0 ? 'hsl(var(--dashboard-success))' : 
-                                  index === 1 ? 'hsl(var(--dashboard-primary))' : 
-                                  index === 2 ? 'hsl(var(--dashboard-accent))' : 
-                                  'hsl(var(--dashboard-warning))'} 
-                          />
+                        {(() => {
+                          const maverickCount = emailAccounts.filter(account => 
+                            account.fields['Tag - Reseller'] === 'Maverick'
+                          ).length;
+                          const longrunCount = emailAccounts.filter(account => 
+                            account.fields['Tag - Reseller'] === 'Longrun'
+                          ).length;
+                          
+                          return [
+                            { name: 'Maverick', value: maverickCount, color: 'hsl(var(--dashboard-primary))' },
+                            { name: 'Longrun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
+                          ];
+                        })().map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
                       <Tooltip 
@@ -468,20 +485,41 @@ const SendingAccountsInfrastructure = () => {
                           borderRadius: '8px',
                           color: 'white'
                         }}
-                        formatter={(value, name) => [
-                          `${value} accounts (${accountTypeData.find(d => d.value === value)?.percentage}%)`,
-                          'Count'
+                        formatter={(value: number, name: string) => [
+                          `${value} accounts (${((value / accountStats.total) * 100).toFixed(1)}%)`,
+                          name
                         ]}
-                      />
-                      <Legend 
-                        wrapperStyle={{ color: 'white' }}
-                        formatter={(value) => {
-                          const item = accountTypeData.find(d => d.name === value);
-                          return `${value} (${item?.value} accounts)`;
-                        }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
+                  
+                  {/* Center Text */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-white">
+                        {(() => {
+                          const maverickCount = emailAccounts.filter(account => 
+                            account.fields['Tag - Reseller'] === 'Maverick'
+                          ).length;
+                          const longrunCount = emailAccounts.filter(account => 
+                            account.fields['Tag - Reseller'] === 'Longrun'
+                          ).length;
+                          return maverickCount > longrunCount ? maverickCount : longrunCount;
+                        })()}
+                      </div>
+                      <div className="text-white/70 text-sm">
+                        {(() => {
+                          const maverickCount = emailAccounts.filter(account => 
+                            account.fields['Tag - Reseller'] === 'Maverick'
+                          ).length;
+                          const longrunCount = emailAccounts.filter(account => 
+                            account.fields['Tag - Reseller'] === 'Longrun'
+                          ).length;
+                          return maverickCount > longrunCount ? 'Maverick' : 'Longrun';
+                        })()} Lead
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>

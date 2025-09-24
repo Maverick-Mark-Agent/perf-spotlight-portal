@@ -557,20 +557,20 @@ const SendingAccountsInfrastructure = () => {
                <Button 
                 onClick={downloadFailedAccounts}
                 disabled={loading}
-                className="relative overflow-hidden bg-gradient-to-r from-dashboard-accent to-dashboard-primary border-2 border-dashboard-accent/50 text-white font-semibold px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105 hover:border-dashboard-accent hover:shadow-lg hover:shadow-dashboard-accent/25 before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent before:translate-x-[-100%] hover:before:translate-x-[100%] before:transition-transform before:duration-700"
+                size="sm"
+                className="relative overflow-hidden bg-gradient-to-r from-dashboard-accent to-dashboard-primary border-2 border-dashboard-accent/50 text-white font-medium px-3 py-2 rounded-lg transition-all duration-300 hover:scale-105 hover:border-dashboard-accent hover:shadow-lg hover:shadow-dashboard-accent/25 w-48 text-xs"
                >
-                 <Download className="h-4 w-4 mr-2 relative z-10" />
-                 <span className="relative z-10">Download Failed Accounts</span>
+                 <Download className="h-3 w-3 mr-2" />
+                 Failed Accounts
                </Button>
                <Button 
                 onClick={downloadZeroReplyRateAccounts}
                 disabled={loading}
-                variant="outline"
                 size="sm"
-                className="text-white/70 hover:text-white hover:bg-white/10 border-white/20"
+                className="bg-gradient-to-r from-dashboard-warning to-dashboard-warning/80 border-2 border-dashboard-warning/50 text-white font-medium px-3 py-2 rounded-lg transition-all duration-300 hover:scale-105 hover:border-dashboard-warning hover:shadow-lg hover:shadow-dashboard-warning/25 w-48 text-xs"
                >
-                 <Download className="h-4 w-4 mr-2" />
-                 Zero Reply Rate (50+ Emails)
+                 <Download className="h-3 w-3 mr-2" />
+                 0% Reply Rate (50+)
                </Button>
             </div>
           </div>

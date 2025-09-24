@@ -360,7 +360,7 @@ const SendingAccountsInfrastructure = () => {
         </div>
 
         {/* Accounts Per Client Bar Chart */}
-        <div className="mb-6">
+        <div className="mt-8 mb-8">
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
@@ -373,11 +373,11 @@ const SendingAccountsInfrastructure = () => {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="h-80 flex items-center justify-center">
+                <div className="h-96 flex items-center justify-center">
                   <div className="text-white/70">Loading client data...</div>
                 </div>
               ) : (
-                <div className="h-80">
+                <div className="h-96">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={(() => {

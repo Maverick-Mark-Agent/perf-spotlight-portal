@@ -436,13 +436,16 @@ const SendingAccountsInfrastructure = () => {
             </CardContent>
           </Card>
 
-          {/* Maverick vs Longrun Distribution */}
+          {/* Workspace Distribution */}
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
                 <Users className="h-5 w-5 text-dashboard-primary" />
-                <span>Provider Distribution</span>
+                <span>Workspace Accounts Distribution Breakdown</span>
               </CardTitle>
+              <p className="text-white/60 text-sm mt-1">
+                Visual representation of how many accounts each workspace owns.
+              </p>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -450,84 +453,96 @@ const SendingAccountsInfrastructure = () => {
                   <div className="text-white/70">Loading chart data...</div>
                 </div>
               ) : (
-                <div className="relative h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={(() => {
-                          const maverickCount = emailAccounts.filter(account => 
-                            account.fields['Tag - Reseller'] === 'Maverick'
-                          ).length;
-                          const longrunCount = emailAccounts.filter(account => 
-                            account.fields['Tag - Reseller'] === 'Longrun'
-                          ).length;
-                          
-                          return [
-                            { name: 'Maverick', value: maverickCount, color: 'hsl(var(--dashboard-primary))' },
-                            { name: 'Longrun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
-                          ];
-                        })()}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={90}
-                        dataKey="value"
-                      >
-                        {(() => {
-                          const maverickCount = emailAccounts.filter(account => 
-                            account.fields['Tag - Reseller'] === 'Maverick'
-                          ).length;
-                          const longrunCount = emailAccounts.filter(account => 
-                            account.fields['Tag - Reseller'] === 'Longrun'
-                          ).length;
-                          
-                          return [
-                            { name: 'Maverick', value: maverickCount, color: 'hsl(var(--dashboard-primary))' },
-                            { name: 'Longrun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
-                          ];
-                        })().map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{
-                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          borderRadius: '8px',
-                          color: 'white'
-                        }}
-                        formatter={(value: number, name: string) => [
-                          `${value} accounts (${((value / accountStats.total) * 100).toFixed(1)}%)`,
-                          name
-                        ]}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  
-                  {/* Center Text */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-white">
-                        {(() => {
-                          const maverickCount = emailAccounts.filter(account => 
-                            account.fields['Tag - Reseller'] === 'Maverick'
-                          ).length;
-                          const longrunCount = emailAccounts.filter(account => 
-                            account.fields['Tag - Reseller'] === 'Longrun'
-                          ).length;
-                          return maverickCount > longrunCount ? maverickCount : longrunCount;
-                        })()}
+                <div className="flex items-center gap-6">
+                  <div className="relative h-64 flex-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={(() => {
+                            const maverickCount = emailAccounts.filter(account => 
+                              account.fields['Workspace'] === 'Maverick'
+                            ).length;
+                            const longrunCount = emailAccounts.filter(account => 
+                              account.fields['Workspace'] === 'Longrun'
+                            ).length;
+                            
+                            return [
+                              { name: 'Maverick', value: maverickCount, color: 'hsl(var(--dashboard-primary))' },
+                              { name: 'Longrun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
+                            ];
+                          })()}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={90}
+                          dataKey="value"
+                        >
+                          {(() => {
+                            const maverickCount = emailAccounts.filter(account => 
+                              account.fields['Workspace'] === 'Maverick'
+                            ).length;
+                            const longrunCount = emailAccounts.filter(account => 
+                              account.fields['Workspace'] === 'Longrun'
+                            ).length;
+                            
+                            return [
+                              { name: 'Maverick', value: maverickCount, color: 'hsl(var(--dashboard-primary))' },
+                              { name: 'Longrun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
+                            ];
+                          })().map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                    
+                    {/* Center Text */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="text-center">
+                        <div className="text-3xl font-bold text-white">
+                          {(() => {
+                            const maverickCount = emailAccounts.filter(account => 
+                              account.fields['Workspace'] === 'Maverick'
+                            ).length;
+                            const longrunCount = emailAccounts.filter(account => 
+                              account.fields['Workspace'] === 'Longrun'
+                            ).length;
+                            return maverickCount > longrunCount ? maverickCount : longrunCount;
+                          })()}
+                        </div>
+                        <div className="text-white/70 text-sm">
+                          {(() => {
+                            const maverickCount = emailAccounts.filter(account => 
+                              account.fields['Workspace'] === 'Maverick'
+                            ).length;
+                            const longrunCount = emailAccounts.filter(account => 
+                              account.fields['Workspace'] === 'Longrun'
+                            ).length;
+                            return maverickCount > longrunCount ? 'Maverick' : 'Longrun';
+                          })()} Lead
+                        </div>
                       </div>
-                      <div className="text-white/70 text-sm">
-                        {(() => {
-                          const maverickCount = emailAccounts.filter(account => 
-                            account.fields['Tag - Reseller'] === 'Maverick'
-                          ).length;
-                          const longrunCount = emailAccounts.filter(account => 
-                            account.fields['Tag - Reseller'] === 'Longrun'
-                          ).length;
-                          return maverickCount > longrunCount ? 'Maverick' : 'Longrun';
-                        })()} Lead
+                    </div>
+                  </div>
+                  
+                  {/* Legend */}
+                  <div className="flex flex-col space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-4 h-4 rounded-full bg-dashboard-primary"></div>
+                      <div className="text-white text-sm">
+                        <div className="font-medium">Maverick</div>
+                        <div className="text-white/70">
+                          {emailAccounts.filter(account => account.fields['Workspace'] === 'Maverick').length} accounts
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <div className="w-4 h-4 rounded-full bg-dashboard-accent"></div>
+                      <div className="text-white text-sm">
+                        <div className="font-medium">Longrun</div>
+                        <div className="text-white/70">
+                          {emailAccounts.filter(account => account.fields['Workspace'] === 'Longrun').length} accounts
+                        </div>
                       </div>
                     </div>
                   </div>

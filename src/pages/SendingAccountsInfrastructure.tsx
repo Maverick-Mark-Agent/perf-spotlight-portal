@@ -217,40 +217,51 @@ const SendingAccountsInfrastructure = () => {
     accounts.forEach(account => {
       const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
       
-      if (!clientGroups[clientName]) {
-        clientGroups[clientName] = {
-          clientName,
-          accounts: [],
-          totalAccounts: 0,
-          connectedAccounts: 0,
-          totalPrice: 0,
-          avgPrice: 0,
-          maxSendingVolume: 0,
-          currentAvailableSending: 0
-        };
-      }
-      
-      clientGroups[clientName].accounts.push(account);
-      clientGroups[clientName].totalAccounts += 1;
-      if (account.fields['Status'] === 'Connected') {
-        clientGroups[clientName].connectedAccounts += 1;
-      }
-      
-      const price = parseFloat(account.fields['Price']) || 0;
-      clientGroups[clientName].totalPrice += price;
-      
-      const volumePerAccount = parseFloat(account.fields['Volume Per Account']) || 0;
-      clientGroups[clientName].maxSendingVolume += volumePerAccount;
-      
-      const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
-      clientGroups[clientName].currentAvailableSending += dailyLimit;
+       if (!clientGroups[clientName]) {
+         clientGroups[clientName] = {
+           clientName,
+           accounts: [],
+           totalAccounts: 0,
+           connectedAccounts: 0,
+           totalPrice: 0,
+           avgPrice: 0,
+           maxSendingVolume: 0,
+           currentAvailableSending: 0,
+           zeroReplyRateCount: 0
+         };
+       }
+       
+       clientGroups[clientName].accounts.push(account);
+       clientGroups[clientName].totalAccounts += 1;
+       if (account.fields['Status'] === 'Connected') {
+         clientGroups[clientName].connectedAccounts += 1;
+       }
+       
+       // Check for 0% reply rate with 50+ emails sent
+       const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+       const replyRateRaw = account.fields['Reply Rate Per Account %'];
+       const replyRate = typeof replyRateRaw === 'number' ? replyRateRaw : parseFloat(replyRateRaw);
+       
+       if (totalSent > 50 && replyRate === 0) {
+         clientGroups[clientName].zeroReplyRateCount += 1;
+       }
+       
+       const price = parseFloat(account.fields['Price']) || 0;
+       clientGroups[clientName].totalPrice += price;
+       
+       const volumePerAccount = parseFloat(account.fields['Volume Per Account']) || 0;
+       clientGroups[clientName].maxSendingVolume += volumePerAccount;
+       
+       const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
+       clientGroups[clientName].currentAvailableSending += dailyLimit;
     });
     
-    // Calculate averages and sort by total accounts
-    const clientData = Object.values(clientGroups).map((client: any) => ({
-      ...client,
-      avgPrice: client.totalAccounts > 0 ? client.totalPrice / client.totalAccounts : 0
-    })).sort((a: any, b: any) => b.totalAccounts - a.totalAccounts);
+     // Calculate averages and sort by total accounts
+     const clientData = Object.values(clientGroups).map((client: any) => ({
+       ...client,
+       avgPrice: client.totalAccounts > 0 ? client.totalPrice / client.totalAccounts : 0,
+       zeroReplyRatePercentage: client.totalAccounts > 0 ? ((client.zeroReplyRateCount / client.totalAccounts) * 100).toFixed(1) : 0
+     })).sort((a: any, b: any) => b.totalAccounts - a.totalAccounts);
     
     setClientAccountsData(clientData);
   };
@@ -1328,10 +1339,16 @@ const SendingAccountsInfrastructure = () => {
                             <div className="text-white font-medium text-sm">{client.maxSendingVolume.toLocaleString()}</div>
                             <div className="text-white/60 text-xs">Max Volume</div>
                           </div>
-                          <div className="text-right">
-                            <div className="text-white font-medium text-sm">{client.currentAvailableSending.toLocaleString()}</div>
-                            <div className="text-white/60 text-xs">Daily Limit</div>
-                          </div>
+                           <div className="text-right">
+                             <div className="text-white font-medium text-sm">{client.currentAvailableSending.toLocaleString()}</div>
+                             <div className="text-white/60 text-xs">Daily Limit</div>
+                           </div>
+                           <div className="text-right">
+                             <div className={`text-white font-medium text-sm ${parseFloat(client.zeroReplyRatePercentage) > 0 ? 'text-dashboard-warning' : 'text-dashboard-success'}`}>
+                               {client.zeroReplyRatePercentage}%
+                             </div>
+                             <div className="text-white/60 text-xs">0% Reply Rate</div>
+                           </div>
                           <Badge variant="outline" className={`text-xs ${
                             client.connectedAccounts === client.totalAccounts 
                               ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'

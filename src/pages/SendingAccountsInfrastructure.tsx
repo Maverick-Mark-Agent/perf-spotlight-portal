@@ -219,14 +219,7 @@ const SendingAccountsInfrastructure = () => {
       const rrRaw = account.fields['Reply Rate Per Account %'];
       const replyRateRaw = typeof rrRaw === 'number' ? rrRaw : parseFloat(rrRaw);
       
-      // Normalize reply rate to 0-100 scale (Airtable returns 0-1 for percent fields)
-      const replyRatePercent = replyRateRaw > 1 ? replyRateRaw : replyRateRaw * 100;
-      
-      // Filter: Only include accounts with 50+ emails sent and non-null reply rate
-      if (totalSent < 50 || isNaN(replyRateRaw)) {
-        return; // Skip this account
-      }
-      
+      // Initialize provider group if it doesn't exist
       if (!providerGroups[provider]) {
         providerGroups[provider] = {
           name: provider,
@@ -234,18 +227,25 @@ const SendingAccountsInfrastructure = () => {
           totalDailyLimit: 0,
           totalSent: 0,
           replyRates: [],
-          qualifyingAccountCount: 0, // Only accounts with 50+ emails sent
+          qualifyingAccountCount: 0,
           avgReplyRate: 0
         };
       }
       
+      // Always add Daily Limit to the provider group (for Daily Sending Availability calculation)
       const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
-      
-      providerGroups[provider].accounts.push(account);
       providerGroups[provider].totalDailyLimit += dailyLimit;
-      providerGroups[provider].totalSent += totalSent;
-      providerGroups[provider].replyRates.push(replyRatePercent);
-      providerGroups[provider].qualifyingAccountCount += 1;
+      providerGroups[provider].accounts.push(account);
+      
+      // Only include in reply rate calculation if account has 50+ emails sent and valid reply rate
+      if (totalSent >= 50 && !isNaN(replyRateRaw)) {
+        // Normalize reply rate to 0-100 scale (Airtable returns 0-1 for percent fields)
+        const replyRatePercent = replyRateRaw > 1 ? replyRateRaw : replyRateRaw * 100;
+        
+        providerGroups[provider].totalSent += totalSent;
+        providerGroups[provider].replyRates.push(replyRatePercent);
+        providerGroups[provider].qualifyingAccountCount += 1;
+      }
     });
     
     // Calculate averages and sort by selected metric
@@ -261,9 +261,9 @@ const SendingAccountsInfrastructure = () => {
       return {
         ...provider,
         avgReplyRate,
-        hasData: provider.qualifyingAccountCount > 0
+        hasData: provider.accounts.length > 0 // Show all providers that have accounts
       };
-    }).filter(provider => provider.hasData); // Only show providers with qualifying data
+    }).filter(provider => provider.hasData);
     
     // Sort based on selected metric
     let sortedData;

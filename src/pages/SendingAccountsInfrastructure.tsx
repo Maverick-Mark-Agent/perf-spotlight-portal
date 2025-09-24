@@ -667,7 +667,6 @@ const SendingAccountsInfrastructure = () => {
                     <SelectItem value="Email Provider">Email Provider</SelectItem>
                     <SelectItem value="Reseller">Reseller</SelectItem>
                     <SelectItem value="Client">Client</SelectItem>
-                    <SelectItem value="Account Type">Account Type</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

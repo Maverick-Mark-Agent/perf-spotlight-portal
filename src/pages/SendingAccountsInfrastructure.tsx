@@ -208,12 +208,24 @@ const SendingAccountsInfrastructure = () => {
     const providerGroups = {};
     
     accounts.forEach(account => {
-      const provider = account.fields['Tag - Email Provider'] || 'Unknown';
+      // Normalize provider based on Accounts Type first, then fallback
+      const rawType = (account.fields['Accounts Type'] || account.fields['Account Type'] || account.fields['Tag - Email Provider'] || 'Unknown') as string;
+      const lower = String(rawType).toLowerCase();
+      const provider = lower.includes('google')
+        ? 'Google'
+        : lower.includes('outlook')
+        ? 'Outlook'
+        : lower.includes('microsoft')
+        ? 'Microsoft'
+        : lower.includes('smtp') || lower.includes('custom')
+        ? 'SMTP'
+        : 'Unknown';
       const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-      const replyRatePercent = parseFloat(account.fields['Reply Rate Per Account %']);
+      const rrRaw = account.fields['Reply Rate Per Account %'];
+      const replyRateRaw = typeof rrRaw === 'number' ? rrRaw : parseFloat(rrRaw);
       
-      // Filter: Only include accounts with 50+ emails sent and valid reply rate
-      if (totalSent < 50 || isNaN(replyRatePercent) || replyRatePercent === null || replyRatePercent === undefined) {
+      // Filter: Only include accounts with 50+ emails sent and non-null reply rate
+      if (totalSent < 50 || isNaN(replyRateRaw)) {
         return; // Skip this account
       }
       
@@ -230,6 +242,9 @@ const SendingAccountsInfrastructure = () => {
       }
       
       const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
+      
+      // Normalize reply rate to 0-100 scale (Airtable returns 0-1 for percent fields)
+      const replyRatePercent = replyRateRaw > 1 ? replyRateRaw : replyRateRaw * 100;
       
       providerGroups[provider].accounts.push(account);
       providerGroups[provider].totalDailyLimit += dailyLimit;
@@ -852,7 +867,12 @@ const SendingAccountsInfrastructure = () => {
                   <div className="text-white/70">Loading provider analysis...</div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                emailProviderData.length === 0 ? (
+                  <div className="h-96 flex items-center justify-center">
+                    <div className="text-white/70">No Data Available</div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Bar Chart */}
                   <div className="h-80">
                     <h3 className="text-white/90 text-lg font-semibold mb-4">{selectedProviderMetric} by Email Provider</h3>
@@ -878,7 +898,7 @@ const SendingAccountsInfrastructure = () => {
                           }}
                           formatter={(value: number) => {
                             if (selectedProviderMetric === 'Reply Rate') {
-                              return [`${value.toFixed(2)}%`, 'Avg Reply Rate'];
+                              return [`${value.toFixed(1)}%`, 'Avg Reply Rate'];
                             } else if (selectedProviderMetric === 'Daily Sending Availability') {
                               return [value.toLocaleString(), 'Total Daily Limit'];
                             } else {
@@ -929,7 +949,7 @@ const SendingAccountsInfrastructure = () => {
                     </div>
                   </div>
                 </div>
-              )}
+              ))}
             </CardContent>
           </Card>
         </div>

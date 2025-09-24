@@ -230,8 +230,8 @@ const SendingAccountsInfrastructure = () => {
       providerGroups[provider].totalDailyLimit += dailyLimit;
       providerGroups[provider].totalSent += totalSent;
       
-      // Only add to reply rates if it's a valid number
-      if (!isNaN(replyRatePercent) && replyRatePercent > 0) {
+      // Add ALL reply rates for proper averaging (including zeros)
+      if (!isNaN(replyRatePercent)) {
         providerGroups[provider].replyRates.push(replyRatePercent);
       }
       

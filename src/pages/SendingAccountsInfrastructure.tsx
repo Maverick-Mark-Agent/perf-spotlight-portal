@@ -1104,19 +1104,31 @@ const SendingAccountsInfrastructure = () => {
               </CardTitle>
               <div className="flex items-center justify-between mt-4">
                 <p className="text-white/60 text-sm">Compare maximum sending capacity vs available sending per client</p>
-                <Select value={selectedClientForSending} onValueChange={setSelectedClientForSending}>
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All Clients">All Clients</SelectItem>
-                    {clientSendingData.map((client, index) => (
-                      <SelectItem key={index} value={client.clientName}>
-                        {client.clientName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center space-x-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedClientForSending('Insufficient Capacity')}
+                    className={`border-dashboard-warning/40 text-dashboard-warning hover:bg-dashboard-warning/10 ${
+                      selectedClientForSending === 'Insufficient Capacity' ? 'bg-dashboard-warning/20' : ''
+                    }`}
+                  >
+                    Show Insufficient Capacity
+                  </Button>
+                  <Select value={selectedClientForSending} onValueChange={setSelectedClientForSending}>
+                    <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All Clients">All Clients</SelectItem>
+                      {clientSendingData.map((client, index) => (
+                        <SelectItem key={index} value={client.clientName}>
+                          {client.clientName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -1127,9 +1139,14 @@ const SendingAccountsInfrastructure = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {(() => {
-                    const displayData = selectedClientForSending === 'All Clients' 
-                      ? clientSendingData.slice(0, 6) // Show top 6 clients
-                      : clientSendingData.filter(client => client.clientName === selectedClientForSending);
+                    let displayData;
+                    if (selectedClientForSending === 'All Clients') {
+                      displayData = clientSendingData.slice(0, 6); // Show top 6 clients
+                    } else if (selectedClientForSending === 'Insufficient Capacity') {
+                      displayData = clientSendingData.filter(client => client.medianDailyTarget > client.availableSending);
+                    } else {
+                      displayData = clientSendingData.filter(client => client.clientName === selectedClientForSending);
+                    }
                     
                     return displayData.map((client: any, index) => (
                       <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">

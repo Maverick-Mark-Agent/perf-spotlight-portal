@@ -359,6 +359,65 @@ const SendingAccountsInfrastructure = () => {
           </Card>
         </div>
 
+        {/* Accounts Per Client Bar Chart */}
+        <div className="mb-8">
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-primary" />
+                <span>Total Accounts Per Client</span>
+              </CardTitle>
+              <p className="text-white/60 text-sm mt-1">
+                Distribution of email accounts across all clients
+              </p>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-96 flex items-center justify-center">
+                  <div className="text-white/70">Loading client data...</div>
+                </div>
+              ) : (
+                <div className="h-96">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={(() => {
+                        const clientCounts: { [key: string]: number } = {};
+                        emailAccounts.forEach(account => {
+                          const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
+                          clientCounts[clientName] = (clientCounts[clientName] || 0) + 1;
+                        });
+                        
+                        return Object.entries(clientCounts)
+                          .map(([name, count]) => ({ name, count: count as number }))
+                          .sort((a, b) => b.count - a.count)
+                          .slice(0, 15); // Show top 15 clients
+                      })()}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 100 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis 
+                        dataKey="name" 
+                        stroke="rgba(255,255,255,0.7)"
+                        angle={-45}
+                        textAnchor="end"
+                        height={120}
+                        interval={0}
+                        fontSize={12}
+                      />
+                      <YAxis stroke="rgba(255,255,255,0.7)" />
+                      <Bar 
+                        dataKey="count" 
+                        fill="hsl(var(--dashboard-primary))"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Connection Status & Provider Distribution */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
           {/* Connection Status Chart */}

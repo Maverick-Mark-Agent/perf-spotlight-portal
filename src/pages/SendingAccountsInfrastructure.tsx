@@ -360,7 +360,7 @@ const SendingAccountsInfrastructure = () => {
         </div>
 
         {/* Accounts Per Client Bar Chart */}
-        <div className="mb-8">
+        <div className="mb-6">
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
@@ -373,11 +373,11 @@ const SendingAccountsInfrastructure = () => {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="h-96 flex items-center justify-center">
+                <div className="h-80 flex items-center justify-center">
                   <div className="text-white/70">Loading client data...</div>
                 </div>
               ) : (
-                <div className="h-96">
+                <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={(() => {
@@ -387,12 +387,22 @@ const SendingAccountsInfrastructure = () => {
                           clientCounts[clientName] = (clientCounts[clientName] || 0) + 1;
                         });
                         
-                        return Object.entries(clientCounts)
+                        const sortedData = Object.entries(clientCounts)
                           .map(([name, count]) => ({ name, count: count as number }))
                           .sort((a, b) => b.count - a.count)
-                          .slice(0, 15); // Show top 15 clients
+                          .slice(0, 12); // Show top 12 clients for better readability
+                        
+                        // Add ranking and colors
+                        return sortedData.map((item, index) => ({
+                          ...item,
+                          rank: index + 1,
+                          fill: index < 3 ? '#10B981' : // Top 3 - bright green
+                                index >= sortedData.length - 3 ? '#6B7280' : // Bottom 3 - gray
+                                '#3B82F6', // Middle - blue
+                          isTop3: index < 3
+                        }));
                       })()}
-                      margin={{ top: 20, right: 30, left: 20, bottom: 100 }}
+                      margin={{ top: 40, right: 30, left: 20, bottom: 80 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                       <XAxis 
@@ -400,18 +410,61 @@ const SendingAccountsInfrastructure = () => {
                         stroke="rgba(255,255,255,0.7)"
                         angle={-45}
                         textAnchor="end"
-                        height={120}
+                        height={100}
                         interval={0}
-                        fontSize={12}
+                        fontSize={11}
                       />
                       <YAxis stroke="rgba(255,255,255,0.7)" />
                       <Bar 
                         dataKey="count" 
-                        fill="hsl(var(--dashboard-primary))"
                         radius={[4, 4, 0, 0]}
-                      />
+                        label={{
+                          position: 'top',
+                          fill: 'white',
+                          fontSize: 12,
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        {(() => {
+                          const clientCounts: { [key: string]: number } = {};
+                          emailAccounts.forEach(account => {
+                            const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
+                            clientCounts[clientName] = (clientCounts[clientName] || 0) + 1;
+                          });
+                          
+                          const sortedData = Object.entries(clientCounts)
+                            .map(([name, count]) => ({ name, count: count as number }))
+                            .sort((a, b) => b.count - a.count)
+                            .slice(0, 12);
+                          
+                          return sortedData.map((item, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={index < 3 ? '#10B981' : // Top 3 - bright green
+                                    index >= sortedData.length - 3 ? '#6B7280' : // Bottom 3 - gray
+                                    '#3B82F6'} // Middle - blue
+                            />
+                          ));
+                        })()}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
+                  
+                  {/* Top 3 Legend */}
+                  <div className="mt-4 flex items-center justify-center space-x-6">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                      <span className="text-white/70 text-sm">Top 3 Clients</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                      <span className="text-white/70 text-sm">Mid-tier Clients</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 rounded-full bg-gray-500"></div>
+                      <span className="text-white/70 text-sm">Lower Volume</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>

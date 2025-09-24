@@ -290,6 +290,14 @@ const SendingAccountsInfrastructure = () => {
   };
 
   const downloadFailedAccounts = () => {
+    // Show confirmation dialog
+    const confirmDownload = window.confirm(
+      'Do you want to download all disconnected/failed accounts? This will include accounts with status: Failed, Not connected, or Disconnected.'
+    );
+    
+    if (!confirmDownload) {
+      return;
+    }
     // Filter accounts with Failed or Not connected status
     const failedAccounts = emailAccounts.filter(account => {
       const status = account.fields['Status'];
@@ -442,12 +450,10 @@ const SendingAccountsInfrastructure = () => {
               <Button 
                 onClick={downloadFailedAccounts}
                 disabled={loading}
-                variant="ghost" 
-                size="sm" 
-                className="text-white/70 hover:text-white hover:bg-white/10"
+                className="relative overflow-hidden bg-gradient-to-r from-dashboard-accent to-dashboard-primary border-2 border-dashboard-accent/50 text-white font-semibold px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105 hover:border-dashboard-accent hover:shadow-lg hover:shadow-dashboard-accent/25 before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent before:translate-x-[-100%] hover:before:translate-x-[100%] before:transition-transform before:duration-700"
               >
-                <Download className="h-4 w-4 mr-2" />
-                Download Failed Accounts
+                <Download className="h-4 w-4 mr-2 relative z-10" />
+                <span className="relative z-10">Download Failed Accounts</span>
               </Button>
             </div>
           </div>

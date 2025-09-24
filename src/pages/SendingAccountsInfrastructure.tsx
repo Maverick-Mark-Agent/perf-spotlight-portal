@@ -460,10 +460,10 @@ const SendingAccountsInfrastructure = () => {
                         <Pie
                           data={(() => {
                             const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Maverick'
+                              account.fields['Tag - Reseller'] === 'Maverick'
                             ).length;
                             const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Longrun'
+                              account.fields['Tag - Reseller'] === 'Longrun'
                             ).length;
                             
                             return [
@@ -479,10 +479,10 @@ const SendingAccountsInfrastructure = () => {
                         >
                           {(() => {
                             const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Maverick'
+                              account.fields['Tag - Reseller'] === 'Maverick'
                             ).length;
                             const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Longrun'
+                              account.fields['Tag - Reseller'] === 'Longrun'
                             ).length;
                             
                             return [
@@ -502,10 +502,10 @@ const SendingAccountsInfrastructure = () => {
                         <div className="text-3xl font-bold text-white">
                           {(() => {
                             const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Maverick'
+                              account.fields['Tag - Reseller'] === 'Maverick'
                             ).length;
                             const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Longrun'
+                              account.fields['Tag - Reseller'] === 'Longrun'
                             ).length;
                             return maverickCount > longrunCount ? maverickCount : longrunCount;
                           })()}
@@ -513,10 +513,10 @@ const SendingAccountsInfrastructure = () => {
                         <div className="text-white/70 text-sm">
                           {(() => {
                             const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Maverick'
+                              account.fields['Tag - Reseller'] === 'Maverick'
                             ).length;
                             const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Longrun'
+                              account.fields['Tag - Reseller'] === 'Longrun'
                             ).length;
                             return maverickCount > longrunCount ? 'Maverick' : 'Longrun';
                           })()} Lead
@@ -532,7 +532,7 @@ const SendingAccountsInfrastructure = () => {
                       <div className="text-white text-sm">
                         <div className="font-medium">Maverick</div>
                         <div className="text-white/70">
-                          {emailAccounts.filter(account => account.fields['Workspace'] === 'Maverick').length} accounts
+                          {emailAccounts.filter(account => account.fields['Tag - Reseller'] === 'Maverick').length} accounts
                         </div>
                       </div>
                     </div>
@@ -541,7 +541,7 @@ const SendingAccountsInfrastructure = () => {
                       <div className="text-white text-sm">
                         <div className="font-medium">Longrun</div>
                         <div className="text-white/70">
-                          {emailAccounts.filter(account => account.fields['Workspace'] === 'Longrun').length} accounts
+                          {emailAccounts.filter(account => account.fields['Tag - Reseller'] === 'Longrun').length} accounts
                         </div>
                       </div>
                     </div>

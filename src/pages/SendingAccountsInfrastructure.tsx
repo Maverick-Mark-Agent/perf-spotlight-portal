@@ -35,6 +35,7 @@ const SendingAccountsInfrastructure = () => {
   const [selectedProviderMetric, setSelectedProviderMetric] = useState('Daily Sending Availability');
   const [clientSendingData, setClientSendingData] = useState([]);
   const [selectedClientForSending, setSelectedClientForSending] = useState('All Clients');
+  const [clientAccountFilter, setClientAccountFilter] = useState(null);
 
   // Function to download accounts with 0% reply rate and 50+ emails sent as CSV
   const downloadZeroReplyRateAccounts = useCallback(() => {
@@ -476,11 +477,21 @@ const SendingAccountsInfrastructure = () => {
     setIsClientModalOpen(true);
     setExpandedAccountTypes(new Set());
     setExpandedStatuses(new Set());
+    setClientAccountFilter(null);
+  }, []);
+
+  const openClientModalWithFilter = useCallback((client: any, filter: string) => {
+    setSelectedClient(client);
+    setIsClientModalOpen(true);
+    setExpandedAccountTypes(new Set());
+    setExpandedStatuses(new Set());
+    setClientAccountFilter(filter);
   }, []);
 
   const closeClientModal = useCallback(() => {
     setIsClientModalOpen(false);
     setSelectedClient(null);
+    setClientAccountFilter(null);
   }, []);
 
   const toggleAccountType = useCallback((accountType: string) => {
@@ -1343,7 +1354,13 @@ const SendingAccountsInfrastructure = () => {
                              <div className="text-white font-medium text-sm">{client.currentAvailableSending.toLocaleString()}</div>
                              <div className="text-white/60 text-xs">Daily Limit</div>
                            </div>
-                           <div className="text-right">
+                           <div 
+                             className="text-right cursor-pointer hover:bg-white/10 rounded px-2 py-1 transition-colors"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               openClientModalWithFilter(client, 'zeroReplyRate');
+                             }}
+                           >
                              <div className={`text-white font-medium text-sm ${parseFloat(client.zeroReplyRatePercentage) > 0 ? 'text-dashboard-warning' : 'text-dashboard-success'}`}>
                                {client.zeroReplyRatePercentage}%
                              </div>
@@ -1373,6 +1390,11 @@ const SendingAccountsInfrastructure = () => {
               <DialogTitle className="text-white flex items-center space-x-2">
                 <Users className="h-5 w-5 text-dashboard-accent" />
                 <span>{selectedClient?.clientName} - Email Accounts</span>
+                {clientAccountFilter === 'zeroReplyRate' && (
+                  <Badge variant="outline" className="bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40 ml-2">
+                    0% Reply Rate Filter
+                  </Badge>
+                )}
               </DialogTitle>
             </DialogHeader>
             
@@ -1384,6 +1406,7 @@ const SendingAccountsInfrastructure = () => {
                   expandedStatuses={expandedStatuses}
                   toggleAccountType={toggleAccountType}
                   toggleStatus={toggleStatus}
+                  filter={clientAccountFilter}
                 />
               )}
             </div>
@@ -1395,11 +1418,22 @@ const SendingAccountsInfrastructure = () => {
 };
 
 // Separate component for better performance
-const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, toggleAccountType, toggleStatus }) => {
+const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, toggleAccountType, toggleStatus, filter }) => {
   const organizedAccounts = useMemo(() => {
     const accountsByType = {};
     
-    client.accounts.forEach(account => {
+    // Apply filter if specified
+    let accountsToProcess = client.accounts;
+    if (filter === 'zeroReplyRate') {
+      accountsToProcess = client.accounts.filter(account => {
+        const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+        const replyRateRaw = account.fields['Reply Rate Per Account %'];
+        const replyRate = typeof replyRateRaw === 'number' ? replyRateRaw : parseFloat(replyRateRaw);
+        return totalSent > 50 && replyRate === 0;
+      });
+    }
+    
+    accountsToProcess.forEach(account => {
       const accountType = account.fields['Account Type'] || 'Unknown';
       if (!accountsByType[accountType]) {
         accountsByType[accountType] = {
@@ -1413,7 +1447,7 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
     });
     
     return accountsByType;
-  }, [client.accounts]);
+  }, [client.accounts, filter]);
 
   return (
     <div className="space-y-3">

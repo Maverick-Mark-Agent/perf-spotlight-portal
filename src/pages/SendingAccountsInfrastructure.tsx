@@ -33,6 +33,8 @@ const SendingAccountsInfrastructure = () => {
   const [expandedStatuses, setExpandedStatuses] = useState(new Set());
   const [emailProviderData, setEmailProviderData] = useState([]);
   const [selectedProviderMetric, setSelectedProviderMetric] = useState('Daily Sending Availability');
+  const [clientSendingData, setClientSendingData] = useState([]);
+  const [selectedClientForSending, setSelectedClientForSending] = useState('All Clients');
 
   const fetchEmailAccounts = async () => {
     setLoading(true);
@@ -116,6 +118,9 @@ const SendingAccountsInfrastructure = () => {
       
       // Generate email provider performance data
       generateEmailProviderData(accounts);
+      
+      // Generate client sending capacity data
+      generateClientSendingData(accounts);
     } catch (error) {
       console.error('Error fetching email accounts:', error);
     } finally {
@@ -349,6 +354,65 @@ const SendingAccountsInfrastructure = () => {
     document.body.removeChild(link);
   };
 
+  const generateClientSendingData = (accounts) => {
+    const clientGroups = {};
+    
+    accounts.forEach(account => {
+      const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
+      
+      if (!clientGroups[clientName]) {
+        clientGroups[clientName] = {
+          clientName,
+          maxSending: 0, // Sum of Volume Per Account
+          availableSending: 0, // Sum of Daily Limit
+          dailyVolumeTargets: [], // Array for median calculation
+          accountCount: 0
+        };
+      }
+      
+      const volumePerAccount = parseFloat(account.fields['Volume Per Account']) || 0;
+      const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
+      const dailyVolumeTarget = parseFloat(account.fields['Clients Daily Volume Target']) || 0;
+      
+      clientGroups[clientName].maxSending += volumePerAccount;
+      clientGroups[clientName].availableSending += dailyLimit;
+      clientGroups[clientName].accountCount += 1;
+      
+      if (dailyVolumeTarget > 0) {
+        clientGroups[clientName].dailyVolumeTargets.push(dailyVolumeTarget);
+      }
+    });
+    
+    // Calculate metrics for each client
+    const clientData = Object.values(clientGroups).map((client: any) => {
+      // Calculate median daily volume target
+      const targets = client.dailyVolumeTargets.sort((a, b) => a - b);
+      const median = targets.length > 0 
+        ? targets.length % 2 === 0 
+          ? (targets[targets.length / 2 - 1] + targets[targets.length / 2]) / 2
+          : targets[Math.floor(targets.length / 2)]
+        : 0;
+      
+      // Calculate percentage of available vs maximum
+      const utilizationPercentage = client.maxSending > 0 
+        ? Math.round((client.availableSending / client.maxSending) * 100)
+        : 0;
+      
+      return {
+        ...client,
+        medianDailyTarget: median,
+        utilizationPercentage,
+        shortfall: client.maxSending - client.availableSending,
+        shortfallPercentage: client.maxSending > 0 
+          ? Math.round(((client.maxSending - client.availableSending) / client.maxSending) * 100)
+          : 0
+      };
+    }).filter(client => client.accountCount > 0)
+      .sort((a, b) => b.maxSending - a.maxSending); // Sort by max sending capacity
+    
+    setClientSendingData(clientData);
+  };
+
   const openClientModal = useCallback((client: any) => {
     setSelectedClient(client);
     setIsClientModalOpen(true);
@@ -400,6 +464,12 @@ const SendingAccountsInfrastructure = () => {
       generateEmailProviderData(emailAccounts);
     }
   }, [selectedProviderMetric, emailAccounts]);
+
+  useEffect(() => {
+    if (emailAccounts.length > 0) {
+      generateClientSendingData(emailAccounts);
+    }
+  }, [emailAccounts]);
 
   return (
     <div className="min-h-screen bg-gradient-dashboard">
@@ -940,10 +1010,12 @@ const SendingAccountsInfrastructure = () => {
                     <div className="text-white/70">No Data Available</div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Bar Chart */}
-                  <div className="h-80">
-                    <h3 className="text-white/90 text-lg font-semibold mb-4">{selectedProviderMetric} by Email Provider</h3>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Email Provider Performance - Left 2/3 */}
+                    <div className="lg:col-span-2 space-y-6">
+                      {/* Bar Chart */}
+                      <div className="h-80">
+                        <h3 className="text-white/90 text-lg font-semibold mb-4">{selectedProviderMetric} by Email Provider</h3>
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={emailProviderData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
@@ -1014,11 +1086,96 @@ const SendingAccountsInfrastructure = () => {
                           </div>
                         </div>
                       ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
+                     </div>
+                   </div>
+                 </div>
+                 
+                 {/* Client Sending Capacity Comparison - Right 1/3 */}
+                 <div className="space-y-4">
+                   <div className="flex items-center justify-between">
+                     <h3 className="text-white/90 text-lg font-semibold">Client Sending Capacity</h3>
+                     <Select value={selectedClientForSending} onValueChange={setSelectedClientForSending}>
+                       <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
+                         <SelectValue />
+                       </SelectTrigger>
+                       <SelectContent>
+                         <SelectItem value="All Clients">All Clients</SelectItem>
+                         {clientSendingData.map((client, index) => (
+                           <SelectItem key={index} value={client.clientName}>
+                             {client.clientName}
+                           </SelectItem>
+                         ))}
+                       </SelectContent>
+                     </Select>
+                   </div>
+                   
+                   <div className="h-80 overflow-y-auto">
+                     {(() => {
+                       const displayData = selectedClientForSending === 'All Clients' 
+                         ? clientSendingData.slice(0, 5) // Show top 5 clients
+                         : clientSendingData.filter(client => client.clientName === selectedClientForSending);
+                       
+                       return displayData.map((client: any, index) => (
+                         <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10 mb-3">
+                           <div className="flex justify-between items-start mb-3">
+                             <h4 className="text-white font-medium text-sm">{client.clientName}</h4>
+                             <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                               {client.accountCount} accounts
+                             </Badge>
+                           </div>
+                           
+                           {/* Capacity Bar Chart */}
+                           <div className="space-y-2 mb-3">
+                             <div className="flex justify-between text-xs">
+                               <span className="text-white/70">Maximum Capacity</span>
+                               <span className="text-white font-semibold">{client.maxSending.toLocaleString()}</span>
+                             </div>
+                             <div className="w-full bg-white/10 rounded-full h-2">
+                               <div 
+                                 className="bg-dashboard-success h-2 rounded-full" 
+                                 style={{ width: '100%' }}
+                               ></div>
+                             </div>
+                             
+                             <div className="flex justify-between text-xs">
+                               <span className="text-white/70">Available Sending</span>
+                               <span className="text-white font-semibold">{client.availableSending.toLocaleString()}</span>
+                             </div>
+                             <div className="w-full bg-white/10 rounded-full h-2">
+                               <div 
+                                 className="bg-dashboard-accent h-2 rounded-full" 
+                                 style={{ width: `${client.utilizationPercentage}%` }}
+                               ></div>
+                             </div>
+                           </div>
+                           
+                           {/* Metrics */}
+                           <div className="grid grid-cols-2 gap-2 text-xs">
+                             <div>
+                               <span className="text-white/70">Utilization:</span>
+                               <div className="text-white font-semibold">{client.utilizationPercentage}%</div>
+                             </div>
+                             <div>
+                               <span className="text-white/70">Shortfall:</span>
+                               <div className="text-dashboard-warning font-semibold">{client.shortfallPercentage}%</div>
+                             </div>
+                             <div>
+                               <span className="text-white/70">Daily Target:</span>
+                               <div className="text-white font-semibold">{client.medianDailyTarget.toLocaleString()}</div>
+                             </div>
+                             <div>
+                               <span className="text-white/70">Gap:</span>
+                               <div className="text-dashboard-warning font-semibold">{client.shortfall.toLocaleString()}</div>
+                             </div>
+                           </div>
+                         </div>
+                       ));
+                     })()}
+                   </div>
+                 </div>
+               </div>
+             ))}
+           </CardContent>
           </Card>
         </div>
 

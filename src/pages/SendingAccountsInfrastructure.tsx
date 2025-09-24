@@ -216,7 +216,7 @@ const SendingAccountsInfrastructure = () => {
           accounts: [],
           totalDailyLimit: 0,
           totalSent: 0,
-          totalReplyRate: 0,
+          replyRates: [], // Store all reply rates for averaging
           accountCount: 0,
           avgReplyRate: 0
         };
@@ -224,19 +224,26 @@ const SendingAccountsInfrastructure = () => {
       
       const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
       const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-      const replyRate = parseFloat(account.fields['Reply Rate Per Account']) || 0;
+      const replyRatePercent = parseFloat(account.fields['Reply Rate Per Account %']) || 0;
       
       providerGroups[provider].accounts.push(account);
       providerGroups[provider].totalDailyLimit += dailyLimit;
       providerGroups[provider].totalSent += totalSent;
-      providerGroups[provider].totalReplyRate += replyRate;
+      
+      // Only add to reply rates if it's a valid number
+      if (!isNaN(replyRatePercent) && replyRatePercent > 0) {
+        providerGroups[provider].replyRates.push(replyRatePercent);
+      }
+      
       providerGroups[provider].accountCount += 1;
     });
     
     // Calculate averages and sort by selected metric
     const providerData = Object.values(providerGroups).map((provider: any) => ({
       ...provider,
-      avgReplyRate: provider.accountCount > 0 ? provider.totalReplyRate / provider.accountCount : 0
+      avgReplyRate: provider.replyRates.length > 0 
+        ? provider.replyRates.reduce((sum, rate) => sum + rate, 0) / provider.replyRates.length
+        : 0
     }));
     
     // Sort based on selected metric

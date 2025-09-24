@@ -288,8 +288,8 @@ const SendingAccountsInfrastructure = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Status Overview - 6 Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
+        {/* Status Overview - 4 Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Card 1: Total Email Accounts Owned */}
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader className="pb-3">
@@ -322,45 +322,13 @@ const SendingAccountsInfrastructure = () => {
             </CardContent>
           </Card>
 
-          {/* Card 3: Connected Accounts */}
+          {/* Card 3: Total Accounts Value */}
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CheckCircle className="h-6 w-6 text-dashboard-success" />
-                <Badge variant="outline" className="bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40">
-                  Connected
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.connected}</div>
-              <p className="text-white/70 text-sm">Connected Accounts</p>
-            </CardContent>
-          </Card>
-
-          {/* Card 4: Disconnected Accounts */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <XCircle className="h-6 w-6 text-dashboard-warning" />
-                <Badge variant="outline" className="bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40">
-                  {accountStats.disconnected > 0 ? 'Attention' : 'All Good'}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.disconnected}</div>
-              <p className="text-white/70 text-sm">Disconnected Accounts</p>
-            </CardContent>
-          </Card>
-
-          {/* Card 5: Total Price */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <Mail className="h-6 w-6 text-dashboard-primary" />
+                <DollarSign className="h-6 w-6 text-dashboard-primary" />
                 <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
-                  Revenue
+                  Value
                 </Badge>
               </div>
             </CardHeader>
@@ -368,15 +336,15 @@ const SendingAccountsInfrastructure = () => {
               <div className="text-2xl font-bold text-white mb-1">
                 ${loading ? '...' : accountStats.totalPrice.toFixed(2)}
               </div>
-              <p className="text-white/70 text-sm">Total Account Value</p>
+              <p className="text-white/70 text-sm">Total Accounts Value</p>
             </CardContent>
           </Card>
 
-          {/* Card 6: Average Cost per Client */}
+          {/* Card 4: Average Cost per Client */}
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <Users className="h-6 w-6 text-dashboard-accent" />
+                <DollarSign className="h-6 w-6 text-dashboard-accent" />
                 <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40">
                   Average
                 </Badge>

@@ -366,8 +366,11 @@ const SendingAccountsInfrastructure = () => {
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
                 <CheckCircle className="h-5 w-5 text-dashboard-success" />
-                <span>Connection Status</span>
+                <span>Account Connection Status Breakdown</span>
               </CardTitle>
+              <p className="text-white/60 text-sm mt-1">
+                Visual representation of connected accounts. The closer to 100%, the better.
+              </p>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -375,49 +378,70 @@ const SendingAccountsInfrastructure = () => {
                   <div className="text-white/70">Loading chart data...</div>
                 </div>
               ) : (
-                <div className="relative h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={[
-                          { name: 'Connected', value: accountStats.connected, color: 'hsl(var(--dashboard-success))' },
-                          { name: 'Disconnected', value: accountStats.disconnected, color: 'hsl(var(--dashboard-warning))' }
-                        ]}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={90}
-                        dataKey="value"
-                      >
-                        {[
-                          { name: 'Connected', value: accountStats.connected, color: 'hsl(var(--dashboard-success))' },
-                          { name: 'Disconnected', value: accountStats.disconnected, color: 'hsl(var(--dashboard-warning))' }
-                        ].map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{
-                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          borderRadius: '8px',
-                          color: 'white'
-                        }}
-                        formatter={(value: number, name: string) => [
-                          `${value} accounts (${((value / accountStats.total) * 100).toFixed(1)}%)`,
-                          name
-                        ]}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  
-                  {/* Center Text */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center">
-                      <div className="text-3xl font-bold text-white">
-                        {((accountStats.connected / accountStats.total) * 100).toFixed(1)}%
+                <div className="flex items-center gap-6">
+                  <div className="relative h-64 flex-1">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: 'Connected', value: accountStats.connected, color: 'hsl(var(--dashboard-success))' },
+                            { name: 'Disconnected', value: accountStats.disconnected, color: 'hsl(var(--dashboard-warning))' }
+                          ]}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={90}
+                          dataKey="value"
+                        >
+                          {[
+                            { name: 'Connected', value: accountStats.connected, color: 'hsl(var(--dashboard-success))' },
+                            { name: 'Disconnected', value: accountStats.disconnected, color: 'hsl(var(--dashboard-warning))' }
+                          ].map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          contentStyle={{
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '14px'
+                          }}
+                          formatter={(value: number, name: string) => [
+                            `${value} accounts (${((value / accountStats.total) * 100).toFixed(1)}%)`,
+                            name
+                          ]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    
+                    {/* Center Text */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="text-center">
+                        <div className="text-3xl font-bold text-white">
+                          {((accountStats.connected / accountStats.total) * 100).toFixed(1)}%
+                        </div>
+                        <div className="text-white/70 text-sm">Connected</div>
                       </div>
-                      <div className="text-white/70 text-sm">Connected</div>
+                    </div>
+                  </div>
+                  
+                  {/* Legend */}
+                  <div className="flex flex-col space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-4 h-4 rounded-full bg-dashboard-success"></div>
+                      <div className="text-white text-sm">
+                        <div className="font-medium">Connected</div>
+                        <div className="text-white/70">{accountStats.connected} accounts</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <div className="w-4 h-4 rounded-full bg-dashboard-warning"></div>
+                      <div className="text-white text-sm">
+                        <div className="font-medium">Disconnected</div>
+                        <div className="text-white/70">{accountStats.disconnected} accounts</div>
+                      </div>
                     </div>
                   </div>
                 </div>

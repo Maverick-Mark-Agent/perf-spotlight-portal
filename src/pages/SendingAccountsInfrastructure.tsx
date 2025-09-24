@@ -467,8 +467,8 @@ const SendingAccountsInfrastructure = () => {
                             ).length;
                             
                             return [
-                              { name: 'Maverick', value: maverickCount, color: 'hsl(var(--dashboard-primary))' },
-                              { name: 'LongRun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
+                              { name: 'Maverick', value: maverickCount, color: '#8B5CF6' },
+                              { name: 'LongRun', value: longrunCount, color: '#F59E0B' }
                             ];
                           })()}
                           cx="50%"
@@ -486,8 +486,8 @@ const SendingAccountsInfrastructure = () => {
                             ).length;
                             
                             return [
-                              { name: 'Maverick', value: maverickCount, color: 'hsl(var(--dashboard-primary))' },
-                              { name: 'LongRun', value: longrunCount, color: 'hsl(var(--dashboard-accent))' }
+                              { name: 'Maverick', value: maverickCount, color: '#8B5CF6' },
+                              { name: 'LongRun', value: longrunCount, color: '#F59E0B' }
                             ];
                           })().map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
@@ -528,7 +528,7 @@ const SendingAccountsInfrastructure = () => {
                   {/* Legend */}
                   <div className="flex flex-col space-y-3">
                     <div className="flex items-center space-x-3">
-                      <div className="w-4 h-4 rounded-full bg-dashboard-primary"></div>
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#8B5CF6' }}></div>
                       <div className="text-white text-sm">
                         <div className="font-medium">Maverick</div>
                         <div className="text-white/70">
@@ -537,7 +537,7 @@ const SendingAccountsInfrastructure = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                      <div className="w-4 h-4 rounded-full bg-dashboard-accent"></div>
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#F59E0B' }}></div>
                       <div className="text-white text-sm">
                         <div className="font-medium">LongRun</div>
                         <div className="text-white/70">

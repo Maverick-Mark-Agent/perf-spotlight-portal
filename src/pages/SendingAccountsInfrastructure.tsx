@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign } from "lucide-react";
+import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign, Download } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -289,6 +289,68 @@ const SendingAccountsInfrastructure = () => {
     setEmailProviderData(sortedData);
   };
 
+  const downloadFailedAccounts = () => {
+    // Filter accounts with Failed or Not connected status
+    const failedAccounts = emailAccounts.filter(account => {
+      const status = account.fields['Status'];
+      return status === 'Failed' || status === 'Not connected' || status === 'Disconnected';
+    });
+
+    if (failedAccounts.length === 0) {
+      alert('No failed or disconnected accounts found.');
+      return;
+    }
+
+    // Create CSV content
+    const headers = [
+      'Email Account',
+      'Tag - Reseller', 
+      'Tag - Email Provider',
+      'Name',
+      'Status',
+      'Client Name',
+      'Domain',
+      'Account Type',
+      'Workspace',
+      'Total Sent',
+      'Total Replied',
+      'Total Bounced',
+      'Daily Limit',
+      'Price'
+    ];
+
+    const csvContent = [
+      headers.join(','),
+      ...failedAccounts.map(account => [
+        `"${account.fields['Email Account'] || ''}"`,
+        `"${account.fields['Tag - Reseller'] || ''}"`,
+        `"${account.fields['Tag - Email Provider'] || ''}"`,
+        `"${account.fields['Name'] || ''}"`,
+        `"${account.fields['Status'] || ''}"`,
+        `"${account.fields['Client Name (from Client)']?.[0] || ''}"`,
+        `"${account.fields['Domain'] || ''}"`,
+        `"${account.fields['Account Type'] || account.fields['Accounts Type'] || ''}"`,
+        `"${account.fields['Workspace'] || ''}"`,
+        account.fields['Total Sent'] || 0,
+        account.fields['Total Replied'] || 0,
+        account.fields['Total Bounced'] || 0,
+        account.fields['Daily Limit'] || 0,
+        account.fields['Price'] || 0
+      ].join(','))
+    ].join('\n');
+
+    // Create and download the file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `failed_accounts_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const openClientModal = useCallback((client: any) => {
     setSelectedClient(client);
     setIsClientModalOpen(true);
@@ -376,6 +438,16 @@ const SendingAccountsInfrastructure = () => {
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh Data
+              </Button>
+              <Button 
+                onClick={downloadFailedAccounts}
+                disabled={loading}
+                variant="ghost" 
+                size="sm" 
+                className="text-white/70 hover:text-white hover:bg-white/10"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download Failed Accounts
               </Button>
             </div>
           </div>

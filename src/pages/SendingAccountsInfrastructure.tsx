@@ -36,6 +36,52 @@ const SendingAccountsInfrastructure = () => {
   const [clientSendingData, setClientSendingData] = useState([]);
   const [selectedClientForSending, setSelectedClientForSending] = useState('All Clients');
 
+  // Function to download accounts with 0% reply rate and 50+ emails sent as CSV
+  const downloadZeroReplyRateAccounts = useCallback(() => {
+    const filteredAccounts = emailAccounts.filter(account => {
+      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+      const replyRateRaw = account.fields['Reply Rate Per Account %'];
+      const replyRate = typeof replyRateRaw === 'number' ? replyRateRaw : parseFloat(replyRateRaw);
+      
+      // Check if reply rate is 0 and total sent is over 50
+      return totalSent > 50 && replyRate === 0;
+    });
+
+    if (filteredAccounts.length === 0) {
+      alert('No accounts found matching the criteria (0% reply rate with 50+ emails sent)');
+      return;
+    }
+
+    // Create CSV content
+    const headers = ['Account Name', 'Client', 'Email Provider', 'Total Sent', 'Reply Rate %', 'Daily Limit', 'Status'];
+    const csvRows = [headers.join(',')];
+
+    filteredAccounts.forEach(account => {
+      const row = [
+        `"${account.fields['Account Name'] || ''}"`,
+        `"${account.fields['Client'] || ''}"`,
+        `"${account.fields['Tag - Email Provider'] || ''}"`,
+        account.fields['Total Sent'] || 0,
+        account.fields['Reply Rate Per Account %'] || 0,
+        account.fields['Daily Limit'] || 0,
+        `"${account.fields['Status'] || ''}"`
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    // Create and download CSV file
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `zero_reply_rate_accounts_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [emailAccounts]);
+
   const fetchEmailAccounts = async () => {
     setLoading(true);
     try {
@@ -508,14 +554,24 @@ const SendingAccountsInfrastructure = () => {
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh Data
               </Button>
-              <Button 
+               <Button 
                 onClick={downloadFailedAccounts}
                 disabled={loading}
                 className="relative overflow-hidden bg-gradient-to-r from-dashboard-accent to-dashboard-primary border-2 border-dashboard-accent/50 text-white font-semibold px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105 hover:border-dashboard-accent hover:shadow-lg hover:shadow-dashboard-accent/25 before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent before:translate-x-[-100%] hover:before:translate-x-[100%] before:transition-transform before:duration-700"
-              >
-                <Download className="h-4 w-4 mr-2 relative z-10" />
-                <span className="relative z-10">Download Failed Accounts</span>
-              </Button>
+               >
+                 <Download className="h-4 w-4 mr-2 relative z-10" />
+                 <span className="relative z-10">Download Failed Accounts</span>
+               </Button>
+               <Button 
+                onClick={downloadZeroReplyRateAccounts}
+                disabled={loading}
+                variant="outline"
+                size="sm"
+                className="text-white/70 hover:text-white hover:bg-white/10 border-white/20"
+               >
+                 <Download className="h-4 w-4 mr-2" />
+                 Zero Reply Rate (50+ Emails)
+               </Button>
             </div>
           </div>
         </div>

@@ -31,6 +31,8 @@ const SendingAccountsInfrastructure = () => {
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [expandedAccountTypes, setExpandedAccountTypes] = useState(new Set());
   const [expandedStatuses, setExpandedStatuses] = useState(new Set());
+  const [emailProviderData, setEmailProviderData] = useState([]);
+  const [selectedProviderMetric, setSelectedProviderMetric] = useState('Daily Sending Availability');
 
   const fetchEmailAccounts = async () => {
     setLoading(true);
@@ -112,6 +114,8 @@ const SendingAccountsInfrastructure = () => {
       // Generate client accounts data
       generateClientAccountsData(accounts);
       
+      // Generate email provider performance data
+      generateEmailProviderData(accounts);
     } catch (error) {
       console.error('Error fetching email accounts:', error);
     } finally {
@@ -200,6 +204,60 @@ const SendingAccountsInfrastructure = () => {
     setClientAccountsData(clientData);
   };
 
+  const generateEmailProviderData = (accounts) => {
+    const providerGroups = {};
+    
+    accounts.forEach(account => {
+      const provider = account.fields['Tag - Email Provider'] || 'Unknown';
+      
+      if (!providerGroups[provider]) {
+        providerGroups[provider] = {
+          name: provider,
+          accounts: [],
+          totalDailyLimit: 0,
+          totalSent: 0,
+          totalReplyRate: 0,
+          accountCount: 0,
+          avgReplyRate: 0
+        };
+      }
+      
+      const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
+      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+      const replyRate = parseFloat(account.fields['Reply Rate Per Account']) || 0;
+      
+      providerGroups[provider].accounts.push(account);
+      providerGroups[provider].totalDailyLimit += dailyLimit;
+      providerGroups[provider].totalSent += totalSent;
+      providerGroups[provider].totalReplyRate += replyRate;
+      providerGroups[provider].accountCount += 1;
+    });
+    
+    // Calculate averages and sort by selected metric
+    const providerData = Object.values(providerGroups).map((provider: any) => ({
+      ...provider,
+      avgReplyRate: provider.accountCount > 0 ? provider.totalReplyRate / provider.accountCount : 0
+    }));
+    
+    // Sort based on selected metric
+    let sortedData;
+    switch (selectedProviderMetric) {
+      case 'Daily Sending Availability':
+        sortedData = providerData.sort((a, b) => b.totalDailyLimit - a.totalDailyLimit);
+        break;
+      case 'Total Sent':
+        sortedData = providerData.sort((a, b) => b.totalSent - a.totalSent);
+        break;
+      case 'Reply Rate':
+        sortedData = providerData.sort((a, b) => b.avgReplyRate - a.avgReplyRate);
+        break;
+      default:
+        sortedData = providerData;
+    }
+    
+    setEmailProviderData(sortedData);
+  };
+
   const openClientModal = useCallback((client: any) => {
     setSelectedClient(client);
     setIsClientModalOpen(true);
@@ -245,6 +303,12 @@ const SendingAccountsInfrastructure = () => {
       generatePriceAnalysisData(emailAccounts);
     }
   }, [selectedAnalysis, emailAccounts]);
+
+  useEffect(() => {
+    if (emailAccounts.length > 0) {
+      generateEmailProviderData(emailAccounts);
+    }
+  }, [selectedProviderMetric, emailAccounts]);
 
   return (
     <div className="min-h-screen bg-gradient-dashboard">
@@ -732,6 +796,116 @@ const SendingAccountsInfrastructure = () => {
                             <div>
                               <span className="text-white/70">Avg per Account:</span>
                               <div className="text-white font-semibold">${item.avgPrice.toFixed(2)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Email Provider Performance Analysis */}
+        <div className="mt-8">
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Mail className="h-5 w-5 text-dashboard-primary" />
+                <span>Email Provider Performance</span>
+              </CardTitle>
+              <div className="flex items-center space-x-4 mt-4">
+                <label className="text-white/70 text-sm">Sort by:</label>
+                <Select value={selectedProviderMetric} onValueChange={setSelectedProviderMetric}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white w-64">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Daily Sending Availability">Daily Sending Availability</SelectItem>
+                    <SelectItem value="Total Sent">Total Sent</SelectItem>
+                    <SelectItem value="Reply Rate">Reply Rate (Avg)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-96 flex items-center justify-center">
+                  <div className="text-white/70">Loading provider analysis...</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Bar Chart */}
+                  <div className="h-80">
+                    <h3 className="text-white/90 text-lg font-semibold mb-4">{selectedProviderMetric} by Email Provider</h3>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={emailProviderData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                        <XAxis 
+                          dataKey="name" 
+                          stroke="rgba(255,255,255,0.7)"
+                          angle={-45}
+                          textAnchor="end"
+                          height={80}
+                          interval={0}
+                          fontSize={11}
+                        />
+                        <YAxis stroke="rgba(255,255,255,0.7)" />
+                        <Tooltip 
+                          contentStyle={{
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '8px',
+                            color: 'white'
+                          }}
+                          formatter={(value: number) => {
+                            if (selectedProviderMetric === 'Reply Rate') {
+                              return [`${value.toFixed(2)}%`, 'Avg Reply Rate'];
+                            } else if (selectedProviderMetric === 'Daily Sending Availability') {
+                              return [value.toLocaleString(), 'Total Daily Limit'];
+                            } else {
+                              return [value.toLocaleString(), 'Total Sent'];
+                            }
+                          }}
+                        />
+                        <Bar 
+                          dataKey={
+                            selectedProviderMetric === 'Daily Sending Availability' ? 'totalDailyLimit' :
+                            selectedProviderMetric === 'Total Sent' ? 'totalSent' : 'avgReplyRate'
+                          }
+                          fill="hsl(var(--dashboard-accent))"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  
+                  {/* Summary Table */}
+                  <div className="h-80 overflow-y-auto">
+                    <h3 className="text-white/90 text-lg font-semibold mb-4">Provider Performance Summary</h3>
+                    <div className="space-y-3">
+                      {emailProviderData.map((provider: any, index) => (
+                        <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="text-white font-medium">{provider.name}</h4>
+                            <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40 ml-2">
+                              {provider.accountCount} accounts
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-1 gap-3 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-white/70">Daily Sending Limit:</span>
+                              <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}</div>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-white/70">Total Sent:</span>
+                              <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-white/70">Avg Reply Rate:</span>
+                              <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(2)}%</div>
                             </div>
                           </div>
                         </div>

@@ -400,19 +400,6 @@ const SendingAccountsInfrastructure = () => {
                             <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Tooltip 
-                          contentStyle={{
-                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
-                            border: '1px solid rgba(255, 255, 255, 0.2)',
-                            borderRadius: '8px',
-                            color: 'white',
-                            fontSize: '14px'
-                          }}
-                          formatter={(value: number, name: string) => [
-                            `${value} accounts (${((value / accountStats.total) * 100).toFixed(1)}%)`,
-                            name
-                          ]}
-                        />
                       </PieChart>
                     </ResponsiveContainer>
                     

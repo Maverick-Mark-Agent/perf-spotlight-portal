@@ -121,6 +121,7 @@ const SendingAccountsInfrastructure = () => {
       
       // Generate client sending capacity data
       generateClientSendingData(accounts);
+      
     } catch (error) {
       console.error('Error fetching email accounts:', error);
     } finally {
@@ -133,7 +134,6 @@ const SendingAccountsInfrastructure = () => {
       'Email Provider': 'Tag - Email Provider',
       'Reseller': 'Tag - Reseller', 
       'Client': 'Client Name (from Client)',
-      'Account Type': 'Account Type'
     };
     
     const field = fieldMap[selectedAnalysis];
@@ -219,6 +219,9 @@ const SendingAccountsInfrastructure = () => {
       const rrRaw = account.fields['Reply Rate Per Account %'];
       const replyRateRaw = typeof rrRaw === 'number' ? rrRaw : parseFloat(rrRaw);
       
+      // Normalize reply rate to 0-100 scale (Airtable returns 0-1 for percent fields)
+      const replyRatePercent = replyRateRaw > 1 ? replyRateRaw : replyRateRaw * 100;
+      
       // Filter: Only include accounts with 50+ emails sent and non-null reply rate
       if (totalSent < 50 || isNaN(replyRateRaw)) {
         return; // Skip this account
@@ -237,9 +240,6 @@ const SendingAccountsInfrastructure = () => {
       }
       
       const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
-      
-      // Normalize reply rate to 0-100 scale (Airtable returns 0-1 for percent fields)
-      const replyRatePercent = replyRateRaw > 1 ? replyRateRaw : replyRateRaw * 100;
       
       providerGroups[provider].accounts.push(account);
       providerGroups[provider].totalDailyLimit += dailyLimit;
@@ -293,6 +293,7 @@ const SendingAccountsInfrastructure = () => {
     if (!confirmDownload) {
       return;
     }
+    
     // Filter accounts with Failed or Not connected status
     const failedAccounts = emailAccounts.filter(account => {
       const status = account.fields['Status'];
@@ -1010,172 +1011,185 @@ const SendingAccountsInfrastructure = () => {
                     <div className="text-white/70">No Data Available</div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Email Provider Performance - Left 2/3 */}
-                    <div className="lg:col-span-2 space-y-6">
-                      {/* Bar Chart */}
-                      <div className="h-80">
-                        <h3 className="text-white/90 text-lg font-semibold mb-4">{selectedProviderMetric} by Email Provider</h3>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={emailProviderData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                        <XAxis 
-                          dataKey="name" 
-                          stroke="rgba(255,255,255,0.7)"
-                          angle={-45}
-                          textAnchor="end"
-                          height={80}
-                          interval={0}
-                          fontSize={11}
-                        />
-                        <YAxis stroke="rgba(255,255,255,0.7)" />
-                        <Tooltip 
-                          contentStyle={{
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            borderRadius: '8px',
-                            color: 'white'
-                          }}
-                          formatter={(value: number) => {
-                            if (selectedProviderMetric === 'Reply Rate') {
-                              return [`${value.toFixed(1)}%`, 'Avg Reply Rate'];
-                            } else if (selectedProviderMetric === 'Daily Sending Availability') {
-                              return [value.toLocaleString(), 'Total Daily Limit'];
-                            } else {
-                              return [value.toLocaleString(), 'Total Sent'];
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Bar Chart */}
+                    <div className="h-80">
+                      <h3 className="text-white/90 text-lg font-semibold mb-4">{selectedProviderMetric} by Email Provider</h3>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={emailProviderData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis 
+                            dataKey="name" 
+                            stroke="rgba(255,255,255,0.7)"
+                            angle={-45}
+                            textAnchor="end"
+                            height={80}
+                            interval={0}
+                            fontSize={11}
+                          />
+                          <YAxis stroke="rgba(255,255,255,0.7)" />
+                          <Tooltip 
+                            contentStyle={{
+                              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                              border: '1px solid rgba(255, 255, 255, 0.1)',
+                              borderRadius: '8px',
+                              color: 'white'
+                            }}
+                            formatter={(value: number) => {
+                              if (selectedProviderMetric === 'Reply Rate') {
+                                return [`${value.toFixed(1)}%`, 'Avg Reply Rate'];
+                              } else if (selectedProviderMetric === 'Daily Sending Availability') {
+                                return [value.toLocaleString(), 'Total Daily Limit'];
+                              } else {
+                                return [value.toLocaleString(), 'Total Sent'];
+                              }
+                            }}
+                          />
+                          <Bar 
+                            dataKey={
+                              selectedProviderMetric === 'Daily Sending Availability' ? 'totalDailyLimit' :
+                              selectedProviderMetric === 'Total Sent' ? 'totalSent' : 'avgReplyRate'
                             }
-                          }}
-                        />
-                        <Bar 
-                          dataKey={
-                            selectedProviderMetric === 'Daily Sending Availability' ? 'totalDailyLimit' :
-                            selectedProviderMetric === 'Total Sent' ? 'totalSent' : 'avgReplyRate'
-                          }
-                          fill="hsl(var(--dashboard-accent))"
-                          radius={[4, 4, 0, 0]}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  
-                  {/* Summary Table */}
-                  <div className="h-80 overflow-y-auto">
-                    <h3 className="text-white/90 text-lg font-semibold mb-4">Provider Performance Summary</h3>
-                    <div className="space-y-3">
-                      {emailProviderData.map((provider: any, index) => (
-                        <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                          <div className="flex justify-between items-start mb-2">
-                            <h4 className="text-white font-medium">{provider.name}</h4>
-                            <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40 ml-2">
-                              {provider.qualifyingAccountCount} qualifying accounts
-                            </Badge>
+                            fill="hsl(var(--dashboard-accent))"
+                            radius={[4, 4, 0, 0]}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    
+                    {/* Summary Table */}
+                    <div className="h-80 overflow-y-auto">
+                      <h3 className="text-white/90 text-lg font-semibold mb-4">Provider Performance Summary</h3>
+                      <div className="space-y-3">
+                        {emailProviderData.map((provider: any, index) => (
+                          <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="text-white font-medium">{provider.name}</h4>
+                              <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40 ml-2">
+                                {provider.qualifyingAccountCount} qualifying accounts
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3 text-sm">
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Daily Sending Limit:</span>
+                                <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}</div>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Total Sent:</span>
+                                <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Avg Reply Rate (≥50 sent):</span>
+                                <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(1)}%</div>
+                              </div>
+                            </div>
                           </div>
-                          <div className="grid grid-cols-1 gap-3 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-white/70">Daily Sending Limit:</span>
-                              <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}</div>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-white/70">Total Sent:</span>
-                              <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-white/70">Avg Reply Rate (≥50 sent):</span>
-                              <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(1)}%</div>
-                            </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Client Sending Capacity Comparison */}
+        <div className="mt-8">
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-accent" />
+                <span>Client Sending Capacity Analysis</span>
+              </CardTitle>
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-white/60 text-sm">Compare maximum sending capacity vs available sending per client</p>
+                <Select value={selectedClientForSending} onValueChange={setSelectedClientForSending}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All Clients">All Clients</SelectItem>
+                    {clientSendingData.map((client, index) => (
+                      <SelectItem key={index} value={client.clientName}>
+                        {client.clientName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-96 flex items-center justify-center">
+                  <div className="text-white/70">Loading capacity analysis...</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {(() => {
+                    const displayData = selectedClientForSending === 'All Clients' 
+                      ? clientSendingData.slice(0, 6) // Show top 6 clients
+                      : clientSendingData.filter(client => client.clientName === selectedClientForSending);
+                    
+                    return displayData.map((client: any, index) => (
+                      <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <div className="flex justify-between items-start mb-3">
+                          <h4 className="text-white font-medium text-sm">{client.clientName}</h4>
+                          <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                            {client.accountCount} accounts
+                          </Badge>
+                        </div>
+                        
+                        {/* Capacity Bar Chart */}
+                        <div className="space-y-2 mb-3">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-white/70">Maximum Capacity</span>
+                            <span className="text-white font-semibold">{client.maxSending.toLocaleString()}</span>
+                          </div>
+                          <div className="w-full bg-white/10 rounded-full h-2">
+                            <div 
+                              className="bg-dashboard-success h-2 rounded-full" 
+                              style={{ width: '100%' }}
+                            ></div>
+                          </div>
+                          
+                          <div className="flex justify-between text-xs">
+                            <span className="text-white/70">Available Sending</span>
+                            <span className="text-white font-semibold">{client.availableSending.toLocaleString()}</span>
+                          </div>
+                          <div className="w-full bg-white/10 rounded-full h-2">
+                            <div 
+                              className="bg-dashboard-accent h-2 rounded-full" 
+                              style={{ width: `${client.utilizationPercentage}%` }}
+                            ></div>
                           </div>
                         </div>
-                      ))}
-                     </div>
-                   </div>
-                 </div>
-                 
-                 {/* Client Sending Capacity Comparison - Right 1/3 */}
-                 <div className="space-y-4">
-                   <div className="flex items-center justify-between">
-                     <h3 className="text-white/90 text-lg font-semibold">Client Sending Capacity</h3>
-                     <Select value={selectedClientForSending} onValueChange={setSelectedClientForSending}>
-                       <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
-                         <SelectValue />
-                       </SelectTrigger>
-                       <SelectContent>
-                         <SelectItem value="All Clients">All Clients</SelectItem>
-                         {clientSendingData.map((client, index) => (
-                           <SelectItem key={index} value={client.clientName}>
-                             {client.clientName}
-                           </SelectItem>
-                         ))}
-                       </SelectContent>
-                     </Select>
-                   </div>
-                   
-                   <div className="h-80 overflow-y-auto">
-                     {(() => {
-                       const displayData = selectedClientForSending === 'All Clients' 
-                         ? clientSendingData.slice(0, 5) // Show top 5 clients
-                         : clientSendingData.filter(client => client.clientName === selectedClientForSending);
-                       
-                       return displayData.map((client: any, index) => (
-                         <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10 mb-3">
-                           <div className="flex justify-between items-start mb-3">
-                             <h4 className="text-white font-medium text-sm">{client.clientName}</h4>
-                             <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
-                               {client.accountCount} accounts
-                             </Badge>
-                           </div>
-                           
-                           {/* Capacity Bar Chart */}
-                           <div className="space-y-2 mb-3">
-                             <div className="flex justify-between text-xs">
-                               <span className="text-white/70">Maximum Capacity</span>
-                               <span className="text-white font-semibold">{client.maxSending.toLocaleString()}</span>
-                             </div>
-                             <div className="w-full bg-white/10 rounded-full h-2">
-                               <div 
-                                 className="bg-dashboard-success h-2 rounded-full" 
-                                 style={{ width: '100%' }}
-                               ></div>
-                             </div>
-                             
-                             <div className="flex justify-between text-xs">
-                               <span className="text-white/70">Available Sending</span>
-                               <span className="text-white font-semibold">{client.availableSending.toLocaleString()}</span>
-                             </div>
-                             <div className="w-full bg-white/10 rounded-full h-2">
-                               <div 
-                                 className="bg-dashboard-accent h-2 rounded-full" 
-                                 style={{ width: `${client.utilizationPercentage}%` }}
-                               ></div>
-                             </div>
-                           </div>
-                           
-                           {/* Metrics */}
-                           <div className="grid grid-cols-2 gap-2 text-xs">
-                             <div>
-                               <span className="text-white/70">Utilization:</span>
-                               <div className="text-white font-semibold">{client.utilizationPercentage}%</div>
-                             </div>
-                             <div>
-                               <span className="text-white/70">Shortfall:</span>
-                               <div className="text-dashboard-warning font-semibold">{client.shortfallPercentage}%</div>
-                             </div>
-                             <div>
-                               <span className="text-white/70">Daily Target:</span>
-                               <div className="text-white font-semibold">{client.medianDailyTarget.toLocaleString()}</div>
-                             </div>
-                             <div>
-                               <span className="text-white/70">Gap:</span>
-                               <div className="text-dashboard-warning font-semibold">{client.shortfall.toLocaleString()}</div>
-                             </div>
-                           </div>
-                         </div>
-                       ));
-                     })()}
-                   </div>
-                 </div>
-               </div>
-             ))}
-           </CardContent>
+                        
+                        {/* Metrics */}
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-white/70">Utilization:</span>
+                            <div className="text-white font-semibold">{client.utilizationPercentage}%</div>
+                          </div>
+                          <div>
+                            <span className="text-white/70">Shortfall:</span>
+                            <div className="text-dashboard-warning font-semibold">{client.shortfallPercentage}%</div>
+                          </div>
+                          <div>
+                            <span className="text-white/70">Daily Target:</span>
+                            <div className="text-white font-semibold">{client.medianDailyTarget.toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <span className="text-white/70">Gap:</span>
+                            <div className="text-dashboard-warning font-semibold">{client.shortfall.toLocaleString()}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
+            </CardContent>
           </Card>
         </div>
 

@@ -3,16 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, TrendingUp, Mail, Users, BarChart3, Calendar, Send, Target } from "lucide-react";
 import { Link } from "react-router-dom";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell
-} from 'recharts';
 
 const SendingVolumeDashboard = () => {
   const clientData = [
@@ -133,61 +123,96 @@ const SendingVolumeDashboard = () => {
           </Card>
         </div>
 
-        {/* Main Chart */}
+        {/* Main Performance Display */}
         <Card className="bg-white/5 backdrop-blur-sm border-white/10 shadow-2xl">
           <CardHeader className="pb-6">
             <CardTitle className="text-white flex items-center gap-3 text-2xl">
               <Users className="h-7 w-7 text-dashboard-primary" />
-              MTD Emails Sent by Client
+              MTD Email Performance Rankings
             </CardTitle>
-            <p className="text-white/60 mt-2">Performance ranking from highest to lowest volume</p>
+            <p className="text-white/60 mt-2">All clients ranked by email volume sent this month</p>
           </CardHeader>
           <CardContent>
-            <div className="h-[600px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={clientData}
-                  layout="horizontal"
-                  margin={{ top: 20, right: 60, left: 140, bottom: 20 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                  <XAxis 
-                    type="number" 
-                    stroke="rgba(255,255,255,0.8)"
-                    fontSize={14}
-                    tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
-                  />
-                  <YAxis 
-                    type="category" 
-                    dataKey="name" 
-                    stroke="rgba(255,255,255,0.8)"
-                    fontSize={14}
-                    width={135}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "rgba(0,0,0,0.9)",
-                      border: "2px solid rgba(255,255,255,0.3)",
-                      borderRadius: "12px",
-                      color: "white",
-                      boxShadow: "0 10px 30px rgba(0,0,0,0.5)"
-                    }}
-                    formatter={(value: any, name: any, props: any) => [
-                      `${value.toLocaleString()} emails`, 
-                      `Rank #${props.payload.rank} - MTD Volume`
-                    ]}
-                    labelStyle={{ color: "white", fontWeight: "bold" }}
-                  />
-                  <Bar dataKey="emails" radius={[0, 8, 8, 0]}>
-                    {clientData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={getBarColor(entry.rank)}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="grid gap-4">
+              {clientData.map((client) => {
+                const percentage = (client.emails / Math.max(...clientData.map(c => c.emails))) * 100;
+                const isTopPerformer = client.rank <= 3;
+                const isBottomPerformer = client.rank >= 15;
+                
+                return (
+                  <div 
+                    key={client.name} 
+                    className={`p-6 rounded-xl border-2 transition-all duration-300 hover:scale-[1.02] ${
+                      isTopPerformer 
+                        ? 'bg-gradient-to-r from-green-500/20 to-green-600/30 border-green-400/50 shadow-green-500/20' 
+                        : isBottomPerformer 
+                        ? 'bg-gradient-to-r from-red-500/20 to-red-600/30 border-red-400/50 shadow-red-500/20'
+                        : 'bg-white/10 border-white/20'
+                    } shadow-xl`}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
+                          isTopPerformer 
+                            ? 'bg-green-400 text-green-900' 
+                            : isBottomPerformer 
+                            ? 'bg-red-400 text-red-900'
+                            : 'bg-dashboard-primary text-white'
+                        }`}>
+                          #{client.rank}
+                        </div>
+                        <div>
+                          <h3 className={`text-xl font-bold ${
+                            isTopPerformer ? 'text-green-100' : isBottomPerformer ? 'text-red-100' : 'text-white'
+                          }`}>
+                            {client.name}
+                          </h3>
+                          <p className={`text-sm ${
+                            isTopPerformer ? 'text-green-200' : isBottomPerformer ? 'text-red-200' : 'text-white/70'
+                          }`}>
+                            {isTopPerformer ? 'Top Performer' : isBottomPerformer ? 'Needs Attention' : 'Standard Performance'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-3xl font-bold ${
+                          isTopPerformer ? 'text-green-100' : isBottomPerformer ? 'text-red-100' : 'text-white'
+                        }`}>
+                          {client.emails.toLocaleString()}
+                        </div>
+                        <p className={`text-sm ${
+                          isTopPerformer ? 'text-green-200' : isBottomPerformer ? 'text-red-200' : 'text-white/70'
+                        }`}>
+                          emails sent
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="relative">
+                      <div className={`w-full h-4 rounded-full ${
+                        isTopPerformer ? 'bg-green-900/30' : isBottomPerformer ? 'bg-red-900/30' : 'bg-white/10'
+                      }`}>
+                        <div 
+                          className={`h-4 rounded-full transition-all duration-1000 ${
+                            isTopPerformer 
+                              ? 'bg-gradient-to-r from-green-400 to-green-500' 
+                              : isBottomPerformer 
+                              ? 'bg-gradient-to-r from-red-400 to-red-500'
+                              : 'bg-gradient-to-r from-dashboard-primary to-dashboard-accent'
+                          }`}
+                          style={{ width: `${percentage}%` }}
+                        ></div>
+                      </div>
+                      <div className={`absolute right-2 top-0 h-4 flex items-center text-xs font-bold ${
+                        isTopPerformer ? 'text-green-900' : isBottomPerformer ? 'text-red-900' : 'text-white'
+                      }`}>
+                        {percentage.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>

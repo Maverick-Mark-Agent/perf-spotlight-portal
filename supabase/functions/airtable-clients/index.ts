@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
 
     console.log('Fetching data from Airtable...');
     
-    const airtableUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`;
+    const airtableUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?view=${encodeURIComponent('Positive Replies')}`;
     
     const response = await fetch(airtableUrl, {
       headers: {

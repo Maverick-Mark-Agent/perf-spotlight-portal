@@ -161,11 +161,12 @@ const BillingDashboard = () => {
     return activeClients.reduce(
       (acc, client) => ({
         totalRevenue: acc.totalRevenue + client.monthlyRevenue,
+        totalTargetPayout: acc.totalTargetPayout + (client.monthlyKPI * client.pricePerLead),
         totalLeads: acc.totalLeads + client.positiveRepliesMTD,
         totalKPI: acc.totalKPI + client.monthlyKPI,
         averageProgress: acc.averageProgress + client.kpiProgress
       }),
-      { totalRevenue: 0, totalLeads: 0, totalKPI: 0, averageProgress: 0 }
+      { totalRevenue: 0, totalTargetPayout: 0, totalLeads: 0, totalKPI: 0, averageProgress: 0 }
     );
   }, [activeClients]);
 
@@ -765,25 +766,29 @@ const BillingDashboard = () => {
                   </Table>
                 </div>
                 
-                {/* Summary Stats for Table */}
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-white/5 rounded-lg">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-white">${totalStats.totalRevenue.toLocaleString()}</div>
-                    <div className="text-white/70 text-sm">Total Payout</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-white">{totalStats.totalLeads.toLocaleString()}</div>
-                    <div className="text-white/70 text-sm">Total Leads</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-white">{totalStats.totalKPI.toLocaleString()}</div>
-                    <div className="text-white/70 text-sm">Total KPI Target</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-white">{avgProgress.toFixed(1)}%</div>
-                    <div className="text-white/70 text-sm">Avg Progress</div>
-                  </div>
-                </div>
+                 {/* Summary Stats for Table */}
+                 <div className="mt-6 grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-white/5 rounded-lg">
+                   <div className="text-center">
+                     <div className="text-2xl font-bold text-white">${totalStats.totalRevenue.toLocaleString()}</div>
+                     <div className="text-white/70 text-sm">Total Payout</div>
+                   </div>
+                   <div className="text-center">
+                     <div className="text-2xl font-bold text-white">${(totalStats.totalTargetPayout - totalStats.totalRevenue).toLocaleString()}</div>
+                     <div className="text-white/70 text-sm">Left Payout</div>
+                   </div>
+                   <div className="text-center">
+                     <div className="text-2xl font-bold text-white">{totalStats.totalLeads.toLocaleString()}</div>
+                     <div className="text-white/70 text-sm">Total Leads</div>
+                   </div>
+                   <div className="text-center">
+                     <div className="text-2xl font-bold text-white">{totalStats.totalKPI.toLocaleString()}</div>
+                     <div className="text-white/70 text-sm">Total KPI Target</div>
+                   </div>
+                   <div className="text-center">
+                     <div className="text-2xl font-bold text-white">{avgProgress.toFixed(1)}%</div>
+                     <div className="text-white/70 text-sm">Avg Progress</div>
+                   </div>
+                 </div>
               </CardContent>
             </Card>
           </TabsContent>

@@ -3,7 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line, ReferenceLine
+} from 'recharts';
 import { 
   DollarSign, 
   TrendingUp, 
@@ -11,8 +17,10 @@ import {
   Users, 
   ArrowLeft,
   Calculator,
-  PieChart,
-  Activity
+  PieChart as PieChartIcon,
+  Activity,
+  Filter,
+  ChevronDown
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -25,10 +33,12 @@ interface ClientBillingData {
   monthlyRevenue: number;
   kpiProgress: number;
   status: 'on-track' | 'warning' | 'danger';
+  isActive: boolean;
 }
 
 const BillingDashboard = () => {
   const [clientsData, setClientsData] = useState<ClientBillingData[]>([]);
+  const [selectedClient, setSelectedClient] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,27 +52,30 @@ const BillingDashboard = () => {
           throw new Error(error.message || 'Failed to fetch client data');
         }
         
-        const billingData: ClientBillingData[] = data.clients.map((client: any) => {
-          const pricePerLead = 75; // Default price per lead (you can adjust this)
-          const positiveRepliesMTD = client.leadsGenerated || 0;
-          const monthlyRevenue = positiveRepliesMTD * pricePerLead;
-          const kpiProgress = client.monthlyKPI > 0 ? (positiveRepliesMTD / client.monthlyKPI) * 100 : 0;
-          
-          let status: 'on-track' | 'warning' | 'danger' = 'on-track';
-          if (kpiProgress < 50) status = 'danger';
-          else if (kpiProgress < 80) status = 'warning';
+        const billingData: ClientBillingData[] = data.clients
+          .map((client: any) => {
+            const pricePerLead = 75; // Default price per lead (you can adjust this)
+            const positiveRepliesMTD = client.leadsGenerated || 0;
+            const monthlyRevenue = positiveRepliesMTD * pricePerLead;
+            const kpiProgress = client.monthlyKPI > 0 ? (positiveRepliesMTD / client.monthlyKPI) * 100 : 0;
+            
+            let status: 'on-track' | 'warning' | 'danger' = 'on-track';
+            if (kpiProgress < 50) status = 'danger';
+            else if (kpiProgress < 80) status = 'warning';
 
-          return {
-            id: client.id,
-            name: client.name,
-            monthlyKPI: client.monthlyKPI,
-            positiveRepliesMTD,
-            pricePerLead,
-            monthlyRevenue,
-            kpiProgress,
-            status
-          };
-        });
+            return {
+              id: client.id,
+              name: client.name,
+              monthlyKPI: client.monthlyKPI,
+              positiveRepliesMTD,
+              pricePerLead,
+              monthlyRevenue,
+              kpiProgress,
+              status,
+              isActive: monthlyRevenue > 0
+            };
+          })
+          .filter((client: ClientBillingData) => client.isActive); // Only show active clients
 
         setClientsData(billingData);
       } catch (err) {
@@ -75,8 +88,38 @@ const BillingDashboard = () => {
     fetchBillingData();
   }, []);
 
+  // Filter and organize data
+  const activeClients = useMemo(() => clientsData.filter(client => client.isActive), [clientsData]);
+  
+  const kpiCategories = useMemo(() => {
+    const aboveKPI = activeClients.filter(client => client.kpiProgress >= 100);
+    const belowKPI = activeClients.filter(client => client.kpiProgress < 100);
+    return { aboveKPI, belowKPI };
+  }, [activeClients]);
+
+  const chartData = useMemo(() => {
+    return activeClients.map(client => ({
+      name: client.name.length > 15 ? client.name.substring(0, 15) + '...' : client.name,
+      revenue: client.monthlyRevenue,
+      kpiProgress: client.kpiProgress,
+      leads: client.positiveRepliesMTD,
+      target: client.monthlyKPI,
+      status: client.status
+    }));
+  }, [activeClients]);
+
+  const kpiComparisonData = useMemo(() => [
+    { name: 'Above KPI', count: kpiCategories.aboveKPI.length, fill: '#10b981' },
+    { name: 'Below KPI', count: kpiCategories.belowKPI.length, fill: '#ef4444' }
+  ], [kpiCategories]);
+
+  const selectedClientData = useMemo(() => {
+    if (selectedClient === "all") return null;
+    return activeClients.find(client => client.id === selectedClient);
+  }, [selectedClient, activeClients]);
+
   const totalStats = useMemo(() => {
-    return clientsData.reduce(
+    return activeClients.reduce(
       (acc, client) => ({
         totalRevenue: acc.totalRevenue + client.monthlyRevenue,
         totalLeads: acc.totalLeads + client.positiveRepliesMTD,
@@ -85,9 +128,9 @@ const BillingDashboard = () => {
       }),
       { totalRevenue: 0, totalLeads: 0, totalKPI: 0, averageProgress: 0 }
     );
-  }, [clientsData]);
+  }, [activeClients]);
 
-  const avgProgress = clientsData.length > 0 ? totalStats.averageProgress / clientsData.length : 0;
+  const avgProgress = activeClients.length > 0 ? totalStats.averageProgress / activeClients.length : 0;
 
   if (loading) {
     return (
@@ -164,164 +207,297 @@ const BillingDashboard = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Overview Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {/* Client Selection and Filters */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
           <Card className="bg-white/10 backdrop-blur-md border-white/20">
-            <CardContent className="p-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-white text-sm font-medium flex items-center gap-2">
+                <Filter className="h-4 w-4" />
+                Client Selection
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Select value={selectedClient} onValueChange={setSelectedClient}>
+                <SelectTrigger className="bg-white/5 border-white/20 text-white">
+                  <SelectValue placeholder="Select a client" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-900 border-white/20">
+                  <SelectItem value="all" className="text-white">All Active Clients</SelectItem>
+                  {activeClients.map((client) => (
+                    <SelectItem key={client.id} value={client.id} className="text-white">
+                      {client.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+
+          {/* Quick Stats */}
+          <Card className="bg-white/10 backdrop-blur-md border-white/20">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white/70 text-sm font-medium">Total Revenue MTD</p>
-                  <p className="text-2xl font-bold text-white">${totalStats.totalRevenue.toLocaleString()}</p>
+                  <p className="text-white/70 text-xs font-medium">Active Clients</p>
+                  <p className="text-xl font-bold text-white">{activeClients.length}</p>
                 </div>
-                <div className="p-3 bg-dashboard-success/20 rounded-lg">
-                  <DollarSign className="h-6 w-6 text-dashboard-success" />
-                </div>
+                <Users className="h-6 w-6 text-dashboard-primary" />
               </div>
             </CardContent>
           </Card>
 
           <Card className="bg-white/10 backdrop-blur-md border-white/20">
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white/70 text-sm font-medium">Total Leads MTD</p>
-                  <p className="text-2xl font-bold text-white">{totalStats.totalLeads.toLocaleString()}</p>
+                  <p className="text-white/70 text-xs font-medium">Above KPI</p>
+                  <p className="text-xl font-bold text-dashboard-success">{kpiCategories.aboveKPI.length}</p>
                 </div>
-                <div className="p-3 bg-dashboard-primary/20 rounded-lg">
-                  <Users className="h-6 w-6 text-dashboard-primary" />
-                </div>
+                <TrendingUp className="h-6 w-6 text-dashboard-success" />
               </div>
             </CardContent>
           </Card>
 
           <Card className="bg-white/10 backdrop-blur-md border-white/20">
-            <CardContent className="p-6">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white/70 text-sm font-medium">Total KPI Target</p>
-                  <p className="text-2xl font-bold text-white">{totalStats.totalKPI.toLocaleString()}</p>
+                  <p className="text-white/70 text-xs font-medium">Below KPI</p>
+                  <p className="text-xl font-bold text-red-400">{kpiCategories.belowKPI.length}</p>
                 </div>
-                <div className="p-3 bg-dashboard-warning/20 rounded-lg">
-                  <Target className="h-6 w-6 text-dashboard-warning" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/10 backdrop-blur-md border-white/20">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-white/70 text-sm font-medium">Avg KPI Progress</p>
-                  <p className="text-2xl font-bold text-white">{avgProgress.toFixed(1)}%</p>
-                </div>
-                <div className="p-3 bg-dashboard-accent/20 rounded-lg">
-                  <TrendingUp className="h-6 w-6 text-dashboard-accent" />
-                </div>
+                <Target className="h-6 w-6 text-red-400" />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Client Billing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {clientsData.map((client) => (
-            <Card 
-              key={client.id} 
-              className="bg-white/10 backdrop-blur-md border-white/20 hover:bg-white/15 transition-all duration-300"
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-white text-lg font-semibold">
-                    {client.name}
+        {/* Selected Client Detail */}
+        {selectedClientData && (
+          <Card className="bg-white/10 backdrop-blur-md border-white/20 mb-8">
+            <CardHeader>
+              <CardTitle className="text-white text-xl">{selectedClientData.name} - Detailed View</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="text-center p-4 bg-white/5 rounded-lg">
+                <div className="text-2xl font-bold text-white">${selectedClientData.monthlyRevenue.toLocaleString()}</div>
+                <div className="text-white/70 text-sm">Monthly Revenue</div>
+              </div>
+              <div className="text-center p-4 bg-white/5 rounded-lg">
+                <div className="text-2xl font-bold text-white">{selectedClientData.positiveRepliesMTD}</div>
+                <div className="text-white/70 text-sm">Leads MTD</div>
+              </div>
+              <div className="text-center p-4 bg-white/5 rounded-lg">
+                <div className="text-2xl font-bold text-white">{selectedClientData.monthlyKPI}</div>
+                <div className="text-white/70 text-sm">Monthly Target</div>
+              </div>
+              <div className="text-center p-4 bg-white/5 rounded-lg">
+                <div className={`text-2xl font-bold ${
+                  selectedClientData.kpiProgress >= 100 ? 'text-dashboard-success' : 
+                  selectedClientData.kpiProgress >= 80 ? 'text-dashboard-warning' : 'text-red-400'
+                }`}>
+                  {selectedClientData.kpiProgress.toFixed(1)}%
+                </div>
+                <div className="text-white/70 text-sm">KPI Progress</div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Charts and Analytics */}
+        <Tabs defaultValue="overview" className="w-full">
+          <TabsList className="grid w-full grid-cols-3 bg-white/10 backdrop-blur-md">
+            <TabsTrigger value="overview" className="text-white data-[state=active]:bg-dashboard-primary">Overview</TabsTrigger>
+            <TabsTrigger value="revenue" className="text-white data-[state=active]:bg-dashboard-primary">Revenue Analysis</TabsTrigger>
+            <TabsTrigger value="performance" className="text-white data-[state=active]:bg-dashboard-primary">KPI Performance</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* KPI Distribution Pie Chart */}
+              <Card className="bg-white/10 backdrop-blur-md border-white/20">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <PieChartIcon className="h-5 w-5" />
+                    KPI Performance Distribution
                   </CardTitle>
-                  <Badge 
-                    variant="outline" 
-                    className={`${
-                      client.status === 'on-track' 
-                        ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
-                        : client.status === 'warning'
-                        ? 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
-                        : 'bg-red-500/20 text-red-400 border-red-500/40'
-                    }`}
-                  >
-                    {client.status === 'on-track' ? 'On Track' : 
-                     client.status === 'warning' ? 'Warning' : 'Danger'}
-                  </Badge>
-                </div>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={kpiComparisonData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={120}
+                        paddingAngle={5}
+                        dataKey="count"
+                      >
+                        {kpiComparisonData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'rgba(0,0,0,0.8)', 
+                          border: '1px solid rgba(255,255,255,0.2)',
+                          color: 'white'
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Client Revenue Bar Chart */}
+              <Card className="bg-white/10 backdrop-blur-md border-white/20">
+                <CardHeader>
+                  <CardTitle className="text-white">Monthly Revenue by Client</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis 
+                        dataKey="name" 
+                        tick={{ fill: 'white', fontSize: 12 }}
+                        angle={-45}
+                        textAnchor="end"
+                        height={80}
+                      />
+                      <YAxis tick={{ fill: 'white' }} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'rgba(0,0,0,0.8)', 
+                          border: '1px solid rgba(255,255,255,0.2)',
+                          color: 'white'
+                        }}
+                        formatter={(value, name) => [
+                          name === 'revenue' ? `$${value.toLocaleString()}` : value,
+                          name === 'revenue' ? 'Revenue' : 'Leads'
+                        ]}
+                      />
+                      <Bar dataKey="revenue" fill="#8884d8" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="revenue" className="space-y-6">
+            <Card className="bg-white/10 backdrop-blur-md border-white/20">
+              <CardHeader>
+                <CardTitle className="text-white">Revenue vs Target Analysis</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Revenue */}
-                <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-dashboard-success" />
-                    <span className="text-white/70 text-sm">Revenue MTD</span>
-                  </div>
-                  <span className="text-white font-semibold">${client.monthlyRevenue.toLocaleString()}</span>
-                </div>
-
-                {/* KPI Progress */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-white/70">KPI Progress</span>
-                    <span className="text-white font-medium">{client.kpiProgress.toFixed(1)}%</span>
-                  </div>
-                  <div className="w-full bg-white/10 rounded-full h-2">
-                    <div 
-                      className={`h-2 rounded-full transition-all duration-300 ${
-                        client.status === 'on-track' 
-                          ? 'bg-dashboard-success'
-                          : client.status === 'warning'
-                          ? 'bg-dashboard-warning'
-                          : 'bg-red-500'
-                      }`}
-                      style={{ width: `${Math.min(client.kpiProgress, 100)}%` }}
+              <CardContent>
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                    <XAxis 
+                      dataKey="name" 
+                      tick={{ fill: 'white', fontSize: 12 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
                     />
-                  </div>
-                </div>
-
-                {/* Metrics Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="text-center p-2 bg-white/5 rounded">
-                    <div className="flex items-center justify-center gap-1 mb-1">
-                      <Activity className="h-3 w-3 text-dashboard-primary" />
-                      <span className="text-xs text-white/60">Leads MTD</span>
-                    </div>
-                    <div className="text-white font-semibold">{client.positiveRepliesMTD}</div>
-                  </div>
-                  <div className="text-center p-2 bg-white/5 rounded">
-                    <div className="flex items-center justify-center gap-1 mb-1">
-                      <Target className="h-3 w-3 text-dashboard-warning" />
-                      <span className="text-xs text-white/60">KPI Target</span>
-                    </div>
-                    <div className="text-white font-semibold">{client.monthlyKPI}</div>
-                  </div>
-                  <div className="text-center p-2 bg-white/5 rounded">
-                    <div className="flex items-center justify-center gap-1 mb-1">
-                      <Calculator className="h-3 w-3 text-dashboard-accent" />
-                      <span className="text-xs text-white/60">Price/Lead</span>
-                    </div>
-                    <div className="text-white font-semibold">${client.pricePerLead}</div>
-                  </div>
-                  <div className="text-center p-2 bg-white/5 rounded">
-                    <div className="flex items-center justify-center gap-1 mb-1">
-                      <PieChart className="h-3 w-3 text-dashboard-success" />
-                      <span className="text-xs text-white/60">Remaining</span>
-                    </div>
-                    <div className="text-white font-semibold">{Math.max(0, client.monthlyKPI - client.positiveRepliesMTD)}</div>
-                  </div>
-                </div>
+                    <YAxis tick={{ fill: 'white' }} />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'rgba(0,0,0,0.8)', 
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        color: 'white'
+                      }}
+                    />
+                    <Bar dataKey="leads" fill="#10b981" name="Actual Leads" />
+                    <Bar dataKey="target" fill="#ef4444" name="Target Leads" opacity={0.7} />
+                  </BarChart>
+                </ResponsiveContainer>
               </CardContent>
             </Card>
-          ))}
-        </div>
+          </TabsContent>
 
-        {clientsData.length === 0 && (
+          <TabsContent value="performance" className="space-y-6">
+            <Card className="bg-white/10 backdrop-blur-md border-white/20">
+              <CardHeader>
+                <CardTitle className="text-white">KPI Progress by Client</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                    <XAxis 
+                      dataKey="name" 
+                      tick={{ fill: 'white', fontSize: 12 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
+                    />
+                    <YAxis tick={{ fill: 'white' }} />
+                    <ReferenceLine y={100} stroke="#ffffff" strokeDasharray="5 5" />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'rgba(0,0,0,0.8)', 
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        color: 'white'
+                      }}
+                      formatter={(value) => [`${Number(value).toFixed(1)}%`, 'KPI Progress']}
+                    />
+                    <Bar dataKey="kpiProgress">
+                      {chartData.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry.kpiProgress >= 100 ? '#10b981' : entry.kpiProgress >= 80 ? '#f59e0b' : '#ef4444'} 
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+
+            {/* Below KPI Clients */}
+            <Card className="bg-white/10 backdrop-blur-md border-white/20">
+              <CardHeader>
+                <CardTitle className="text-white text-lg">Clients Below KPI Target</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {kpiCategories.belowKPI.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {kpiCategories.belowKPI.map((client) => (
+                      <div key={client.id} className="p-4 bg-white/5 rounded-lg border border-red-500/20">
+                        <h4 className="text-white font-semibold">{client.name}</h4>
+                        <div className="mt-2 space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-white/70">Progress:</span>
+                            <span className="text-red-400">{client.kpiProgress.toFixed(1)}%</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-white/70">Revenue:</span>
+                            <span className="text-white">${client.monthlyRevenue.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-white/70">Leads:</span>
+                            <span className="text-white">{client.positiveRepliesMTD}/{client.monthlyKPI}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-white/70 text-center py-8">All active clients are meeting their KPI targets! 🎉</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {activeClients.length === 0 && (
           <Card className="bg-white/10 backdrop-blur-md border-white/20">
             <CardContent className="p-12 text-center">
               <DollarSign className="h-12 w-12 text-white/40 mx-auto mb-4" />
-              <h3 className="text-white text-lg font-semibold mb-2">No billing data available</h3>
-              <p className="text-white/70">Client billing information will appear here once data is loaded.</p>
+              <h3 className="text-white text-lg font-semibold mb-2">No active billing data available</h3>
+              <p className="text-white/70">Active client billing information will appear here once data is loaded.</p>
             </CardContent>
           </Card>
         )}

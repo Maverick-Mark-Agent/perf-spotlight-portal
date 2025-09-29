@@ -57,8 +57,19 @@ const BillingDashboard = () => {
           .map((client: any) => {
             const positiveRepliesMTD = client.leadsGenerated || 0;
             const monthlyRevenue = client.payout || 0; // Use Payout field from Airtable
+            const monthlyKPI = client.monthlyKPI || 0;
             const pricePerLead = positiveRepliesMTD > 0 ? monthlyRevenue / positiveRepliesMTD : 0; // Calculate price per lead
-            const kpiProgress = client.monthlyKPI > 0 ? (positiveRepliesMTD / client.monthlyKPI) * 100 : 0;
+            const kpiProgress = monthlyKPI > 0 ? (positiveRepliesMTD / monthlyKPI) * 100 : 0;
+            
+            // Debug log for first few clients
+            if (data.clients.indexOf(client) < 3) {
+              console.log(`Client ${client.name}:`, {
+                positiveRepliesMTD,
+                monthlyKPI,
+                kpiProgress,
+                monthlyRevenue
+              });
+            }
             
             let status: 'on-track' | 'warning' | 'danger' = 'on-track';
             if (kpiProgress < 50) status = 'danger';
@@ -67,16 +78,23 @@ const BillingDashboard = () => {
             return {
               id: client.id,
               name: client.name,
-              monthlyKPI: client.monthlyKPI,
+              monthlyKPI,
               positiveRepliesMTD,
               pricePerLead,
               monthlyRevenue,
-              kpiProgress,
+              kpiProgress: Math.round(kpiProgress * 100) / 100, // Round to 2 decimal places
               status,
-              isActive: monthlyRevenue > 0
+              isActive: monthlyRevenue > 0 && monthlyKPI > 0 // Only active if both revenue and KPI exist
             };
           })
           .filter((client: ClientBillingData) => client.isActive); // Only show active clients
+
+        console.log('Processed billing data:', billingData.map(c => ({ 
+          name: c.name, 
+          kpiProgress: c.kpiProgress, 
+          leads: c.positiveRepliesMTD, 
+          kpi: c.monthlyKPI 
+        })));
 
         setClientsData(billingData);
       } catch (err) {
@@ -334,35 +352,38 @@ const BillingDashboard = () => {
 
           <TabsContent value="overview" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Enhanced KPI Progress Chart */}
+              {/* Enhanced KPI Progress Chart - Line Chart */}
               <Card className="bg-white/10 backdrop-blur-md border-white/20">
                 <CardHeader>
                   <CardTitle className="text-white flex items-center gap-2">
                     <Target className="h-5 w-5" />
-                    KPI Progress by Client (Lowest to Highest)
+                    KPI Progress Trend (Sorted by Performance)
                   </CardTitle>
-                  <p className="text-white/70 text-sm">Individual client KPI achievement sorted by performance</p>
+                  <p className="text-white/70 text-sm">Client KPI achievement trend from lowest to highest performers</p>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={400}>
-                    <BarChart 
-                      data={sortedByKpiProgress} 
-                      layout="horizontal"
-                      margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
+                    <LineChart 
+                      data={sortedByKpiProgress}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                       <XAxis 
-                        type="number" 
-                        domain={[0, 150]}
-                        tick={{ fill: 'white', fontSize: 12 }}
+                        dataKey="name" 
+                        tick={{ fill: 'white', fontSize: 10 }}
+                        angle={-45}
+                        textAnchor="end"
+                        height={80}
+                        interval={0}
                       />
                       <YAxis 
-                        type="category" 
-                        dataKey="name" 
-                        tick={{ fill: 'white', fontSize: 11 }}
-                        width={70}
+                        tick={{ fill: 'white', fontSize: 12 }}
+                        domain={[0, 'dataMax + 20']}
+                        label={{ value: 'KPI Progress (%)', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: 'white' } }}
                       />
-                      <ReferenceLine x={100} stroke="#ffffff" strokeDasharray="5 5" />
+                      <ReferenceLine y={100} stroke="#10b981" strokeDasharray="5 5" strokeWidth={2} />
+                      <ReferenceLine y={80} stroke="#f59e0b" strokeDasharray="3 3" strokeWidth={1} />
+                      <ReferenceLine y={50} stroke="#f97316" strokeDasharray="3 3" strokeWidth={1} />
                       <Tooltip 
                         contentStyle={{ 
                           backgroundColor: 'rgba(0,0,0,0.9)', 
@@ -381,7 +402,7 @@ const BillingDashboard = () => {
                               <div className="space-y-1">
                                 <div className="font-semibold">{data.fullName}</div>
                                 <div className="text-sm opacity-80">
-                                  {data.leads}/{data.target} leads (${data.revenue.toLocaleString()})
+                                  Leads: {data.leads}/{data.target} | Revenue: ${data.revenue.toLocaleString()}
                                 </div>
                               </div>
                             );
@@ -389,13 +410,30 @@ const BillingDashboard = () => {
                           return label;
                         }}
                       />
-                      <Bar dataKey="kpiProgress" radius={[0, 4, 4, 0]}>
-                        {sortedByKpiProgress.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
+                      <Line 
+                        type="monotone" 
+                        dataKey="actualProgress" 
+                        stroke="#8884d8" 
+                        strokeWidth={3}
+                        dot={{ fill: '#8884d8', strokeWidth: 2, r: 6 }}
+                        activeDot={{ r: 8, stroke: '#8884d8', strokeWidth: 2, fill: 'white' }}
+                      />
+                    </LineChart>
                   </ResponsiveContainer>
+                  <div className="mt-4 flex flex-wrap gap-4 text-xs text-white/70">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-0.5 bg-dashboard-success"></div>
+                      <span>100% KPI Target</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-0.5 bg-dashboard-warning"></div>
+                      <span>80% Warning Line</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-0.5 bg-orange-500"></div>
+                      <span>50% Critical Line</span>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 

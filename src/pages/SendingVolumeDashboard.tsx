@@ -76,28 +76,28 @@ const SendingVolumeDashboard = () => {
         {/* Performance Highlights */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
           {/* Top Performers */}
-          <Card className="bg-gradient-to-br from-green-500/20 to-green-600/30 backdrop-blur-sm border-green-400/30 shadow-2xl">
+          <Card className="bg-gradient-to-br from-dashboard-success/20 via-dashboard-success/15 to-dashboard-success/25 backdrop-blur-sm border-dashboard-success/40 shadow-2xl">
             <CardHeader>
-              <CardTitle className="text-green-100 flex items-center gap-2 text-xl">
-                <TrendingUp className="h-6 w-6" />
+              <CardTitle className="text-white flex items-center gap-2 text-xl">
+                <TrendingUp className="h-6 w-6 text-dashboard-success" />
                 Exceeding Targets
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {clientData.filter(client => client.isAboveTarget).slice(0, 3).map((client, index) => (
-                <div key={client.name} className="flex items-center justify-between p-4 bg-green-500/20 rounded-lg border border-green-400/30">
+                <div key={client.name} className="flex items-center justify-between p-4 bg-white/10 rounded-lg border border-dashboard-success/40">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-green-400 text-green-900 flex items-center justify-center font-bold text-sm">
+                    <div className="w-8 h-8 rounded-full bg-dashboard-success text-white flex items-center justify-center font-bold text-sm">
                       ✓
                     </div>
                     <div>
-                      <span className="text-green-100 font-semibold block">{client.name}</span>
-                      <span className="text-green-200 text-sm">{client.targetPercentage.toFixed(1)}% of target</span>
+                      <span className="text-white font-semibold block">{client.name}</span>
+                      <span className="text-white/80 text-sm">{client.targetPercentage.toFixed(1)}% of target</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-green-200 font-bold text-lg">{client.emails.toLocaleString()}</span>
-                    <div className="text-green-300 text-xs">Target: {client.target.toLocaleString()}</div>
+                    <span className="text-white font-bold text-lg">{client.emails.toLocaleString()}</span>
+                    <div className="text-white/70 text-xs">Target: {client.target.toLocaleString()}</div>
                   </div>
                 </div>
               ))}
@@ -105,10 +105,10 @@ const SendingVolumeDashboard = () => {
           </Card>
 
           {/* Total Summary */}
-          <Card className="bg-white/10 backdrop-blur-sm border-white/20 shadow-2xl">
+          <Card className="bg-gradient-to-br from-dashboard-primary/25 via-dashboard-primary/15 to-dashboard-accent/20 backdrop-blur-sm border-dashboard-primary/50 shadow-2xl">
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2 text-xl">
-                <BarChart3 className="h-6 w-6" />
+                <BarChart3 className="h-6 w-6 text-dashboard-primary" />
                 Overall Progress
               </CardTitle>
             </CardHeader>
@@ -127,15 +127,15 @@ const SendingVolumeDashboard = () => {
                   style={{ width: `${Math.min(overallTargetPercentage, 100)}%` }}
                 ></div>
               </div>
-              <p className="text-dashboard-accent text-sm mt-2">{totalEmails.toLocaleString()} / {totalTargets.toLocaleString()}</p>
+              <p className="text-white/70 text-sm mt-2">{totalEmails.toLocaleString()} / {totalTargets.toLocaleString()}</p>
             </CardContent>
           </Card>
 
           {/* Performance Summary */}
-          <Card className="bg-gradient-to-br from-dashboard-primary/20 to-dashboard-accent/30 backdrop-blur-sm border-dashboard-primary/30 shadow-2xl">
+          <Card className="bg-gradient-to-br from-dashboard-warning/25 via-dashboard-warning/15 to-dashboard-warning/20 backdrop-blur-sm border-dashboard-warning/50 shadow-2xl">
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2 text-xl">
-                <Target className="h-6 w-6" />
+                <Target className="h-6 w-6 text-dashboard-warning" />
                 Performance Summary
               </CardTitle>
             </CardHeader>

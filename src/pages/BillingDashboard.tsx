@@ -13,7 +13,8 @@ import {
 } from 'recharts';
 import { 
   DollarSign, 
-  TrendingUp, 
+  TrendingUp,
+  TrendingDown, 
   Target, 
   Users, 
   ArrowLeft,
@@ -773,8 +774,27 @@ const BillingDashboard = () => {
                      <div className="text-white/70 text-sm">Total Payout</div>
                    </div>
                    <div className="text-center">
-                     <div className="text-2xl font-bold text-white">${(totalStats.totalTargetPayout - totalStats.totalRevenue).toLocaleString()}</div>
-                     <div className="text-white/70 text-sm">Left Payout</div>
+                     <div className={`text-2xl font-bold flex items-center justify-center gap-2 ${
+                       (totalStats.totalTargetPayout - totalStats.totalRevenue) <= 0 
+                         ? 'text-green-400' 
+                         : 'text-red-400'
+                     }`}>
+                       {(totalStats.totalTargetPayout - totalStats.totalRevenue) <= 0 ? (
+                         <TrendingUp className="h-5 w-5" />
+                       ) : (
+                         <TrendingDown className="h-5 w-5" />
+                       )}
+                       ${Math.abs(totalStats.totalTargetPayout - totalStats.totalRevenue).toLocaleString()}
+                     </div>
+                     <div className={`text-sm ${
+                       (totalStats.totalTargetPayout - totalStats.totalRevenue) <= 0 
+                         ? 'text-green-300' 
+                         : 'text-red-300'
+                     }`}>
+                       {(totalStats.totalTargetPayout - totalStats.totalRevenue) <= 0 
+                         ? 'Exceeding Target!' 
+                         : 'Below Target'}
+                     </div>
                    </div>
                    <div className="text-center">
                      <div className="text-2xl font-bold text-white">{totalStats.totalLeads.toLocaleString()}</div>

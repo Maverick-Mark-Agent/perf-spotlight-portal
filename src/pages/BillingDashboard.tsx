@@ -172,12 +172,13 @@ const BillingDashboard = () => {
   const avgProgress = activeClients.length > 0 ? totalStats.averageProgress / activeClients.length : 0;
 
   const exportToCSV = () => {
-    const headers = ['Client Name', 'Monthly Payout ($)', 'Leads Generated', 'Monthly KPI', 'KPI Progress (%)', 'Price per Lead ($)', 'Status'];
+    const headers = ['Client Name', 'Monthly Payout ($)', 'Target Payout ($)', 'Leads Generated', 'Monthly KPI', 'KPI Progress (%)', 'Price per Lead ($)', 'Status'];
     const csvData = [
       headers,
       ...sortedClientsByPayout.map(client => [
         client.name,
         client.monthlyRevenue,
+        (client.monthlyKPI * client.pricePerLead).toFixed(2),
         client.positiveRepliesMTD,
         client.monthlyKPI,
         client.kpiProgress.toFixed(1),
@@ -688,17 +689,18 @@ const BillingDashboard = () => {
               <CardContent>
                 <div className="overflow-x-auto">
                   <Table>
-                    <TableHeader>
-                      <TableRow className="border-white/20 hover:bg-white/5">
-                        <TableHead className="text-white font-semibold">Client Name</TableHead>
-                        <TableHead className="text-white font-semibold text-right">Payout</TableHead>
-                        <TableHead className="text-white font-semibold text-right">Price per Lead</TableHead>
-                        <TableHead className="text-white font-semibold text-right">Monthly KPI</TableHead>
-                        <TableHead className="text-white font-semibold text-right">Replies MTD</TableHead>
-                        <TableHead className="text-white font-semibold text-right">KPI Progress</TableHead>
-                        <TableHead className="text-white font-semibold text-center">Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                     <TableHeader>
+                       <TableRow className="border-white/20 hover:bg-white/5">
+                         <TableHead className="text-white font-semibold">Client Name</TableHead>
+                         <TableHead className="text-white font-semibold text-right">Payout</TableHead>
+                         <TableHead className="text-white font-semibold text-right">Target Payout</TableHead>
+                         <TableHead className="text-white font-semibold text-right">Price per Lead</TableHead>
+                         <TableHead className="text-white font-semibold text-right">Monthly KPI</TableHead>
+                         <TableHead className="text-white font-semibold text-right">Replies MTD</TableHead>
+                         <TableHead className="text-white font-semibold text-right">KPI Progress</TableHead>
+                         <TableHead className="text-white font-semibold text-center">Status</TableHead>
+                       </TableRow>
+                     </TableHeader>
                     <TableBody>
                       {sortedClientsByPayout.map((client) => (
                         <TableRow 
@@ -708,12 +710,15 @@ const BillingDashboard = () => {
                           <TableCell className="font-medium text-white">
                             {client.name}
                           </TableCell>
-                          <TableCell className="text-right text-white font-semibold">
-                            ${client.monthlyRevenue.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right text-white">
-                            ${client.pricePerLead.toFixed(2)}
-                          </TableCell>
+                           <TableCell className="text-right text-white font-semibold">
+                             ${client.monthlyRevenue.toLocaleString()}
+                           </TableCell>
+                           <TableCell className="text-right text-white font-semibold">
+                             ${(client.monthlyKPI * client.pricePerLead).toLocaleString()}
+                           </TableCell>
+                           <TableCell className="text-right text-white">
+                             ${client.pricePerLead.toFixed(2)}
+                           </TableCell>
                           <TableCell className="text-right text-white">
                             {client.monthlyKPI.toLocaleString()}
                           </TableCell>

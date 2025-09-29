@@ -6,28 +6,32 @@ import { Link } from "react-router-dom";
 
 const SendingVolumeDashboard = () => {
   const clientData = [
-    { name: "Kim Wallace", emails: 76905, target: 78000, rank: 1 },
-    { name: "Jason Binyon", emails: 65558, target: 78000, rank: 2 },
-    { name: "David Amiri", emails: 45191, target: 39000, rank: 3 },
-    { name: "Workspark", emails: 37985, target: 52000, rank: 4 },
-    { name: "John Roberts", emails: 35306, target: 39000, rank: 5 },
-    { name: "Rob Russell", emails: 31772, target: 39000, rank: 6 },
-    { name: "StreetSmart Trucking", emails: 27104, target: 52000, rank: 7 },
-    { name: "StreetSmart P&C", emails: 21638, target: 39000, rank: 8 },
-    { name: "Danny Schwartz", emails: 20753, target: 39000, rank: 9 },
-    { name: "Radiant Energy", emails: 17045, target: 39000, rank: 10 },
-    { name: "SMA Insurance", emails: 16246, target: 52000, rank: 11 },
-    { name: "StreetSmart Commercial", emails: 15860, target: 52000, rank: 12 },
-    { name: "Jeff Schroder", emails: 14705, target: 26000, rank: 13 },
-    { name: "Devin Hodo", emails: 13555, target: 39000, rank: 14 },
-    { name: "Kirk Hodgson", emails: 11108, target: 26000, rank: 15 },
-    { name: "ATI", emails: 6059, target: 13000, rank: 16 },
-    { name: "Maverick Longrun", emails: 3611, target: 26000, rank: 17 }
+    { name: "Kim Wallace", emails: 76905, target: 78000 },
+    { name: "Jason Binyon", emails: 65558, target: 78000 },
+    { name: "David Amiri", emails: 45191, target: 39000 },
+    { name: "Workspark", emails: 37985, target: 52000 },
+    { name: "John Roberts", emails: 35306, target: 39000 },
+    { name: "Rob Russell", emails: 31772, target: 39000 },
+    { name: "StreetSmart Trucking", emails: 27104, target: 52000 },
+    { name: "StreetSmart P&C", emails: 21638, target: 39000 },
+    { name: "Danny Schwartz", emails: 20753, target: 39000 },
+    { name: "Radiant Energy", emails: 17045, target: 39000 },
+    { name: "SMA Insurance", emails: 16246, target: 52000 },
+    { name: "StreetSmart Commercial", emails: 15860, target: 52000 },
+    { name: "Jeff Schroder", emails: 14705, target: 26000 },
+    { name: "Devin Hodo", emails: 13555, target: 39000 },
+    { name: "Kirk Hodgson", emails: 11108, target: 26000 },
+    { name: "ATI", emails: 6059, target: 13000 },
+    { name: "Maverick Longrun", emails: 3611, target: 26000 }
   ].map(client => ({
     ...client,
     targetPercentage: (client.emails / client.target) * 100,
     isAboveTarget: client.emails >= client.target,
     variance: client.emails - client.target
+  })).sort((a, b) => b.targetPercentage - a.targetPercentage)
+  .map((client, index) => ({
+    ...client,
+    rank: index + 1
   }));
 
   const getPerformanceColor = (client: any) => {

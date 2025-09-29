@@ -131,32 +131,43 @@ const SendingVolumeDashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Bottom Performers */}
-          <Card className="bg-gradient-to-br from-red-500/20 to-red-600/30 backdrop-blur-sm border-red-400/30 shadow-2xl">
+          {/* Performance Summary */}
+          <Card className="bg-gradient-to-br from-dashboard-primary/20 to-dashboard-accent/30 backdrop-blur-sm border-dashboard-primary/30 shadow-2xl">
             <CardHeader>
-              <CardTitle className="text-red-100 flex items-center gap-2 text-xl">
+              <CardTitle className="text-white flex items-center gap-2 text-xl">
                 <Target className="h-6 w-6" />
-                Below Target
+                Performance Summary
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {clientData.filter(client => !client.isAboveTarget).slice(-3).map((client, index) => (
-                <div key={client.name} className="flex items-center justify-between p-4 bg-red-500/20 rounded-lg border border-red-400/30">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-red-400 text-red-900 flex items-center justify-center font-bold text-sm">
-                      !
-                    </div>
-                    <div>
-                      <span className="text-red-100 font-semibold block">{client.name}</span>
-                      <span className="text-red-200 text-sm">{client.targetPercentage.toFixed(1)}% of target</span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-red-200 font-bold text-lg">{client.emails.toLocaleString()}</span>
-                    <div className="text-red-300 text-xs">Target: {client.target.toLocaleString()}</div>
-                  </div>
+              <div className="p-4 bg-white/10 rounded-lg border border-white/20">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-white/80 text-sm">Clients Meeting Target</span>
+                  <span className="text-white font-bold text-lg">
+                    {clientData.filter(c => c.isAboveTarget).length} / {clientData.length}
+                  </span>
                 </div>
-              ))}
+              </div>
+              
+              <div className="p-4 bg-white/10 rounded-lg border border-white/20">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-white/80 text-sm">Average Achievement</span>
+                  <span className="text-white font-bold text-lg">
+                    {(clientData.reduce((sum, c) => sum + c.targetPercentage, 0) / clientData.length).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 bg-white/10 rounded-lg border border-white/20">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-white/80 text-sm">Total Variance</span>
+                  <span className={`font-bold text-lg ${
+                    (totalEmails - totalTargets) >= 0 ? 'text-green-300' : 'text-red-300'
+                  }`}>
+                    {(totalEmails - totalTargets) >= 0 ? '+' : ''}{(totalEmails - totalTargets).toLocaleString()}
+                  </span>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

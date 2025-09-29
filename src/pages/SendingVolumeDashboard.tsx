@@ -6,32 +6,39 @@ import { Link } from "react-router-dom";
 
 const SendingVolumeDashboard = () => {
   const clientData = [
-    { name: "Kim Wallace", emails: 76905, rank: 1 },
-    { name: "Jason Binyon", emails: 65558, rank: 2 },
-    { name: "David Amiri", emails: 45191, rank: 3 },
-    { name: "Workspark", emails: 37985, rank: 4 },
-    { name: "John Roberts", emails: 35306, rank: 5 },
-    { name: "Rob Russell", emails: 31772, rank: 6 },
-    { name: "StreetSmart Trucking", emails: 27104, rank: 7 },
-    { name: "StreetSmart P&C", emails: 21638, rank: 8 },
-    { name: "Danny Schwartz", emails: 20753, rank: 9 },
-    { name: "Radiant Energy", emails: 17045, rank: 10 },
-    { name: "SMA Insurance", emails: 16246, rank: 11 },
-    { name: "StreetSmart Commercial", emails: 15860, rank: 12 },
-    { name: "Jeff Schroder", emails: 14705, rank: 13 },
-    { name: "Devin Hodo", emails: 13555, rank: 14 },
-    { name: "Kirk Hodgson", emails: 11108, rank: 15 },
-    { name: "ATI", emails: 6059, rank: 16 },
-    { name: "Maverick Longrun", emails: 3611, rank: 17 }
-  ];
+    { name: "Kim Wallace", emails: 76905, target: 78000, rank: 1 },
+    { name: "Jason Binyon", emails: 65558, target: 78000, rank: 2 },
+    { name: "David Amiri", emails: 45191, target: 39000, rank: 3 },
+    { name: "Workspark", emails: 37985, target: 52000, rank: 4 },
+    { name: "John Roberts", emails: 35306, target: 39000, rank: 5 },
+    { name: "Rob Russell", emails: 31772, target: 39000, rank: 6 },
+    { name: "StreetSmart Trucking", emails: 27104, target: 52000, rank: 7 },
+    { name: "StreetSmart P&C", emails: 21638, target: 39000, rank: 8 },
+    { name: "Danny Schwartz", emails: 20753, target: 39000, rank: 9 },
+    { name: "Radiant Energy", emails: 17045, target: 39000, rank: 10 },
+    { name: "SMA Insurance", emails: 16246, target: 52000, rank: 11 },
+    { name: "StreetSmart Commercial", emails: 15860, target: 52000, rank: 12 },
+    { name: "Jeff Schroder", emails: 14705, target: 26000, rank: 13 },
+    { name: "Devin Hodo", emails: 13555, target: 39000, rank: 14 },
+    { name: "Kirk Hodgson", emails: 11108, target: 26000, rank: 15 },
+    { name: "ATI", emails: 6059, target: 13000, rank: 16 },
+    { name: "Maverick Longrun", emails: 3611, target: 26000, rank: 17 }
+  ].map(client => ({
+    ...client,
+    targetPercentage: (client.emails / client.target) * 100,
+    isAboveTarget: client.emails >= client.target,
+    variance: client.emails - client.target
+  }));
 
-  const getBarColor = (rank: number) => {
-    if (rank <= 3) return "#10b981"; // Green for top 3
-    if (rank >= 15) return "#ef4444"; // Red for bottom 3
-    return "hsl(var(--dashboard-primary))"; // Default blue
+  const getPerformanceColor = (client: any) => {
+    if (client.isAboveTarget) return "green";
+    if (client.targetPercentage >= 80) return "yellow";
+    return "red";
   };
 
   const totalEmails = clientData.reduce((sum, client) => sum + client.emails, 0);
+  const totalTargets = clientData.reduce((sum, client) => sum + client.target, 0);
+  const overallTargetPercentage = (totalEmails / totalTargets) * 100;
 
   return (
     <div className="min-h-screen bg-gradient-dashboard">
@@ -49,9 +56,12 @@ const SendingVolumeDashboard = () => {
               <div className="h-6 w-px bg-white/20"></div>
               <div>
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-dashboard-primary to-dashboard-accent bg-clip-text text-transparent">
-                  Client Email Performance
+                  Client Email Performance vs Targets
                 </h1>
-                <p className="text-white/70 mt-2 text-lg">MTD Email Volume by Client - {totalEmails.toLocaleString()} Total Emails Sent</p>
+                <p className="text-white/70 mt-2 text-lg">
+                  MTD: {totalEmails.toLocaleString()} / {totalTargets.toLocaleString()} 
+                  ({overallTargetPercentage.toFixed(1)}% of target achieved)
+                </p>
               </div>
             </div>
           </div>
@@ -66,19 +76,25 @@ const SendingVolumeDashboard = () => {
             <CardHeader>
               <CardTitle className="text-green-100 flex items-center gap-2 text-xl">
                 <TrendingUp className="h-6 w-6" />
-                Top Performers
+                Exceeding Targets
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {clientData.slice(0, 3).map((client, index) => (
+              {clientData.filter(client => client.isAboveTarget).slice(0, 3).map((client, index) => (
                 <div key={client.name} className="flex items-center justify-between p-4 bg-green-500/20 rounded-lg border border-green-400/30">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-green-400 text-green-900 flex items-center justify-center font-bold text-sm">
-                      {index + 1}
+                      ✓
                     </div>
-                    <span className="text-green-100 font-semibold">{client.name}</span>
+                    <div>
+                      <span className="text-green-100 font-semibold block">{client.name}</span>
+                      <span className="text-green-200 text-sm">{client.targetPercentage.toFixed(1)}% of target</span>
+                    </div>
                   </div>
-                  <span className="text-green-200 font-bold text-lg">{client.emails.toLocaleString()}</span>
+                  <div className="text-right">
+                    <span className="text-green-200 font-bold text-lg">{client.emails.toLocaleString()}</span>
+                    <div className="text-green-300 text-xs">Target: {client.target.toLocaleString()}</div>
+                  </div>
                 </div>
               ))}
             </CardContent>
@@ -89,13 +105,25 @@ const SendingVolumeDashboard = () => {
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2 text-xl">
                 <BarChart3 className="h-6 w-6" />
-                Total Volume
+                Overall Progress
               </CardTitle>
             </CardHeader>
             <CardContent className="text-center py-8">
-              <div className="text-5xl font-bold text-white mb-2">{totalEmails.toLocaleString()}</div>
-              <p className="text-white/70 text-lg">Total MTD Emails</p>
-              <p className="text-dashboard-accent text-sm mt-2">Across {clientData.length} Active Clients</p>
+              <div className="text-5xl font-bold text-white mb-2">{overallTargetPercentage.toFixed(1)}%</div>
+              <p className="text-white/70 text-lg">Target Achievement</p>
+              <div className="mt-4 w-full bg-white/20 rounded-full h-3">
+                <div 
+                  className={`h-3 rounded-full transition-all duration-1000 ${
+                    overallTargetPercentage >= 100 
+                      ? 'bg-gradient-to-r from-green-400 to-green-500' 
+                      : overallTargetPercentage >= 80
+                      ? 'bg-gradient-to-r from-yellow-400 to-yellow-500'
+                      : 'bg-gradient-to-r from-red-400 to-red-500'
+                  }`}
+                  style={{ width: `${Math.min(overallTargetPercentage, 100)}%` }}
+                ></div>
+              </div>
+              <p className="text-dashboard-accent text-sm mt-2">{totalEmails.toLocaleString()} / {totalTargets.toLocaleString()}</p>
             </CardContent>
           </Card>
 
@@ -104,19 +132,25 @@ const SendingVolumeDashboard = () => {
             <CardHeader>
               <CardTitle className="text-red-100 flex items-center gap-2 text-xl">
                 <Target className="h-6 w-6" />
-                Needs Attention
+                Below Target
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {clientData.slice(-3).reverse().map((client, index) => (
+              {clientData.filter(client => !client.isAboveTarget).slice(-3).map((client, index) => (
                 <div key={client.name} className="flex items-center justify-between p-4 bg-red-500/20 rounded-lg border border-red-400/30">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-red-400 text-red-900 flex items-center justify-center font-bold text-sm">
-                      {clientData.length - 2 + index}
+                      !
                     </div>
-                    <span className="text-red-100 font-semibold">{client.name}</span>
+                    <div>
+                      <span className="text-red-100 font-semibold block">{client.name}</span>
+                      <span className="text-red-200 text-sm">{client.targetPercentage.toFixed(1)}% of target</span>
+                    </div>
                   </div>
-                  <span className="text-red-200 font-bold text-lg">{client.emails.toLocaleString()}</span>
+                  <div className="text-right">
+                    <span className="text-red-200 font-bold text-lg">{client.emails.toLocaleString()}</span>
+                    <div className="text-red-300 text-xs">Target: {client.target.toLocaleString()}</div>
+                  </div>
                 </div>
               ))}
             </CardContent>
@@ -128,62 +162,73 @@ const SendingVolumeDashboard = () => {
           <CardHeader className="pb-6">
             <CardTitle className="text-white flex items-center gap-3 text-2xl">
               <Users className="h-7 w-7 text-dashboard-primary" />
-              MTD Email Performance Rankings
+              MTD Email Performance vs Targets
             </CardTitle>
-            <p className="text-white/60 mt-2">All clients ranked by email volume sent this month</p>
+            <p className="text-white/60 mt-2">All clients with actual vs target performance comparison</p>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4">
               {clientData.map((client) => {
-                const percentage = (client.emails / Math.max(...clientData.map(c => c.emails))) * 100;
-                const isTopPerformer = client.rank <= 3;
-                const isBottomPerformer = client.rank >= 15;
+                const percentage = (client.emails / client.target) * 100;
+                const performanceColor = getPerformanceColor(client);
+                const isExceeding = client.isAboveTarget;
+                const isClose = client.targetPercentage >= 80 && client.targetPercentage < 100;
+                const isFarBehind = client.targetPercentage < 50;
                 
                 return (
                   <div 
                     key={client.name} 
                     className={`p-6 rounded-xl border-2 transition-all duration-300 hover:scale-[1.02] ${
-                      isTopPerformer 
+                      isExceeding 
                         ? 'bg-gradient-to-r from-green-500/20 to-green-600/30 border-green-400/50 shadow-green-500/20' 
-                        : isBottomPerformer 
+                        : isClose 
+                        ? 'bg-gradient-to-r from-yellow-500/20 to-yellow-600/30 border-yellow-400/50 shadow-yellow-500/20'
+                        : isFarBehind
                         ? 'bg-gradient-to-r from-red-500/20 to-red-600/30 border-red-400/50 shadow-red-500/20'
-                        : 'bg-white/10 border-white/20'
+                        : 'bg-gradient-to-r from-orange-500/20 to-orange-600/30 border-orange-400/50 shadow-orange-500/20'
                     } shadow-xl`}
                   >
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-4">
                         <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
-                          isTopPerformer 
+                          isExceeding 
                             ? 'bg-green-400 text-green-900' 
-                            : isBottomPerformer 
+                            : isClose
+                            ? 'bg-yellow-400 text-yellow-900'
+                            : isFarBehind
                             ? 'bg-red-400 text-red-900'
-                            : 'bg-dashboard-primary text-white'
+                            : 'bg-orange-400 text-orange-900'
                         }`}>
-                          #{client.rank}
+                          {isExceeding ? '✓' : client.targetPercentage.toFixed(0)}%
                         </div>
                         <div>
                           <h3 className={`text-xl font-bold ${
-                            isTopPerformer ? 'text-green-100' : isBottomPerformer ? 'text-red-100' : 'text-white'
+                            isExceeding ? 'text-green-100' : isClose ? 'text-yellow-100' : isFarBehind ? 'text-red-100' : 'text-orange-100'
                           }`}>
                             {client.name}
                           </h3>
                           <p className={`text-sm ${
-                            isTopPerformer ? 'text-green-200' : isBottomPerformer ? 'text-red-200' : 'text-white/70'
+                            isExceeding ? 'text-green-200' : isClose ? 'text-yellow-200' : isFarBehind ? 'text-red-200' : 'text-orange-200'
                           }`}>
-                            {isTopPerformer ? 'Top Performer' : isBottomPerformer ? 'Needs Attention' : 'Standard Performance'}
+                            {isExceeding ? 'Target Exceeded!' : isClose ? 'Close to Target' : isFarBehind ? 'Far Behind Target' : 'Below Target'}
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className={`text-3xl font-bold ${
-                          isTopPerformer ? 'text-green-100' : isBottomPerformer ? 'text-red-100' : 'text-white'
+                          isExceeding ? 'text-green-100' : isClose ? 'text-yellow-100' : isFarBehind ? 'text-red-100' : 'text-orange-100'
                         }`}>
                           {client.emails.toLocaleString()}
                         </div>
                         <p className={`text-sm ${
-                          isTopPerformer ? 'text-green-200' : isBottomPerformer ? 'text-red-200' : 'text-white/70'
+                          isExceeding ? 'text-green-200' : isClose ? 'text-yellow-200' : isFarBehind ? 'text-red-200' : 'text-orange-200'
                         }`}>
-                          emails sent
+                          Target: {client.target.toLocaleString()}
+                        </p>
+                        <p className={`text-xs font-semibold ${
+                          isExceeding ? 'text-green-300' : isClose ? 'text-yellow-300' : isFarBehind ? 'text-red-300' : 'text-orange-300'
+                        }`}>
+                          {client.variance >= 0 ? '+' : ''}{client.variance.toLocaleString()} variance
                         </p>
                       </div>
                     </div>
@@ -191,21 +236,23 @@ const SendingVolumeDashboard = () => {
                     {/* Progress Bar */}
                     <div className="relative">
                       <div className={`w-full h-4 rounded-full ${
-                        isTopPerformer ? 'bg-green-900/30' : isBottomPerformer ? 'bg-red-900/30' : 'bg-white/10'
+                        isExceeding ? 'bg-green-900/30' : isClose ? 'bg-yellow-900/30' : isFarBehind ? 'bg-red-900/30' : 'bg-orange-900/30'
                       }`}>
                         <div 
                           className={`h-4 rounded-full transition-all duration-1000 ${
-                            isTopPerformer 
+                            isExceeding 
                               ? 'bg-gradient-to-r from-green-400 to-green-500' 
-                              : isBottomPerformer 
+                              : isClose
+                              ? 'bg-gradient-to-r from-yellow-400 to-yellow-500'
+                              : isFarBehind
                               ? 'bg-gradient-to-r from-red-400 to-red-500'
-                              : 'bg-gradient-to-r from-dashboard-primary to-dashboard-accent'
+                              : 'bg-gradient-to-r from-orange-400 to-orange-500'
                           }`}
-                          style={{ width: `${percentage}%` }}
+                          style={{ width: `${Math.min(percentage, 100)}%` }}
                         ></div>
                       </div>
                       <div className={`absolute right-2 top-0 h-4 flex items-center text-xs font-bold ${
-                        isTopPerformer ? 'text-green-900' : isBottomPerformer ? 'text-red-900' : 'text-white'
+                        isExceeding ? 'text-green-900' : isClose ? 'text-yellow-900' : isFarBehind ? 'text-red-900' : 'text-orange-900'
                       }`}>
                         {percentage.toFixed(1)}%
                       </div>

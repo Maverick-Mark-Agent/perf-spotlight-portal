@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -35,15 +36,12 @@ const BillingDashboard = () => {
     const fetchBillingData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/airtable-clients');
+        const { data, error } = await supabase.functions.invoke('airtable-clients');
         
-        if (!response.ok) {
-          throw new Error('Failed to fetch client data');
+        if (error) {
+          throw new Error(error.message || 'Failed to fetch client data');
         }
-
-        const data = await response.json();
         
-        // Transform data for billing dashboard
         const billingData: ClientBillingData[] = data.clients.map((client: any) => {
           const pricePerLead = 75; // Default price per lead (you can adjust this)
           const positiveRepliesMTD = client.leadsGenerated || 0;

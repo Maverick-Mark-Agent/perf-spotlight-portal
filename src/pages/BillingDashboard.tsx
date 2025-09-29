@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
@@ -117,6 +118,11 @@ const BillingDashboard = () => {
     if (selectedClient === "all") return null;
     return activeClients.find(client => client.id === selectedClient);
   }, [selectedClient, activeClients]);
+
+  // Sort clients by payout for table view
+  const sortedClientsByPayout = useMemo(() => {
+    return [...activeClients].sort((a, b) => b.monthlyRevenue - a.monthlyRevenue);
+  }, [activeClients]);
 
   const totalStats = useMemo(() => {
     return activeClients.reduce(
@@ -305,8 +311,9 @@ const BillingDashboard = () => {
 
         {/* Charts and Analytics */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-white/10 backdrop-blur-md">
+          <TabsList className="grid w-full grid-cols-4 bg-white/10 backdrop-blur-md">
             <TabsTrigger value="overview" className="text-white data-[state=active]:bg-dashboard-primary">Overview</TabsTrigger>
+            <TabsTrigger value="table" className="text-white data-[state=active]:bg-dashboard-primary">Table View</TabsTrigger>
             <TabsTrigger value="revenue" className="text-white data-[state=active]:bg-dashboard-primary">Revenue Analysis</TabsTrigger>
             <TabsTrigger value="performance" className="text-white data-[state=active]:bg-dashboard-primary">KPI Performance</TabsTrigger>
           </TabsList>
@@ -383,6 +390,113 @@ const BillingDashboard = () => {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="table" className="space-y-6">
+            <Card className="bg-white/10 backdrop-blur-md border-white/20">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  All Clients Overview (Sorted by Payout)
+                </CardTitle>
+                <p className="text-white/70 text-sm">Complete client billing overview sorted by highest payout</p>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/20 hover:bg-white/5">
+                        <TableHead className="text-white font-semibold">Client Name</TableHead>
+                        <TableHead className="text-white font-semibold text-right">Payout</TableHead>
+                        <TableHead className="text-white font-semibold text-right">Price per Lead</TableHead>
+                        <TableHead className="text-white font-semibold text-right">Monthly KPI</TableHead>
+                        <TableHead className="text-white font-semibold text-right">Replies MTD</TableHead>
+                        <TableHead className="text-white font-semibold text-right">KPI Progress</TableHead>
+                        <TableHead className="text-white font-semibold text-center">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedClientsByPayout.map((client) => (
+                        <TableRow 
+                          key={client.id} 
+                          className="border-white/10 hover:bg-white/5 transition-colors"
+                        >
+                          <TableCell className="font-medium text-white">
+                            {client.name}
+                          </TableCell>
+                          <TableCell className="text-right text-white font-semibold">
+                            ${client.monthlyRevenue.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right text-white">
+                            ${client.pricePerLead.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right text-white">
+                            {client.monthlyKPI.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right text-white">
+                            {client.positiveRepliesMTD.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <span className={`font-medium ${
+                                client.kpiProgress >= 100 ? 'text-dashboard-success' : 
+                                client.kpiProgress >= 80 ? 'text-dashboard-warning' : 'text-red-400'
+                              }`}>
+                                {client.kpiProgress.toFixed(1)}%
+                              </span>
+                              <div className="w-16 bg-white/10 rounded-full h-2">
+                                <div 
+                                  className={`h-2 rounded-full transition-all duration-300 ${
+                                    client.kpiProgress >= 100 ? 'bg-dashboard-success' : 
+                                    client.kpiProgress >= 80 ? 'bg-dashboard-warning' : 'bg-red-500'
+                                  }`}
+                                  style={{ width: `${Math.min(client.kpiProgress, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge 
+                              variant="outline" 
+                              className={`${
+                                client.status === 'on-track' 
+                                  ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
+                                  : client.status === 'warning'
+                                  ? 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
+                                  : 'bg-red-500/20 text-red-400 border-red-500/40'
+                              }`}
+                            >
+                              {client.status === 'on-track' ? 'On Track' : 
+                               client.status === 'warning' ? 'Warning' : 'Danger'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                
+                {/* Summary Stats for Table */}
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-white/5 rounded-lg">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-white">${totalStats.totalRevenue.toLocaleString()}</div>
+                    <div className="text-white/70 text-sm">Total Payout</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-white">{totalStats.totalLeads.toLocaleString()}</div>
+                    <div className="text-white/70 text-sm">Total Leads</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-white">{totalStats.totalKPI.toLocaleString()}</div>
+                    <div className="text-white/70 text-sm">Total KPI Target</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-white">{avgProgress.toFixed(1)}%</div>
+                    <div className="text-white/70 text-sm">Avg Progress</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="revenue" className="space-y-6">

@@ -66,37 +66,6 @@ const Index = () => {
           </p>
         </div>
 
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-16">
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
-            <div className="flex items-center justify-between mb-3">
-              <Building className="h-8 w-8 text-dashboard-primary" />
-              <span className="text-2xl font-bold text-white">25+</span>
-            </div>
-            <p className="text-white/70 font-medium">Active Clients</p>
-          </div>
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
-            <div className="flex items-center justify-between mb-3">
-              <Users className="h-8 w-8 text-dashboard-success" />
-              <span className="text-2xl font-bold text-white">1.2K+</span>
-            </div>
-            <p className="text-white/70 font-medium">Leads This Month</p>
-          </div>
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
-            <div className="flex items-center justify-between mb-3">
-              <TrendingUp className="h-8 w-8 text-dashboard-warning" />
-              <span className="text-2xl font-bold text-white">94.2%</span>
-            </div>
-            <p className="text-white/70 font-medium">Target Achievement</p>
-          </div>
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all">
-            <div className="flex items-center justify-between mb-3">
-              <Clock className="h-8 w-8 text-dashboard-accent" />
-              <span className="text-2xl font-bold text-white">Real-time</span>
-            </div>
-            <p className="text-white/70 font-medium">Data Updates</p>
-          </div>
-        </div>
 
         {/* Feature Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">

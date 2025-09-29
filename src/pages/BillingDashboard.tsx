@@ -21,7 +21,8 @@ import {
   PieChart as PieChartIcon,
   Activity,
   Filter,
-  ChevronDown
+  ChevronDown,
+  Download
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -169,6 +170,36 @@ const BillingDashboard = () => {
   }, [activeClients]);
 
   const avgProgress = activeClients.length > 0 ? totalStats.averageProgress / activeClients.length : 0;
+
+  const exportToCSV = () => {
+    const headers = ['Client Name', 'Monthly Payout ($)', 'Leads Generated', 'Monthly KPI', 'KPI Progress (%)', 'Price per Lead ($)', 'Status'];
+    const csvData = [
+      headers,
+      ...sortedClientsByPayout.map(client => [
+        client.name,
+        client.monthlyRevenue,
+        client.positiveRepliesMTD,
+        client.monthlyKPI,
+        client.kpiProgress.toFixed(1),
+        client.pricePerLead.toFixed(2),
+        client.status === 'on-track' ? 'On Track' : client.status === 'warning' ? 'Warning' : 'Danger'
+      ])
+    ];
+    
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `billing-dashboard-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
 
   if (loading) {
     return (
@@ -635,11 +666,24 @@ const BillingDashboard = () => {
           <TabsContent value="table" className="space-y-6">
             <Card className="bg-white/10 backdrop-blur-md border-white/20">
               <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  All Clients Overview (Sorted by Payout)
-                </CardTitle>
-                <p className="text-white/70 text-sm">Complete client billing overview sorted by highest payout</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-white flex items-center gap-2">
+                      <Users className="h-5 w-5" />
+                      All Clients Overview (Sorted by Payout)
+                    </CardTitle>
+                    <p className="text-white/70 text-sm">Complete client billing overview sorted by highest payout</p>
+                  </div>
+                  <Button
+                    onClick={exportToCSV}
+                    variant="outline"
+                    size="sm"
+                    className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">

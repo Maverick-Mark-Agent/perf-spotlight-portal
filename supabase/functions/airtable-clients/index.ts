@@ -21,6 +21,7 @@ interface AirtableRecord {
     'Positive Replies Last Month'?: number;
     'Last Week VS Week Before Positive Replies % Progress'?: number;
     'Positive Replies Last VS This Month'?: number;
+    'Payout'?: number;
   };
 }
 
@@ -96,6 +97,7 @@ Deno.serve(async (req) => {
       positiveRepliesLastMonth: record.fields['Positive Replies Last Month'] || 0,
       lastWeekVsWeekBeforeProgress: record.fields['Last Week VS Week Before Positive Replies % Progress'] || 0,
       positiveRepliesLastVsThisMonth: parsePercent(record.fields['Positive Replies Last VS This Month']),
+      payout: record.fields['Payout'] || 0,
     }));
 
     console.log('Transformed clients:', clients.map(c => ({ id: c.id, name: c.name })));

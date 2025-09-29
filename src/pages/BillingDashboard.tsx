@@ -54,9 +54,9 @@ const BillingDashboard = () => {
         
         const billingData: ClientBillingData[] = data.clients
           .map((client: any) => {
-            const pricePerLead = 75; // Default price per lead (you can adjust this)
             const positiveRepliesMTD = client.leadsGenerated || 0;
-            const monthlyRevenue = positiveRepliesMTD * pricePerLead;
+            const monthlyRevenue = client.payout || 0; // Use Payout field from Airtable
+            const pricePerLead = positiveRepliesMTD > 0 ? monthlyRevenue / positiveRepliesMTD : 0; // Calculate price per lead
             const kpiProgress = client.monthlyKPI > 0 ? (positiveRepliesMTD / client.monthlyKPI) * 100 : 0;
             
             let status: 'on-track' | 'warning' | 'danger' = 'on-track';

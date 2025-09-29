@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     // Transform Airtable data to match our app's format
     const clients = data.records.map(record => ({
       id: record.id,
-      name: record.fields['Client Company Name'] || record.fields['Client Name'] || 'Unknown Client',
+      name: record.fields['Client Company Name'] || 'Unknown Client',
       leadsGenerated: record.fields['Positive Replies MTD'] || 0,
       projectedReplies: record.fields['Projection: Positive Replies Received (by EOM)'] || 0,
       leadsTarget: 0, // Not provided in new mapping
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
     console.error('Error in airtable-clients function:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Failed to fetch data from Airtable' 
+        error: error instanceof Error ? error.message : 'Failed to fetch data from Airtable' 
       }),
       { 
         status: 500,

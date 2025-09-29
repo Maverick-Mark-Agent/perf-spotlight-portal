@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import MonthlyKPIProgress from "./pages/MonthlyKPIProgress";
 import SendingAccountsInfrastructure from "./pages/SendingAccountsInfrastructure";
 import SendingVolumeDashboard from "./pages/SendingVolumeDashboard";
+import BillingDashboard from "./pages/BillingDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/kpi-progress" element={<MonthlyKPIProgress />} />
           <Route path="/sending-accounts" element={<SendingAccountsInfrastructure />} />
           <Route path="/sending-volume" element={<SendingVolumeDashboard />} />
+          <Route path="/billing" element={<BillingDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

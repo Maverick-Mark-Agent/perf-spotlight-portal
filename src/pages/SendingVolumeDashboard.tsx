@@ -76,10 +76,10 @@ const SendingVolumeDashboard = () => {
         {/* Performance Highlights */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
           {/* Top Performers */}
-          <Card className="bg-gradient-to-br from-dashboard-success/20 via-dashboard-success/15 to-dashboard-success/25 backdrop-blur-sm border-dashboard-success/40 shadow-2xl">
+          <Card className="bg-dashboard-success/15 backdrop-blur-sm border-dashboard-success/50 shadow-2xl">
             <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2 text-xl">
-                <TrendingUp className="h-6 w-6 text-dashboard-success" />
+              <CardTitle className="text-dashboard-success flex items-center gap-2 text-xl font-bold">
+                <TrendingUp className="h-6 w-6" />
                 Exceeding Targets
               </CardTitle>
             </CardHeader>
@@ -91,13 +91,13 @@ const SendingVolumeDashboard = () => {
                       ✓
                     </div>
                     <div>
-                      <span className="text-white font-semibold block">{client.name}</span>
-                      <span className="text-white/80 text-sm">{client.targetPercentage.toFixed(1)}% of target</span>
+                      <span className="text-foreground font-semibold block">{client.name}</span>
+                      <span className="text-muted-foreground text-sm">{client.targetPercentage.toFixed(1)}% of target</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-white font-bold text-lg">{client.emails.toLocaleString()}</span>
-                    <div className="text-white/70 text-xs">Target: {client.target.toLocaleString()}</div>
+                    <span className="text-dashboard-success font-bold text-lg">{client.emails.toLocaleString()}</span>
+                    <div className="text-muted-foreground text-xs">Target: {client.target.toLocaleString()}</div>
                   </div>
                 </div>
               ))}
@@ -105,45 +105,45 @@ const SendingVolumeDashboard = () => {
           </Card>
 
           {/* Total Summary */}
-          <Card className="bg-gradient-to-br from-dashboard-primary/25 via-dashboard-primary/15 to-dashboard-accent/20 backdrop-blur-sm border-dashboard-primary/50 shadow-2xl">
+          <Card className="bg-dashboard-primary/15 backdrop-blur-sm border-dashboard-primary/50 shadow-2xl">
             <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2 text-xl">
-                <BarChart3 className="h-6 w-6 text-dashboard-primary" />
+              <CardTitle className="text-dashboard-primary flex items-center gap-2 text-xl font-bold">
+                <BarChart3 className="h-6 w-6" />
                 Overall Progress
               </CardTitle>
             </CardHeader>
             <CardContent className="text-center py-8">
-              <div className="text-5xl font-bold text-white mb-2">{overallTargetPercentage.toFixed(1)}%</div>
-              <p className="text-white/70 text-lg">Target Achievement</p>
+              <div className="text-5xl font-bold text-dashboard-primary mb-2">{overallTargetPercentage.toFixed(1)}%</div>
+              <p className="text-muted-foreground text-lg">Target Achievement</p>
               <div className="mt-4 w-full bg-white/20 rounded-full h-3">
                 <div 
                   className={`h-3 rounded-full transition-all duration-1000 ${
                     overallTargetPercentage >= 100 
-                      ? 'bg-gradient-to-r from-green-400 to-green-500' 
+                      ? 'bg-dashboard-success' 
                       : overallTargetPercentage >= 80
-                      ? 'bg-gradient-to-r from-yellow-400 to-yellow-500'
-                      : 'bg-gradient-to-r from-red-400 to-red-500'
+                      ? 'bg-dashboard-warning'
+                      : 'bg-dashboard-danger'
                   }`}
                   style={{ width: `${Math.min(overallTargetPercentage, 100)}%` }}
                 ></div>
               </div>
-              <p className="text-white/70 text-sm mt-2">{totalEmails.toLocaleString()} / {totalTargets.toLocaleString()}</p>
+              <p className="text-foreground text-sm mt-2">{totalEmails.toLocaleString()} / {totalTargets.toLocaleString()}</p>
             </CardContent>
           </Card>
 
           {/* Performance Summary */}
-          <Card className="bg-gradient-to-br from-dashboard-warning/25 via-dashboard-warning/15 to-dashboard-warning/20 backdrop-blur-sm border-dashboard-warning/50 shadow-2xl">
+          <Card className="bg-dashboard-warning/15 backdrop-blur-sm border-dashboard-warning/50 shadow-2xl">
             <CardHeader>
-              <CardTitle className="text-white flex items-center gap-2 text-xl">
-                <Target className="h-6 w-6 text-dashboard-warning" />
+              <CardTitle className="text-dashboard-warning flex items-center gap-2 text-xl font-bold">
+                <Target className="h-6 w-6" />
                 Performance Summary
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="p-4 bg-white/10 rounded-lg border border-white/20">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-white/80 text-sm">Clients Meeting Target</span>
-                  <span className="text-white font-bold text-lg">
+                  <span className="text-muted-foreground text-sm">Clients Meeting Target</span>
+                  <span className="text-foreground font-bold text-lg">
                     {clientData.filter(c => c.isAboveTarget).length} / {clientData.length}
                   </span>
                 </div>
@@ -151,8 +151,8 @@ const SendingVolumeDashboard = () => {
               
               <div className="p-4 bg-white/10 rounded-lg border border-white/20">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-white/80 text-sm">Average Achievement</span>
-                  <span className="text-white font-bold text-lg">
+                  <span className="text-muted-foreground text-sm">Average Achievement</span>
+                  <span className="text-foreground font-bold text-lg">
                     {(clientData.reduce((sum, c) => sum + c.targetPercentage, 0) / clientData.length).toFixed(1)}%
                   </span>
                 </div>
@@ -160,9 +160,9 @@ const SendingVolumeDashboard = () => {
 
               <div className="p-4 bg-white/10 rounded-lg border border-white/20">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-white/80 text-sm">Total Variance</span>
+                  <span className="text-muted-foreground text-sm">Total Variance</span>
                   <span className={`font-bold text-lg ${
-                    (totalEmails - totalTargets) >= 0 ? 'text-green-300' : 'text-red-300'
+                    (totalEmails - totalTargets) >= 0 ? 'text-dashboard-success' : 'text-dashboard-danger'
                   }`}>
                     {(totalEmails - totalTargets) >= 0 ? '+' : ''}{(totalEmails - totalTargets).toLocaleString()}
                   </span>

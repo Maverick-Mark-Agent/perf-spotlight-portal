@@ -3,6 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, TrendingUp, Mail, Users, BarChart3, Calendar, Send, Target } from "lucide-react";
 import { Link } from "react-router-dom";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell
+} from 'recharts';
 
 const SendingVolumeDashboard = () => {
   return (
@@ -164,6 +174,98 @@ const SendingVolumeDashboard = () => {
                   <div className="text-white/60 text-sm">{campaign.percentage}% of total volume</div>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Client MTD Emails Chart */}
+        <div className="mb-8">
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Users className="h-5 w-5 text-dashboard-primary" />
+                MTD Emails Sent by Client
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-96">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={[
+                      { name: "Kim Wallace", emails: 76905 },
+                      { name: "Jason Binyon", emails: 65558 },
+                      { name: "David Amiri", emails: 45191 },
+                      { name: "Workspark", emails: 37985 },
+                      { name: "John Roberts", emails: 35306 },
+                      { name: "Rob Russell", emails: 31772 },
+                      { name: "StreetSmart Trucking", emails: 27104 },
+                      { name: "StreetSmart P&C", emails: 21638 },
+                      { name: "Danny Schwartz", emails: 20753 },
+                      { name: "Radiant Energy", emails: 17045 },
+                      { name: "SMA Insurance", emails: 16246 },
+                      { name: "StreetSmart Commercial", emails: 15860 },
+                      { name: "Jeff Schroder", emails: 14705 },
+                      { name: "Devin Hodo", emails: 13555 },
+                      { name: "Kirk Hodgson", emails: 11108 },
+                      { name: "ATI", emails: 6059 },
+                      { name: "Maverick Longrun", emails: 3611 }
+                    ]}
+                    layout="horizontal"
+                    margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                    <XAxis 
+                      type="number" 
+                      stroke="rgba(255,255,255,0.7)"
+                      fontSize={12}
+                      tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
+                    />
+                    <YAxis 
+                      type="category" 
+                      dataKey="name" 
+                      stroke="rgba(255,255,255,0.7)"
+                      fontSize={12}
+                      width={95}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "rgba(0,0,0,0.8)",
+                        border: "1px solid rgba(255,255,255,0.2)",
+                        borderRadius: "8px",
+                        color: "white"
+                      }}
+                      formatter={(value) => [`${value.toLocaleString()} emails`, 'MTD Emails Sent']}
+                      labelStyle={{ color: "white" }}
+                    />
+                    <Bar dataKey="emails" radius={[0, 4, 4, 0]}>
+                      {[
+                        { name: "Kim Wallace", emails: 76905 },
+                        { name: "Jason Binyon", emails: 65558 },
+                        { name: "David Amiri", emails: 45191 },
+                        { name: "Workspark", emails: 37985 },
+                        { name: "John Roberts", emails: 35306 },
+                        { name: "Rob Russell", emails: 31772 },
+                        { name: "StreetSmart Trucking", emails: 27104 },
+                        { name: "StreetSmart P&C", emails: 21638 },
+                        { name: "Danny Schwartz", emails: 20753 },
+                        { name: "Radiant Energy", emails: 17045 },
+                        { name: "SMA Insurance", emails: 16246 },
+                        { name: "StreetSmart Commercial", emails: 15860 },
+                        { name: "Jeff Schroder", emails: 14705 },
+                        { name: "Devin Hodo", emails: 13555 },
+                        { name: "Kirk Hodgson", emails: 11108 },
+                        { name: "ATI", emails: 6059 },
+                        { name: "Maverick Longrun", emails: 3611 }
+                      ].map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={`hsl(var(--dashboard-${index % 2 === 0 ? 'primary' : 'accent'}))`}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </CardContent>
           </Card>
         </div>

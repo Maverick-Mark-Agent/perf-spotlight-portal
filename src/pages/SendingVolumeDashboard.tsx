@@ -173,10 +173,10 @@ const SendingVolumeDashboard = () => {
               onClick={handleWebhookTrigger}
               disabled={isWebhookLoading}
               variant="default"
-              size="sm"
-              className="bg-dashboard-primary hover:bg-dashboard-primary/90"
+              size="lg"
+              className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold px-8 py-6 text-lg shadow-2xl shadow-red-500/50 hover:shadow-red-600/60 transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
-              <Send className="h-4 w-4 mr-2" />
+              <Send className="h-6 w-6 mr-3" />
               {isWebhookLoading ? "Sending..." : "Send Volume Slack DM"}
             </Button>
           </div>

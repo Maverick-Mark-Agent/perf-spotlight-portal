@@ -31,6 +31,18 @@ interface ClientSchedule {
   threeDayAverage: number;
 }
 
+// Robust number normalizer: handles numbers, strings, arrays, and formatted values
+function toNumber(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (Array.isArray(value)) {
+    return value.length ? toNumber(value[0]) : 0;
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const s = String(value).trim().replace(/,/g, '');
+  const n = parseFloat(s);
+  return Number.isNaN(n) ? 0 : n;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -102,8 +114,8 @@ serve(async (req) => {
         existing.todayEmails += todayEmails;
         existing.tomorrowEmails += tomorrowEmails;
         if (threeDayVal !== undefined && threeDayVal !== null) {
-          const num = typeof threeDayVal === 'number' ? threeDayVal : parseFloat(String(threeDayVal));
-          if (!Number.isNaN(num)) {
+          const num = toNumber(threeDayVal);
+          if (num > 0) {
             existing.threeDayValues.push(num);
           }
         }

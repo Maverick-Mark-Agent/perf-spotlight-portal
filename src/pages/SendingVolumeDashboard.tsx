@@ -311,12 +311,6 @@ const SendingVolumeDashboard = () => {
                     </div>
                   </>
                 )}
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-100">
-                    {Math.round(targetVolumePerDay).toLocaleString()}
-                  </div>
-                  <div className="text-xs text-green-200">Target Volume Per Day</div>
-                </div>
               </div>
             </div>
           </CardHeader>

@@ -161,7 +161,7 @@ const SendingVolumeDashboard = () => {
               <div className="h-6 w-px bg-white/20"></div>
               <div>
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-dashboard-primary to-dashboard-accent bg-clip-text text-transparent">
-                  Client Email Performance vs Targets
+                  Sending Volume Overview
                 </h1>
               </div>
             </div>

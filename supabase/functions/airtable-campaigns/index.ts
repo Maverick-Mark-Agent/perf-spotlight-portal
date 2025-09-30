@@ -160,7 +160,7 @@ serve(async (req) => {
         clientName: clientDetails.name,
         todayEmails: data.todayEmails,
         tomorrowEmails: data.tomorrowEmails,
-        totalScheduled: data.todayEmails + data.tomorrowEmails,
+        totalScheduled: (data.todayEmails + data.tomorrowEmails) / 2,
         threeDayAverage: median,
       };
     });

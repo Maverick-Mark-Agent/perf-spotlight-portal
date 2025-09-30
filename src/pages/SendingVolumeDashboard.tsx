@@ -303,7 +303,7 @@ const SendingVolumeDashboard = () => {
                       <th className="text-left py-3 px-4 text-white/80 font-semibold">Client</th>
                       <th className="text-right py-3 px-4 text-white/80 font-semibold">Today</th>
                       <th className="text-right py-3 px-4 text-white/80 font-semibold">Tomorrow</th>
-                      <th className="text-right py-3 px-4 text-white/80 font-semibold">Total Scheduled</th>
+                      <th className="text-right py-3 px-4 text-white/80 font-semibold">Average Scheduled</th>
                       <th className="text-right py-3 px-4 text-white/80 font-semibold">Total Target Volume</th>
                     </tr>
                   </thead>

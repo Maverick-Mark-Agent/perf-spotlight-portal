@@ -304,6 +304,7 @@ const SendingVolumeDashboard = () => {
                       <th className="text-right py-3 px-4 text-white/80 font-semibold">Today</th>
                       <th className="text-right py-3 px-4 text-white/80 font-semibold">Tomorrow</th>
                       <th className="text-right py-3 px-4 text-white/80 font-semibold">Total Scheduled</th>
+                      <th className="text-right py-3 px-4 text-white/80 font-semibold">Total Target Volume</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -323,6 +324,9 @@ const SendingVolumeDashboard = () => {
                         </td>
                         <td className="py-3 px-4 text-right text-green-100 font-bold">
                           {schedule.totalScheduled.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-orange-100 font-bold">
+                          {Math.round(schedule.threeDayAverage * 2).toLocaleString()}
                         </td>
                       </tr>
                     ))}

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowLeft, TrendingUp, Mail, Users, BarChart3, Calendar, Send, Target, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
@@ -180,7 +181,8 @@ const SendingVolumeDashboard = () => {
   const overallTargetPercentage = (totalEmails / totalTargets) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-dashboard">
+    <TooltipProvider>
+      <div className="min-h-screen bg-gradient-dashboard">
       {/* Header */}
       <div className="bg-white/5 backdrop-blur-md border-b border-white/10 shadow-xl">
         <div className="max-w-7xl mx-auto px-6 py-6">
@@ -325,15 +327,22 @@ const SendingVolumeDashboard = () => {
                   </CardTitle>
                   <p className="text-white/60 mt-1 text-sm">Today & Tomorrow per client</p>
                 </div>
-                <Button
-                  onClick={() => fetchScheduledEmails(true)}
-                  disabled={isRefreshing}
-                  variant="ghost"
-                  size="sm"
-                  className="text-white/70 hover:text-white hover:bg-white/10"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() => fetchScheduledEmails(true)}
+                      disabled={isRefreshing}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white/70 hover:text-white hover:bg-white/10"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Refresh scheduled emails data</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
               <div className="flex gap-6">
                 {schedules.length > 0 && (
@@ -438,15 +447,22 @@ const SendingVolumeDashboard = () => {
                   </CardTitle>
                   <p className="text-white/60 mt-2">All clients with actual vs target performance comparison</p>
                 </div>
-                <Button
-                  onClick={() => fetchClientData(true)}
-                  disabled={isRefreshingClients}
-                  variant="ghost"
-                  size="sm"
-                  className="text-white/70 hover:text-white hover:bg-white/10"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshingClients ? 'animate-spin' : ''}`} />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() => fetchClientData(true)}
+                      disabled={isRefreshingClients}
+                      variant="ghost"
+                      size="sm"
+                      className="text-white/70 hover:text-white hover:bg-white/10"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isRefreshingClients ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Refresh sending volume data</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
           </CardHeader>
@@ -554,7 +570,8 @@ const SendingVolumeDashboard = () => {
           </CardContent>
         </Card>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 };
 

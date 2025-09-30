@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.airtable-email-accounts]
 verify_jwt = false
+
+[functions.airtable-campaigns]
+verify_jwt = false

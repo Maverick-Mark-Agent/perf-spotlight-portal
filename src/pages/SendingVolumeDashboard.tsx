@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, TrendingUp, Mail, Users, BarChart3, Calendar, Send, Target, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowLeft, TrendingUp, Mail, Users, BarChart3, Calendar, Send, Target, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,6 +20,7 @@ const SendingVolumeDashboard = () => {
   const [schedules, setSchedules] = useState<ClientSchedule[]>([]);
   const [targetVolumePerDay, setTargetVolumePerDay] = useState(0);
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [sortField, setSortField] = useState<'avgScheduled' | 'avgTarget' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
@@ -27,8 +28,11 @@ const SendingVolumeDashboard = () => {
     fetchScheduledEmails();
   }, []);
 
-  const fetchScheduledEmails = async () => {
+  const fetchScheduledEmails = async (isRefresh = false) => {
     try {
+      if (isRefresh) {
+        setIsRefreshing(true);
+      }
       console.log("Fetching scheduled emails from Airtable...");
       const { data, error } = await supabase.functions.invoke('airtable-campaigns');
       
@@ -37,6 +41,13 @@ const SendingVolumeDashboard = () => {
       console.log("Scheduled emails data:", data);
       setSchedules(data.schedules || []);
       setTargetVolumePerDay(data.targetVolumePerDay || 0);
+      
+      if (isRefresh) {
+        toast({
+          title: "Success",
+          description: "Data refreshed successfully",
+        });
+      }
     } catch (error) {
       console.error("Error fetching scheduled emails:", error);
       toast({
@@ -46,6 +57,9 @@ const SendingVolumeDashboard = () => {
       });
     } finally {
       setIsLoadingSchedules(false);
+      if (isRefresh) {
+        setIsRefreshing(false);
+      }
     }
   };
 
@@ -283,12 +297,23 @@ const SendingVolumeDashboard = () => {
         <Card className="bg-white/5 backdrop-blur-sm border-white/10 shadow-2xl mb-12">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-white flex items-center gap-3 text-xl">
-                  <Calendar className="h-6 w-6 text-dashboard-primary" />
-                  Scheduled Emails
-                </CardTitle>
-                <p className="text-white/60 mt-1 text-sm">Today & Tomorrow per client</p>
+              <div className="flex items-center gap-4">
+                <div>
+                  <CardTitle className="text-white flex items-center gap-3 text-xl">
+                    <Calendar className="h-6 w-6 text-dashboard-primary" />
+                    Scheduled Emails
+                  </CardTitle>
+                  <p className="text-white/60 mt-1 text-sm">Today & Tomorrow per client</p>
+                </div>
+                <Button
+                  onClick={() => fetchScheduledEmails(true)}
+                  disabled={isRefreshing}
+                  variant="ghost"
+                  size="sm"
+                  className="text-white/70 hover:text-white hover:bg-white/10"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </Button>
               </div>
               <div className="flex gap-6">
                 {schedules.length > 0 && (

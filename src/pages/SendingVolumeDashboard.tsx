@@ -163,10 +163,6 @@ const SendingVolumeDashboard = () => {
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-dashboard-primary to-dashboard-accent bg-clip-text text-transparent">
                   Client Email Performance vs Targets
                 </h1>
-                <p className="text-white/70 mt-2 text-lg">
-                  MTD: {totalEmails.toLocaleString()} / {totalTargets.toLocaleString()} 
-                  ({overallTargetPercentage.toFixed(1)}% of target achieved)
-                </p>
               </div>
             </div>
             <Button 

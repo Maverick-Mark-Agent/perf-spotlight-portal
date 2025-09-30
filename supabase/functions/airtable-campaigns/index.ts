@@ -43,6 +43,11 @@ function toNumber(value: unknown): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
+// Normalize field names to compare ignoring punctuation/case
+function normalizeName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -94,14 +99,32 @@ serve(async (req) => {
 
     console.log(`Completed pagination: ${pageCount} pages, ${allRecords.length} total records`);
 
-    // Group by client ID and collect 3-day Average Sending values for median
+    // Detect the exact field key for 3-day Average Sending (lookup fields can rename subtly)
+    let threeDayFieldKey: string | null = null;
+    const desiredNorm = normalizeName('3-day Average Sending');
+    if (allRecords.length > 0) {
+      const sampleKeys = Object.keys((allRecords[0] as any).fields || {});
+      console.log('Sample record field keys:', sampleKeys);
+      threeDayFieldKey = sampleKeys.find(k => normalizeName(k) === desiredNorm) ?? null;
+      console.log('Detected 3-day field key:', threeDayFieldKey);
+    }
+
+    // Group by client ID and collect 3-day Average Sending values
     const clientScheduleMap = new Map<string, { todayEmails: number; tomorrowEmails: number; threeDayValues: number[] }>();
 
     allRecords.forEach(record => {
       const clientLinked = record.fields['Client Linked'];
       const todayEmails = record.fields['Emails Being Scheduled Today'] || 0;
       const tomorrowEmails = record.fields['Emails Being Scheduled Tomorrow'] || 0;
-      const threeDayVal = record.fields['3-day Average Sending'];
+      // Resolve 3-day Average Sending field dynamically (lookup fields can have variant names)
+      const fieldsAny = (record as any).fields || {};
+      let threeDayVal: unknown;
+      if (!threeDayFieldKey) {
+        const keys = Object.keys(fieldsAny);
+        threeDayFieldKey = keys.find(k => normalizeName(k) === desiredNorm) ?? null;
+        if (threeDayFieldKey) console.log('Detected 3-day field key (loop):', threeDayFieldKey);
+      }
+      threeDayVal = threeDayFieldKey ? fieldsAny[threeDayFieldKey] : fieldsAny['3-day Average Sending'];
 
       if (clientLinked && clientLinked.length > 0) {
         const clientId = clientLinked[0];

@@ -91,17 +91,6 @@ const SendingVolumeDashboard = () => {
                 </Link>
               </Button>
               <div className="h-6 w-px bg-white/20"></div>
-              <Button 
-                onClick={handleWebhookTrigger}
-                disabled={isWebhookLoading}
-                variant="default"
-                size="sm"
-                className="bg-dashboard-primary hover:bg-dashboard-primary/90"
-              >
-                <Send className="h-4 w-4 mr-2" />
-                {isWebhookLoading ? "Triggering..." : "Trigger Webhook"}
-              </Button>
-              <div className="h-6 w-px bg-white/20"></div>
               <div>
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-dashboard-primary to-dashboard-accent bg-clip-text text-transparent">
                   Client Email Performance vs Targets
@@ -112,6 +101,16 @@ const SendingVolumeDashboard = () => {
                 </p>
               </div>
             </div>
+            <Button 
+              onClick={handleWebhookTrigger}
+              disabled={isWebhookLoading}
+              variant="default"
+              size="sm"
+              className="bg-dashboard-primary hover:bg-dashboard-primary/90"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              {isWebhookLoading ? "Sending..." : "Send Volume Slack DM"}
+            </Button>
           </div>
         </div>
       </div>

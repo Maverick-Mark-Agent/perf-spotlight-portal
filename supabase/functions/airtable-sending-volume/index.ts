@@ -11,6 +11,7 @@ interface AirtableRecord {
     'Client Company Name'?: string;
     'Emails Sent - MTD (Linked to Campaigns)'?: number;
     'Monthly Sending Target'?: number;
+    'Projection: Emails Sent by EOM'?: number;
     [key: string]: any;
   };
 }
@@ -65,20 +66,30 @@ Deno.serve(async (req) => {
         const name = record.fields['Client Company Name'];
         const emails = record.fields['Emails Sent - MTD (Linked to Campaigns)'] || 0;
         const target = record.fields['Monthly Sending Target'] || 0;
+        const projection = record.fields['Projection: Emails Sent by EOM'] || 0;
         
         if (!name) return null;
+        
+        const targetPercentage = target > 0 ? (emails / target) * 100 : 0;
+        const projectedPercentage = target > 0 ? (projection / target) * 100 : 0;
+        const distanceToTarget = target > 0 ? Math.abs(100 - projectedPercentage) : 999999;
         
         return {
           name,
           emails: typeof emails === 'number' ? emails : 0,
           target: typeof target === 'number' ? target : 0,
-          targetPercentage: target > 0 ? (emails / target) * 100 : 0,
+          projection: typeof projection === 'number' ? projection : 0,
+          targetPercentage,
+          projectedPercentage,
           isAboveTarget: emails >= target,
-          variance: emails - target
+          isProjectedAboveTarget: projection >= target,
+          variance: emails - target,
+          projectedVariance: projection - target,
+          distanceToTarget
         };
       })
       .filter(client => client !== null)
-      .sort((a, b) => b.targetPercentage - a.targetPercentage)
+      .sort((a, b) => a.distanceToTarget - b.distanceToTarget)
       .map((client, index) => ({
         ...client,
         rank: index + 1

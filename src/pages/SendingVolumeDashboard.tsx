@@ -20,9 +20,14 @@ interface ClientData {
   name: string;
   emails: number;
   target: number;
+  projection: number;
   targetPercentage: number;
+  projectedPercentage: number;
   isAboveTarget: boolean;
+  isProjectedAboveTarget: boolean;
   variance: number;
+  projectedVariance: number;
+  distanceToTarget: number;
   rank: number;
 }
 
@@ -223,23 +228,23 @@ const SendingVolumeDashboard = () => {
             <CardHeader>
               <CardTitle className="text-dashboard-success flex items-center gap-2 text-xl font-bold">
                 <TrendingUp className="h-6 w-6" />
-                Exceeding Targets
+                On Track to Exceed Target
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {clientData.filter(client => client.isAboveTarget).slice(0, 3).map((client, index) => (
+              {clientData.filter(client => client.isProjectedAboveTarget).slice(0, 3).map((client, index) => (
                 <div key={client.name} className="flex items-center justify-between p-4 bg-white/10 rounded-lg border border-dashboard-success/40">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-dashboard-success text-white flex items-center justify-center font-bold text-sm">
-                      ✓
+                      #{client.rank}
                     </div>
                     <div>
                       <span className="text-foreground font-semibold block">{client.name}</span>
-                      <span className="text-muted-foreground text-sm">{client.targetPercentage.toFixed(1)}% of target</span>
+                      <span className="text-muted-foreground text-sm">Projected: {client.projectedPercentage.toFixed(1)}%</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-dashboard-success font-bold text-lg">{client.emails.toLocaleString()}</span>
+                    <span className="text-dashboard-success font-bold text-lg">{client.projection.toLocaleString()}</span>
                     <div className="text-muted-foreground text-xs">Target: {client.target.toLocaleString()}</div>
                   </div>
                 </div>
@@ -285,9 +290,9 @@ const SendingVolumeDashboard = () => {
             <CardContent className="space-y-4">
               <div className="p-4 bg-white/10 rounded-lg border border-white/20">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-muted-foreground text-sm">Clients Meeting Target</span>
+                  <span className="text-muted-foreground text-sm">Projected to Meet Target</span>
                   <span className="text-foreground font-bold text-lg">
-                    {clientData.filter(c => c.isAboveTarget).length} / {clientData.length}
+                    {clientData.filter(c => c.isProjectedAboveTarget).length} / {clientData.length}
                   </span>
                 </div>
               </div>
@@ -476,15 +481,16 @@ const SendingVolumeDashboard = () => {
                 {clientData.map((client) => {
                 const percentage = (client.emails / client.target) * 100;
                 const performanceColor = getPerformanceColor(client);
-                const isExceeding = client.isAboveTarget;
-                const isClose = client.targetPercentage >= 80 && client.targetPercentage < 100;
-                const isFarBehind = client.targetPercentage < 50;
+                const willExceedTarget = client.isProjectedAboveTarget;
+                const isCurrentlyExceeding = client.isAboveTarget;
+                const isClose = client.projectedPercentage >= 95 && client.projectedPercentage < 100;
+                const isFarBehind = client.projectedPercentage < 80;
                 
                 return (
                   <div 
                     key={client.name} 
                     className={`p-6 rounded-xl border-2 transition-all duration-300 hover:scale-[1.02] ${
-                      isExceeding 
+                      willExceedTarget 
                         ? 'bg-gradient-to-r from-green-500/20 to-green-600/30 border-green-400/50 shadow-green-500/20' 
                         : isClose 
                         ? 'bg-gradient-to-r from-yellow-500/20 to-yellow-600/30 border-yellow-400/50 shadow-yellow-500/20'
@@ -496,7 +502,7 @@ const SendingVolumeDashboard = () => {
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-4">
                         <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
-                          isExceeding 
+                          willExceedTarget 
                             ? 'bg-green-400 text-green-900' 
                             : isClose
                             ? 'bg-yellow-400 text-yellow-900'
@@ -504,62 +510,112 @@ const SendingVolumeDashboard = () => {
                             ? 'bg-red-400 text-red-900'
                             : 'bg-orange-400 text-orange-900'
                         }`}>
-                          {isExceeding ? '✓' : client.targetPercentage.toFixed(0)}%
+                          #{client.rank}
                         </div>
                         <div>
                           <h3 className={`text-xl font-bold ${
-                            isExceeding ? 'text-green-100' : isClose ? 'text-yellow-100' : isFarBehind ? 'text-red-100' : 'text-orange-100'
+                            willExceedTarget ? 'text-green-100' : isClose ? 'text-yellow-100' : isFarBehind ? 'text-red-100' : 'text-orange-100'
                           }`}>
                             {client.name}
                           </h3>
                           <p className={`text-sm ${
-                            isExceeding ? 'text-green-200' : isClose ? 'text-yellow-200' : isFarBehind ? 'text-red-200' : 'text-orange-200'
+                            willExceedTarget ? 'text-green-200' : isClose ? 'text-yellow-200' : isFarBehind ? 'text-red-200' : 'text-orange-200'
                           }`}>
-                            {isExceeding ? 'Target Exceeded!' : isClose ? 'Close to Target' : isFarBehind ? 'Far Behind Target' : 'Below Target'}
+                            {willExceedTarget ? 'On Track to Exceed Target' : isClose ? 'Close to Target' : isFarBehind ? 'Behind Target' : 'Below Target'}
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className={`text-3xl font-bold ${
-                          isExceeding ? 'text-green-100' : isClose ? 'text-yellow-100' : isFarBehind ? 'text-red-100' : 'text-orange-100'
+                          willExceedTarget ? 'text-green-100' : isClose ? 'text-yellow-100' : isFarBehind ? 'text-red-100' : 'text-orange-100'
                         }`}>
                           {client.emails.toLocaleString()}
                         </div>
                         <p className={`text-sm ${
-                          isExceeding ? 'text-green-200' : isClose ? 'text-yellow-200' : isFarBehind ? 'text-red-200' : 'text-orange-200'
+                          willExceedTarget ? 'text-green-200' : isClose ? 'text-yellow-200' : isFarBehind ? 'text-red-200' : 'text-orange-200'
                         }`}>
                           Target: {client.target.toLocaleString()}
                         </p>
                         <p className={`text-xs font-semibold ${
-                          isExceeding ? 'text-green-300' : isClose ? 'text-yellow-300' : isFarBehind ? 'text-red-300' : 'text-orange-300'
+                          isCurrentlyExceeding ? 'text-green-300' : 'text-white/70'
                         }`}>
-                          {client.variance >= 0 ? '+' : ''}{client.variance.toLocaleString()} variance
+                          MTD: {client.targetPercentage.toFixed(1)}% ({client.variance >= 0 ? '+' : ''}{client.variance.toLocaleString()})
                         </p>
                       </div>
                     </div>
                     
-                    {/* Progress Bar */}
-                    <div className="relative">
-                      <div className={`w-full h-4 rounded-full ${
-                        isExceeding ? 'bg-green-900/30' : isClose ? 'bg-yellow-900/30' : isFarBehind ? 'bg-red-900/30' : 'bg-orange-900/30'
-                      }`}>
-                        <div 
-                          className={`h-4 rounded-full transition-all duration-1000 ${
-                            isExceeding 
-                              ? 'bg-gradient-to-r from-green-400 to-green-500' 
-                              : isClose
-                              ? 'bg-gradient-to-r from-yellow-400 to-yellow-500'
-                              : isFarBehind
-                              ? 'bg-gradient-to-r from-red-400 to-red-500'
-                              : 'bg-gradient-to-r from-orange-400 to-orange-500'
-                          }`}
-                          style={{ width: `${Math.min(percentage, 100)}%` }}
-                        ></div>
+                    {/* Projection Info */}
+                    <div className="mb-3 p-3 bg-white/10 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs text-white/60 mb-1">Projected EOM</p>
+                          <p className={`text-lg font-bold ${
+                            willExceedTarget ? 'text-green-100' : isClose ? 'text-yellow-100' : isFarBehind ? 'text-red-100' : 'text-orange-100'
+                          }`}>
+                            {client.projection.toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-white/60 mb-1">Projected %</p>
+                          <p className={`text-lg font-bold ${
+                            willExceedTarget ? 'text-green-100' : isClose ? 'text-yellow-100' : isFarBehind ? 'text-red-100' : 'text-orange-100'
+                          }`}>
+                            {client.projectedPercentage.toFixed(1)}%
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-white/60 mb-1">Projected Variance</p>
+                          <p className={`text-lg font-bold ${
+                            client.projectedVariance >= 0 ? 'text-green-300' : 'text-red-300'
+                          }`}>
+                            {client.projectedVariance >= 0 ? '+' : ''}{client.projectedVariance.toLocaleString()}
+                          </p>
+                        </div>
                       </div>
-                      <div className={`absolute right-2 top-0 h-4 flex items-center text-xs font-bold ${
-                        isExceeding ? 'text-green-900' : isClose ? 'text-yellow-900' : isFarBehind ? 'text-red-900' : 'text-orange-900'
-                      }`}>
-                        {percentage.toFixed(1)}%
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs text-white/60 mb-1">
+                        <span>Current Progress</span>
+                        <span>{client.targetPercentage.toFixed(1)}%</span>
+                      </div>
+                      <div className="relative">
+                        <div className={`w-full h-3 rounded-full ${
+                          willExceedTarget ? 'bg-green-900/30' : isClose ? 'bg-yellow-900/30' : isFarBehind ? 'bg-red-900/30' : 'bg-orange-900/30'
+                        }`}>
+                          <div 
+                            className={`h-3 rounded-full transition-all duration-1000 ${
+                              isCurrentlyExceeding 
+                                ? 'bg-gradient-to-r from-green-400 to-green-500' 
+                                : 'bg-gradient-to-r from-blue-400 to-blue-500'
+                            }`}
+                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-between text-xs text-white/60 mb-1 mt-3">
+                        <span>Projected by EOM</span>
+                        <span>{client.projectedPercentage.toFixed(1)}%</span>
+                      </div>
+                      <div className="relative">
+                        <div className={`w-full h-3 rounded-full ${
+                          willExceedTarget ? 'bg-green-900/30' : isClose ? 'bg-yellow-900/30' : isFarBehind ? 'bg-red-900/30' : 'bg-orange-900/30'
+                        }`}>
+                          <div 
+                            className={`h-3 rounded-full transition-all duration-1000 ${
+                              willExceedTarget 
+                                ? 'bg-gradient-to-r from-green-400 to-green-500' 
+                                : isClose
+                                ? 'bg-gradient-to-r from-yellow-400 to-yellow-500'
+                                : isFarBehind
+                                ? 'bg-gradient-to-r from-red-400 to-red-500'
+                                : 'bg-gradient-to-r from-orange-400 to-orange-500'
+                            }`}
+                            style={{ width: `${Math.min(client.projectedPercentage, 100)}%` }}
+                          ></div>
+                        </div>
                       </div>
                     </div>
                   </div>

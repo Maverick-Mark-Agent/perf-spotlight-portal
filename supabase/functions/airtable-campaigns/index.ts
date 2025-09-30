@@ -82,8 +82,8 @@ serve(async (req) => {
 
     console.log(`Completed pagination: ${pageCount} pages, ${allRecords.length} total records`);
 
-    // Group by client ID and sum emails and 3-day averages
-    const clientScheduleMap = new Map<string, { todayEmails: number; tomorrowEmails: number; threeDaySum: number; threeDayCount: number }>();
+    // Group by client ID and collect 3-day Average Sending values for median
+    const clientScheduleMap = new Map<string, { todayEmails: number; tomorrowEmails: number; threeDayValues: number[] }>();
 
     allRecords.forEach(record => {
       const clientLinked = record.fields['Client Linked'];
@@ -95,7 +95,7 @@ serve(async (req) => {
         const clientId = clientLinked[0];
         
         if (!clientScheduleMap.has(clientId)) {
-          clientScheduleMap.set(clientId, { todayEmails: 0, tomorrowEmails: 0, threeDaySum: 0, threeDayCount: 0 });
+          clientScheduleMap.set(clientId, { todayEmails: 0, tomorrowEmails: 0, threeDayValues: [] });
         }
         
         const existing = clientScheduleMap.get(clientId)!;
@@ -104,8 +104,7 @@ serve(async (req) => {
         if (threeDayVal !== undefined && threeDayVal !== null) {
           const num = typeof threeDayVal === 'number' ? threeDayVal : parseFloat(String(threeDayVal));
           if (!Number.isNaN(num)) {
-            existing.threeDaySum += num;
-            existing.threeDayCount += 1;
+            existing.threeDayValues.push(num);
           }
         }
       }
@@ -148,16 +147,21 @@ serve(async (req) => {
 
     console.log(`Fetched ${clientDetailsMap.size} client details`);
 
-    // Convert to array with client names and per-client 3-day average (from campaigns)
+    // Convert to array with client names and per-client median 3-day average (from campaigns)
     const schedules: ClientSchedule[] = Array.from(clientScheduleMap.entries()).map(([clientId, data]) => {
       const clientDetails = clientDetailsMap.get(clientId) || { name: clientId };
-      const avg3Day = data.threeDayCount > 0 ? data.threeDaySum / data.threeDayCount : 0;
+      const vals = (data.threeDayValues || []).filter(v => typeof v === 'number' && !Number.isNaN(v)).sort((a, b) => a - b);
+      let median = 0;
+      if (vals.length > 0) {
+        const mid = Math.floor(vals.length / 2);
+        median = vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid];
+      }
       return {
         clientName: clientDetails.name,
         todayEmails: data.todayEmails,
         tomorrowEmails: data.tomorrowEmails,
         totalScheduled: data.todayEmails + data.tomorrowEmails,
-        threeDayAverage: avg3Day,
+        threeDayAverage: median,
       };
     });
 

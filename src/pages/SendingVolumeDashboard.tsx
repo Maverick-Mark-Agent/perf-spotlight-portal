@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, TrendingUp, Mail, Users, BarChart3, Calendar, Send, Target } from "lucide-react";
+import { ArrowLeft, TrendingUp, Mail, Users, BarChart3, Calendar, Send, Target, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,6 +20,8 @@ const SendingVolumeDashboard = () => {
   const [schedules, setSchedules] = useState<ClientSchedule[]>([]);
   const [targetVolumePerDay, setTargetVolumePerDay] = useState(0);
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(true);
+  const [sortField, setSortField] = useState<'avgScheduled' | 'avgTarget' | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     fetchScheduledEmails();
@@ -46,6 +48,34 @@ const SendingVolumeDashboard = () => {
       setIsLoadingSchedules(false);
     }
   };
+
+  const handleSort = (field: 'avgScheduled' | 'avgTarget') => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
+  const sortedSchedules = useMemo(() => {
+    if (!sortField) return schedules;
+    
+    return [...schedules].sort((a, b) => {
+      let aVal = 0;
+      let bVal = 0;
+      
+      if (sortField === 'avgScheduled') {
+        aVal = a.totalScheduled;
+        bVal = b.totalScheduled;
+      } else if (sortField === 'avgTarget') {
+        aVal = a.threeDayAverage;
+        bVal = b.threeDayAverage;
+      }
+      
+      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+  }, [schedules, sortField, sortDirection]);
 
   const handleWebhookTrigger = async () => {
     setIsWebhookLoading(true);
@@ -303,12 +333,36 @@ const SendingVolumeDashboard = () => {
                       <th className="text-left py-3 px-4 text-white/80 font-semibold">Client</th>
                       <th className="text-right py-3 px-4 text-white/80 font-semibold">Today</th>
                       <th className="text-right py-3 px-4 text-white/80 font-semibold">Tomorrow</th>
-                      <th className="text-right py-3 px-4 text-white/80 font-semibold">Average Scheduled</th>
-                      <th className="text-right py-3 px-4 text-white/80 font-semibold">Average Target Volume</th>
+                      <th 
+                        className="text-right py-3 px-4 text-white/80 font-semibold cursor-pointer hover:text-white transition-colors"
+                        onClick={() => handleSort('avgScheduled')}
+                      >
+                        <div className="flex items-center justify-end gap-2">
+                          Average Scheduled
+                          {sortField === 'avgScheduled' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-4 w-4 opacity-50" />
+                          )}
+                        </div>
+                      </th>
+                      <th 
+                        className="text-right py-3 px-4 text-white/80 font-semibold cursor-pointer hover:text-white transition-colors"
+                        onClick={() => handleSort('avgTarget')}
+                      >
+                        <div className="flex items-center justify-end gap-2">
+                          Average Target Volume
+                          {sortField === 'avgTarget' ? (
+                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpDown className="h-4 w-4 opacity-50" />
+                          )}
+                        </div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {schedules.map((schedule, index) => (
+                    {sortedSchedules.map((schedule, index) => (
                       <tr 
                         key={schedule.clientName}
                         className={`border-b border-white/5 hover:bg-white/5 transition-colors ${

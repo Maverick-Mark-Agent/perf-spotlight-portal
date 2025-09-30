@@ -15,17 +15,31 @@ interface ClientSchedule {
   threeDayAverage: number;
 }
 
+interface ClientData {
+  name: string;
+  emails: number;
+  target: number;
+  targetPercentage: number;
+  isAboveTarget: boolean;
+  variance: number;
+  rank: number;
+}
+
 const SendingVolumeDashboard = () => {
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
   const [schedules, setSchedules] = useState<ClientSchedule[]>([]);
+  const [clientData, setClientData] = useState<ClientData[]>([]);
   const [targetVolumePerDay, setTargetVolumePerDay] = useState(0);
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(true);
+  const [isLoadingClients, setIsLoadingClients] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshingClients, setIsRefreshingClients] = useState(false);
   const [sortField, setSortField] = useState<'avgScheduled' | 'avgTarget' | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     fetchScheduledEmails();
+    fetchClientData();
   }, []);
 
   const fetchScheduledEmails = async (isRefresh = false) => {
@@ -45,7 +59,7 @@ const SendingVolumeDashboard = () => {
       if (isRefresh) {
         toast({
           title: "Success",
-          description: "Data refreshed successfully",
+          description: "Scheduled emails refreshed successfully",
         });
       }
     } catch (error) {
@@ -59,6 +73,40 @@ const SendingVolumeDashboard = () => {
       setIsLoadingSchedules(false);
       if (isRefresh) {
         setIsRefreshing(false);
+      }
+    }
+  };
+
+  const fetchClientData = async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setIsRefreshingClients(true);
+      }
+      console.log("Fetching client sending volume from Airtable...");
+      const { data, error } = await supabase.functions.invoke('airtable-sending-volume');
+      
+      if (error) throw error;
+      
+      console.log("Client data:", data);
+      setClientData(data.clients || []);
+      
+      if (isRefresh) {
+        toast({
+          title: "Success",
+          description: "Sending volume data refreshed successfully",
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching client data:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch sending volume data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingClients(false);
+      if (isRefresh) {
+        setIsRefreshingClients(false);
       }
     }
   };
@@ -120,34 +168,6 @@ const SendingVolumeDashboard = () => {
     }
   };
 
-  const clientData = [
-    { name: "Kim Wallace", emails: 76905, target: 78000 },
-    { name: "Jason Binyon", emails: 65558, target: 78000 },
-    { name: "David Amiri", emails: 45191, target: 39000 },
-    { name: "Workspark", emails: 37985, target: 52000 },
-    { name: "John Roberts", emails: 35306, target: 39000 },
-    { name: "Rob Russell", emails: 31772, target: 39000 },
-    { name: "StreetSmart Trucking", emails: 27104, target: 52000 },
-    { name: "StreetSmart P&C", emails: 21638, target: 39000 },
-    { name: "Danny Schwartz", emails: 20753, target: 39000 },
-    { name: "Radiant Energy", emails: 17045, target: 39000 },
-    { name: "SMA Insurance", emails: 16246, target: 52000 },
-    { name: "StreetSmart Commercial", emails: 15860, target: 52000 },
-    { name: "Jeff Schroder", emails: 14705, target: 26000 },
-    { name: "Devin Hodo", emails: 13555, target: 39000 },
-    { name: "Kirk Hodgson", emails: 11108, target: 26000 },
-    { name: "ATI", emails: 6059, target: 13000 },
-    { name: "Maverick Longrun", emails: 3611, target: 26000 }
-  ].map(client => ({
-    ...client,
-    targetPercentage: (client.emails / client.target) * 100,
-    isAboveTarget: client.emails >= client.target,
-    variance: client.emails - client.target
-  })).sort((a, b) => b.targetPercentage - a.targetPercentage)
-  .map((client, index) => ({
-    ...client,
-    rank: index + 1
-  }));
 
   const getPerformanceColor = (client: any) => {
     if (client.isAboveTarget) return "green";
@@ -409,15 +429,35 @@ const SendingVolumeDashboard = () => {
         {/* Main Performance Display */}
         <Card className="bg-white/5 backdrop-blur-sm border-white/10 shadow-2xl">
           <CardHeader className="pb-6">
-            <CardTitle className="text-white flex items-center gap-3 text-2xl">
-              <Users className="h-7 w-7 text-dashboard-primary" />
-              Sending Volume MTD
-            </CardTitle>
-            <p className="text-white/60 mt-2">All clients with actual vs target performance comparison</p>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div>
+                  <CardTitle className="text-white flex items-center gap-3 text-2xl">
+                    <Users className="h-7 w-7 text-dashboard-primary" />
+                    Sending Volume MTD
+                  </CardTitle>
+                  <p className="text-white/60 mt-2">All clients with actual vs target performance comparison</p>
+                </div>
+                <Button
+                  onClick={() => fetchClientData(true)}
+                  disabled={isRefreshingClients}
+                  variant="ghost"
+                  size="sm"
+                  className="text-white/70 hover:text-white hover:bg-white/10"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRefreshingClients ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4">
-              {clientData.map((client) => {
+            {isLoadingClients ? (
+              <div className="text-center py-8 text-white/60">Loading client data...</div>
+            ) : clientData.length === 0 ? (
+              <div className="text-center py-8 text-white/60">No client data found</div>
+            ) : (
+              <div className="grid gap-4">
+                {clientData.map((client) => {
                 const percentage = (client.emails / client.target) * 100;
                 const performanceColor = getPerformanceColor(client);
                 const isExceeding = client.isAboveTarget;
@@ -509,7 +549,8 @@ const SendingVolumeDashboard = () => {
                   </div>
                 );
               })}
-            </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

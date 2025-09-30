@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.airtable-campaigns]
 verify_jwt = false
+
+[functions.airtable-sending-volume]
+verify_jwt = false

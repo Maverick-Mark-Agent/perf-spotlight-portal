@@ -15,10 +15,20 @@ interface AirtableRecord {
   };
 }
 
+interface ClientRecord {
+  id: string;
+  fields: {
+    'Client Company Name'?: string;
+    '3-day Average Sending'?: number;
+  };
+}
+
 interface ClientSchedule {
   clientName: string;
   todayEmails: number;
   tomorrowEmails: number;
+  totalScheduled: number;
+  threeDayAverage: number;
 }
 
 serve(async (req) => {
@@ -72,7 +82,7 @@ serve(async (req) => {
 
     console.log(`Completed pagination: ${pageCount} pages, ${allRecords.length} total records`);
 
-    // Group by client and sum emails
+    // Group by client ID and sum emails
     const clientScheduleMap = new Map<string, { todayEmails: number; tomorrowEmails: number }>();
 
     allRecords.forEach(record => {
@@ -81,7 +91,6 @@ serve(async (req) => {
       const tomorrowEmails = record.fields['Emails Being Scheduled Tomorrow'] || 0;
 
       if (clientLinked && clientLinked.length > 0) {
-        // Client Linked is an array of client IDs, we'll use the first one
         const clientId = clientLinked[0];
         
         if (!clientScheduleMap.has(clientId)) {
@@ -94,16 +103,72 @@ serve(async (req) => {
       }
     });
 
-    // Convert to array
-    const schedules: ClientSchedule[] = Array.from(clientScheduleMap.entries()).map(([clientName, data]) => ({
-      clientName,
-      todayEmails: data.todayEmails,
-      tomorrowEmails: data.tomorrowEmails,
-    }));
+    // Fetch client details from Clients table
+    console.log('Fetching client details...');
+    const clientIds = Array.from(clientScheduleMap.keys());
+    const clientsTableName = '👨‍💻 Clients';
+    
+    const clientDetailsMap = new Map<string, { name: string; threeDayAverage: number }>();
+    
+    // Fetch clients in batches using filter formula
+    for (let i = 0; i < clientIds.length; i += 10) {
+      const batch = clientIds.slice(i, i + 10);
+      const filterFormula = `OR(${batch.map(id => `RECORD_ID()='${id}'`).join(',')})`;
+      
+      const url = new URL(`https://api.airtable.com/v0/${baseId}/${encodeURIComponent(clientsTableName)}`);
+      url.searchParams.append('filterByFormula', filterFormula);
+      
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Bearer ${airtableApiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`Failed to fetch client details for batch ${i}`);
+        continue;
+      }
+
+      const data = await response.json();
+      (data.records as ClientRecord[]).forEach(record => {
+        clientDetailsMap.set(record.id, {
+          name: record.fields['Client Company Name'] || record.id,
+          threeDayAverage: record.fields['3-day Average Sending'] || 0,
+        });
+      });
+    }
+
+    console.log(`Fetched ${clientDetailsMap.size} client details`);
+
+    // Convert to array with client names and 3-day average
+    const schedules: ClientSchedule[] = Array.from(clientScheduleMap.entries()).map(([clientId, data]) => {
+      const clientDetails = clientDetailsMap.get(clientId) || { name: clientId, threeDayAverage: 0 };
+      return {
+        clientName: clientDetails.name,
+        todayEmails: data.todayEmails,
+        tomorrowEmails: data.tomorrowEmails,
+        totalScheduled: data.todayEmails + data.tomorrowEmails,
+        threeDayAverage: clientDetails.threeDayAverage,
+      };
+    });
+
+    // Calculate median of 3-day averages
+    const threeDayAverages = schedules.map(s => s.threeDayAverage).filter(v => v > 0).sort((a, b) => a - b);
+    let medianThreeDayAverage = 0;
+    if (threeDayAverages.length > 0) {
+      const mid = Math.floor(threeDayAverages.length / 2);
+      medianThreeDayAverage = threeDayAverages.length % 2 === 0
+        ? (threeDayAverages[mid - 1] + threeDayAverages[mid]) / 2
+        : threeDayAverages[mid];
+    }
+    
+    const targetVolumePerDay = medianThreeDayAverage * 2; // Double it for 2-day sending
 
     console.log(`Processed ${schedules.length} clients with scheduled emails`);
+    console.log(`Median 3-day average: ${medianThreeDayAverage}, Target Volume Per Day: ${targetVolumePerDay}`);
 
-    return new Response(JSON.stringify({ schedules }), {
+    return new Response(JSON.stringify({ schedules, targetVolumePerDay }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

@@ -11,11 +11,14 @@ interface ClientSchedule {
   clientName: string;
   todayEmails: number;
   tomorrowEmails: number;
+  totalScheduled: number;
+  threeDayAverage: number;
 }
 
 const SendingVolumeDashboard = () => {
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
   const [schedules, setSchedules] = useState<ClientSchedule[]>([]);
+  const [targetVolumePerDay, setTargetVolumePerDay] = useState(0);
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(true);
 
   useEffect(() => {
@@ -31,6 +34,7 @@ const SendingVolumeDashboard = () => {
       
       console.log("Scheduled emails data:", data);
       setSchedules(data.schedules || []);
+      setTargetVolumePerDay(data.targetVolumePerDay || 0);
     } catch (error) {
       console.error("Error fetching scheduled emails:", error);
       toast({
@@ -260,22 +264,30 @@ const SendingVolumeDashboard = () => {
                 </CardTitle>
                 <p className="text-white/60 mt-1 text-sm">Today & Tomorrow per client</p>
               </div>
-              {schedules.length > 0 && (
-                <div className="flex gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-100">
-                      {schedules.reduce((sum, s) => sum + s.todayEmails, 0).toLocaleString()}
+              <div className="flex gap-6">
+                {schedules.length > 0 && (
+                  <>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-100">
+                        {schedules.reduce((sum, s) => sum + s.todayEmails, 0).toLocaleString()}
+                      </div>
+                      <div className="text-xs text-blue-200">Total Today</div>
                     </div>
-                    <div className="text-xs text-blue-200">Total Today</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-100">
-                      {schedules.reduce((sum, s) => sum + s.tomorrowEmails, 0).toLocaleString()}
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-100">
+                        {schedules.reduce((sum, s) => sum + s.tomorrowEmails, 0).toLocaleString()}
+                      </div>
+                      <div className="text-xs text-purple-200">Total Tomorrow</div>
                     </div>
-                    <div className="text-xs text-purple-200">Total Tomorrow</div>
+                  </>
+                )}
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-100">
+                    {Math.round(targetVolumePerDay).toLocaleString()}
                   </div>
+                  <div className="text-xs text-green-200">Target Volume Per Day</div>
                 </div>
-              )}
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -291,6 +303,7 @@ const SendingVolumeDashboard = () => {
                       <th className="text-left py-3 px-4 text-white/80 font-semibold">Client</th>
                       <th className="text-right py-3 px-4 text-white/80 font-semibold">Today</th>
                       <th className="text-right py-3 px-4 text-white/80 font-semibold">Tomorrow</th>
+                      <th className="text-right py-3 px-4 text-white/80 font-semibold">Total Scheduled</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -307,6 +320,9 @@ const SendingVolumeDashboard = () => {
                         </td>
                         <td className="py-3 px-4 text-right text-purple-100 font-semibold">
                           {schedule.tomorrowEmails.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-green-100 font-bold">
+                          {schedule.totalScheduled.toLocaleString()}
                         </td>
                       </tr>
                     ))}

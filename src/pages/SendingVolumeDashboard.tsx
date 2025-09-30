@@ -396,7 +396,7 @@ const SendingVolumeDashboard = () => {
           <CardHeader className="pb-6">
             <CardTitle className="text-white flex items-center gap-3 text-2xl">
               <Users className="h-7 w-7 text-dashboard-primary" />
-              MTD Email Performance vs Targets
+              Sending Volume MTD
             </CardTitle>
             <p className="text-white/60 mt-2">All clients with actual vs target performance comparison</p>
           </CardHeader>

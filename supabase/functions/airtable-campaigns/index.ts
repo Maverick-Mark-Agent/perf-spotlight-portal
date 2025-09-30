@@ -12,6 +12,7 @@ interface AirtableRecord {
     'Client Linked'?: string[];
     'Emails Being Scheduled Today'?: number;
     'Emails Being Scheduled Tomorrow'?: number;
+    '3-day Average Sending'?: number;
   };
 }
 
@@ -19,7 +20,6 @@ interface ClientRecord {
   id: string;
   fields: {
     'Client Company Name'?: string;
-    '3-day Average Sending'?: number;
   };
 }
 
@@ -82,24 +82,32 @@ serve(async (req) => {
 
     console.log(`Completed pagination: ${pageCount} pages, ${allRecords.length} total records`);
 
-    // Group by client ID and sum emails
-    const clientScheduleMap = new Map<string, { todayEmails: number; tomorrowEmails: number }>();
+    // Group by client ID and sum emails and 3-day averages
+    const clientScheduleMap = new Map<string, { todayEmails: number; tomorrowEmails: number; threeDaySum: number; threeDayCount: number }>();
 
     allRecords.forEach(record => {
       const clientLinked = record.fields['Client Linked'];
       const todayEmails = record.fields['Emails Being Scheduled Today'] || 0;
       const tomorrowEmails = record.fields['Emails Being Scheduled Tomorrow'] || 0;
+      const threeDayVal = record.fields['3-day Average Sending'];
 
       if (clientLinked && clientLinked.length > 0) {
         const clientId = clientLinked[0];
         
         if (!clientScheduleMap.has(clientId)) {
-          clientScheduleMap.set(clientId, { todayEmails: 0, tomorrowEmails: 0 });
+          clientScheduleMap.set(clientId, { todayEmails: 0, tomorrowEmails: 0, threeDaySum: 0, threeDayCount: 0 });
         }
         
         const existing = clientScheduleMap.get(clientId)!;
         existing.todayEmails += todayEmails;
         existing.tomorrowEmails += tomorrowEmails;
+        if (threeDayVal !== undefined && threeDayVal !== null) {
+          const num = typeof threeDayVal === 'number' ? threeDayVal : parseFloat(String(threeDayVal));
+          if (!Number.isNaN(num)) {
+            existing.threeDaySum += num;
+            existing.threeDayCount += 1;
+          }
+        }
       }
     });
 
@@ -108,7 +116,7 @@ serve(async (req) => {
     const clientIds = Array.from(clientScheduleMap.keys());
     const clientsTableName = '👨‍💻 Clients';
     
-    const clientDetailsMap = new Map<string, { name: string; threeDayAverage: number }>();
+    const clientDetailsMap = new Map<string, { name: string }>();
     
     // Fetch clients in batches using filter formula
     for (let i = 0; i < clientIds.length; i += 10) {
@@ -134,26 +142,26 @@ serve(async (req) => {
       (data.records as ClientRecord[]).forEach(record => {
         clientDetailsMap.set(record.id, {
           name: record.fields['Client Company Name'] || record.id,
-          threeDayAverage: record.fields['3-day Average Sending'] || 0,
         });
       });
     }
 
     console.log(`Fetched ${clientDetailsMap.size} client details`);
 
-    // Convert to array with client names and 3-day average
+    // Convert to array with client names and per-client 3-day average (from campaigns)
     const schedules: ClientSchedule[] = Array.from(clientScheduleMap.entries()).map(([clientId, data]) => {
-      const clientDetails = clientDetailsMap.get(clientId) || { name: clientId, threeDayAverage: 0 };
+      const clientDetails = clientDetailsMap.get(clientId) || { name: clientId };
+      const avg3Day = data.threeDayCount > 0 ? data.threeDaySum / data.threeDayCount : 0;
       return {
         clientName: clientDetails.name,
         todayEmails: data.todayEmails,
         tomorrowEmails: data.tomorrowEmails,
         totalScheduled: data.todayEmails + data.tomorrowEmails,
-        threeDayAverage: clientDetails.threeDayAverage,
+        threeDayAverage: avg3Day,
       };
     });
 
-    // Calculate median of 3-day averages
+    // Calculate median of per-client 3-day averages for reference
     const threeDayAverages = schedules.map(s => s.threeDayAverage).filter(v => v > 0).sort((a, b) => a - b);
     let medianThreeDayAverage = 0;
     if (threeDayAverages.length > 0) {

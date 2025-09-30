@@ -9,8 +9,8 @@ interface AirtableRecord {
   id: string;
   fields: {
     'Client Company Name'?: string;
-    'Emails Sent MTD'?: number;
-    'Monthly Email Target'?: number;
+    'Emails Sent - MTD (Linked to Campaigns)'?: number;
+    'Monthly Sending Target'?: number;
     [key: string]: any;
   };
 }
@@ -63,8 +63,8 @@ Deno.serve(async (req) => {
     const clients = data.records
       .map(record => {
         const name = record.fields['Client Company Name'];
-        const emails = record.fields['Emails Sent MTD'] || 0;
-        const target = record.fields['Monthly Email Target'] || 0;
+        const emails = record.fields['Emails Sent - MTD (Linked to Campaigns)'] || 0;
+        const target = record.fields['Monthly Sending Target'] || 0;
         
         if (!name) return null;
         

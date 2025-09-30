@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
         const target = record.fields['Monthly Sending Target'] || 0;
         const projection = record.fields['Projection: Emails Sent by EOM'] || 0;
         
-        if (!name) return null;
+        if (!name || target <= 0) return null;
         
         const targetPercentage = target > 0 ? (emails / target) * 100 : 0;
         const projectedPercentage = target > 0 ? (projection / target) * 100 : 0;

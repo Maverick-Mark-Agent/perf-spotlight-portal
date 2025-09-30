@@ -251,12 +251,32 @@ const SendingVolumeDashboard = () => {
 
         {/* Scheduled Emails Section */}
         <Card className="bg-white/5 backdrop-blur-sm border-white/10 shadow-2xl mb-12">
-          <CardHeader className="pb-6">
-            <CardTitle className="text-white flex items-center gap-3 text-2xl">
-              <Calendar className="h-7 w-7 text-dashboard-primary" />
-              Scheduled Emails - Today & Tomorrow
-            </CardTitle>
-            <p className="text-white/60 mt-2">Emails scheduled to be sent per client</p>
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-white flex items-center gap-3 text-xl">
+                  <Calendar className="h-6 w-6 text-dashboard-primary" />
+                  Scheduled Emails
+                </CardTitle>
+                <p className="text-white/60 mt-1 text-sm">Today & Tomorrow per client</p>
+              </div>
+              {schedules.length > 0 && (
+                <div className="flex gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-100">
+                      {schedules.reduce((sum, s) => sum + s.todayEmails, 0).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-blue-200">Total Today</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-purple-100">
+                      {schedules.reduce((sum, s) => sum + s.tomorrowEmails, 0).toLocaleString()}
+                    </div>
+                    <div className="text-xs text-purple-200">Total Tomorrow</div>
+                  </div>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isLoadingSchedules ? (
@@ -264,29 +284,34 @@ const SendingVolumeDashboard = () => {
             ) : schedules.length === 0 ? (
               <div className="text-center py-8 text-white/60">No scheduled emails found</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {schedules.map((schedule) => (
-                  <div 
-                    key={schedule.clientName}
-                    className="p-6 rounded-xl bg-gradient-to-r from-blue-500/20 to-blue-600/30 border-2 border-blue-400/50 shadow-xl"
-                  >
-                    <h3 className="text-xl font-bold text-blue-100 mb-4">{schedule.clientName}</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="text-center p-4 bg-white/10 rounded-lg">
-                        <div className="text-3xl font-bold text-blue-100 mb-1">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-left py-3 px-4 text-white/80 font-semibold">Client</th>
+                      <th className="text-right py-3 px-4 text-white/80 font-semibold">Today</th>
+                      <th className="text-right py-3 px-4 text-white/80 font-semibold">Tomorrow</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schedules.map((schedule, index) => (
+                      <tr 
+                        key={schedule.clientName}
+                        className={`border-b border-white/5 hover:bg-white/5 transition-colors ${
+                          index % 2 === 0 ? 'bg-white/[0.02]' : ''
+                        }`}
+                      >
+                        <td className="py-3 px-4 text-white font-medium">{schedule.clientName}</td>
+                        <td className="py-3 px-4 text-right text-blue-100 font-semibold">
                           {schedule.todayEmails.toLocaleString()}
-                        </div>
-                        <div className="text-sm text-blue-200">Today</div>
-                      </div>
-                      <div className="text-center p-4 bg-white/10 rounded-lg">
-                        <div className="text-3xl font-bold text-blue-100 mb-1">
+                        </td>
+                        <td className="py-3 px-4 text-right text-purple-100 font-semibold">
                           {schedule.tomorrowEmails.toLocaleString()}
-                        </div>
-                        <div className="text-sm text-blue-200">Tomorrow</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </CardContent>

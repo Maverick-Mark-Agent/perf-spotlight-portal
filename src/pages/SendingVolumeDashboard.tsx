@@ -1,10 +1,43 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, TrendingUp, Mail, Users, BarChart3, Calendar, Send, Target } from "lucide-react";
 import { Link } from "react-router-dom";
+import { toast } from "@/hooks/use-toast";
 
 const SendingVolumeDashboard = () => {
+  const [isWebhookLoading, setIsWebhookLoading] = useState(false);
+
+  const handleWebhookTrigger = async () => {
+    setIsWebhookLoading(true);
+    try {
+      const response = await fetch('https://longrun.up.railway.app/webhook/677d43c6-3863-4352-b924-8782f33db6e8', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Webhook triggered successfully",
+          description: "The webhook has been called.",
+        });
+      } else {
+        throw new Error('Failed to trigger webhook');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to trigger webhook. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsWebhookLoading(false);
+    }
+  };
+
   const clientData = [
     { name: "Kim Wallace", emails: 76905, target: 78000 },
     { name: "Jason Binyon", emails: 65558, target: 78000 },
@@ -56,6 +89,17 @@ const SendingVolumeDashboard = () => {
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to Portal
                 </Link>
+              </Button>
+              <div className="h-6 w-px bg-white/20"></div>
+              <Button 
+                onClick={handleWebhookTrigger}
+                disabled={isWebhookLoading}
+                variant="default"
+                size="sm"
+                className="bg-dashboard-primary hover:bg-dashboard-primary/90"
+              >
+                <Send className="h-4 w-4 mr-2" />
+                {isWebhookLoading ? "Triggering..." : "Trigger Webhook"}
               </Button>
               <div className="h-6 w-px bg-white/20"></div>
               <div>

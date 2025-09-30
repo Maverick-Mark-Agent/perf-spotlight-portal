@@ -147,21 +147,21 @@ serve(async (req) => {
 
     console.log(`Fetched ${clientDetailsMap.size} client details`);
 
-    // Convert to array with client names and per-client median 3-day average (from campaigns)
+    // Convert to array with client names and per-client average 3-day average (from campaigns)
     const schedules: ClientSchedule[] = Array.from(clientScheduleMap.entries()).map(([clientId, data]) => {
       const clientDetails = clientDetailsMap.get(clientId) || { name: clientId };
-      const vals = (data.threeDayValues || []).filter(v => typeof v === 'number' && !Number.isNaN(v)).sort((a, b) => a - b);
-      let median = 0;
+      const vals = (data.threeDayValues || []).filter(v => typeof v === 'number' && !Number.isNaN(v));
+      let average = 0;
       if (vals.length > 0) {
-        const mid = Math.floor(vals.length / 2);
-        median = vals.length % 2 === 0 ? (vals[mid - 1] + vals[mid]) / 2 : vals[mid];
+        const sum = vals.reduce((acc, val) => acc + val, 0);
+        average = sum / vals.length;
       }
       return {
         clientName: clientDetails.name,
         todayEmails: data.todayEmails,
         tomorrowEmails: data.tomorrowEmails,
         totalScheduled: (data.todayEmails + data.tomorrowEmails) / 2,
-        threeDayAverage: median,
+        threeDayAverage: average,
       };
     });
 

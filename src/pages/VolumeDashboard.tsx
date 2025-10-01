@@ -31,7 +31,7 @@ interface ClientData {
   rank: number;
 }
 
-const SendingVolumeDashboard = () => {
+const VolumeDashboard = () => {
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
   const [schedules, setSchedules] = useState<ClientSchedule[]>([]);
   const [clientData, setClientData] = useState<ClientData[]>([]);
@@ -175,7 +175,7 @@ const SendingVolumeDashboard = () => {
   };
 
 
-  const getPerformanceColor = (client: any) => {
+  const getPerformanceColor = (client: ClientData): "green" | "yellow" | "red" => {
     if (client.isAboveTarget) return "green";
     if (client.targetPercentage >= 80) return "yellow";
     return "red";
@@ -634,4 +634,4 @@ const SendingVolumeDashboard = () => {
   );
 };
 
-export default SendingVolumeDashboard;
+export default VolumeDashboard;

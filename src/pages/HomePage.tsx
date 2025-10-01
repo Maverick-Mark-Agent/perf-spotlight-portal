@@ -29,13 +29,13 @@ const Index = () => {
                 <span className="text-xs font-semibold text-success">● Live Data</span>
               </div>
               <Button asChild variant="outline" className="shadow-sm hover:shadow-md transition-all">
-                <Link to="/kpi-progress">KPI Dashboard</Link>
+                <Link to="/kpi-dashboard">KPI Dashboard</Link>
               </Button>
               <Button asChild variant="outline" className="shadow-sm hover:shadow-md transition-all">
-                <Link to="/sending-accounts">Infrastructure</Link>
+                <Link to="/email-accounts">Infrastructure</Link>
               </Button>
               <Button asChild variant="outline" className="shadow-sm hover:shadow-md transition-all">
-                <Link to="/sending-volume">Volume Dashboard</Link>
+                <Link to="/volume-dashboard">Volume Dashboard</Link>
               </Button>
               <Button asChild variant="outline" className="shadow-sm hover:shadow-md transition-all">
                 <Link to="/billing">Billing Dashboard</Link>
@@ -128,7 +128,7 @@ const Index = () => {
               to drive Maverick Marketing's continued success.
             </p>
             <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-12 py-6 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl">
-              <Link to="/kpi-progress">
+              <Link to="/kpi-dashboard">
                 <TrendingUp className="h-5 w-5 mr-2" />
                 Launch KPI Dashboard
               </Link>

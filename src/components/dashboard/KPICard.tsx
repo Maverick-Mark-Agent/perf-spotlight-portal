@@ -1,96 +1,118 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/utils";
+import { TrendingUp, TrendingDown } from "lucide-react";
+
 interface KPICardProps {
   title: string;
-  value: string | number;
+  value: number | string;
   subtitle?: string;
-  type?: "default" | "progress" | "percentage";
+  type?: "standard" | "progress";
   progress?: number;
   target?: number;
-  trend?: "up" | "down" | "neutral";
-  status?: "above-target" | "below-target" | "on-target" | "neutral";
+  trend?: "up" | "down";
+  status?: "above-target" | "on-target" | "below-target" | "neutral";
   icon?: React.ReactNode;
 }
-export const KPICard = ({
-  title,
-  value,
-  subtitle,
-  type = "default",
-  progress,
-  target,
-  trend = "neutral",
+
+export const KPICard = ({ 
+  title, 
+  value, 
+  subtitle, 
+  type = "standard",
+  progress = 0,
+  target = 100,
+  trend,
   status = "neutral",
   icon
 }: KPICardProps) => {
-  const getTrendColor = () => {
-    switch (trend) {
-      case "up":
-        return "text-dashboard-success";
-      case "down":
-        return "text-dashboard-danger";
-      default:
-        return "text-dashboard-secondary";
-    }
-  };
-
+  
   const getStatusStyles = () => {
     switch (status) {
       case "above-target":
-        return "border-dashboard-success bg-dashboard-success/5";
-      case "below-target":
-        return "border-dashboard-danger bg-dashboard-danger/5";
+        return "border-l-4 border-l-success bg-gradient-to-br from-white to-green-50/30";
       case "on-target":
-        return "border-dashboard-success bg-dashboard-success/5";
+        return "border-l-4 border-l-success bg-gradient-to-br from-white to-green-50/30";
+      case "below-target":
+        return "border-l-4 border-l-warning bg-gradient-to-br from-white to-amber-50/30";
       default:
-        return "border-border bg-dashboard-card";
+        return "border-l-4 border-l-primary bg-gradient-to-br from-white to-blue-50/30";
     }
   };
 
-  const getStatusIndicator = () => {
-    switch (status) {
-      case "above-target":
-        return <div className="w-2 h-2 rounded-full bg-dashboard-success animate-pulse" />;
-      case "below-target":
-        return <div className="w-2 h-2 rounded-full bg-dashboard-danger animate-pulse" />;
-      case "on-target":
-        return <div className="w-2 h-2 rounded-full bg-dashboard-success animate-pulse" />;
-      default:
-        return null;
-    }
-  };
-  return <Card className={cn("shadow-sm hover:shadow-md transition-all duration-200", getStatusStyles())}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-sm font-medium text-dashboard-secondary">
-              {title}
-            </CardTitle>
-            {getStatusIndicator()}
-          </div>
-          {icon && <div className="text-dashboard-accent">{icon}</div>}
+  const getStatusBadge = () => {
+    if (status === "above-target" || status === "on-target") {
+      return (
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-success/10 text-success text-xs font-semibold">
+          <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+          On Track
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          <div className={cn("text-2xl font-bold", 
-            status === "above-target" || status === "on-target" ? "text-dashboard-success" : 
-            status === "below-target" ? "text-dashboard-danger" : "text-dashboard-primary"
-          )}>
-            {value}
+      );
+    }
+    if (status === "below-target") {
+      return (
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-warning/10 text-warning text-xs font-semibold">
+          <div className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
+          Needs Attention
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const getTrendIcon = () => {
+    if (trend === "up") {
+      return <TrendingUp className="h-4 w-4 text-success" />;
+    }
+    if (trend === "down") {
+      return <TrendingDown className="h-4 w-4 text-warning" />;
+    }
+    return null;
+  };
+
+  return (
+    <Card className={`${getStatusStyles()} shadow-md hover:shadow-xl transition-all duration-300 rounded-2xl overflow-hidden group`}>
+      <CardHeader className="pb-3 space-y-0">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1 flex-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              {title}
+            </p>
           </div>
-          {subtitle && (
-            <div className={cn("text-sm font-medium", getTrendColor())}>
-              {subtitle}
+          {icon && (
+            <div className="p-2 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all">
+              {icon}
             </div>
           )}
-          {type === "progress" && progress !== undefined && <div className="space-y-1">
-              <Progress value={progress * 100} className="h-2" />
-              <div className="text-xs text-dashboard-secondary">
-                {Math.round(progress * 100)}% of {target} target
-              </div>
-            </div>}
         </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-baseline gap-2">
+          <p className="text-4xl font-bold text-foreground tracking-tight">
+            {value}
+          </p>
+          {getTrendIcon()}
+        </div>
+
+        {type === "progress" && (
+          <div className="space-y-2">
+            <Progress 
+              value={progress} 
+              className="h-2 bg-muted"
+            />
+            <p className="text-xs text-muted-foreground">
+              {Math.round(progress)}% of target
+            </p>
+          </div>
+        )}
+
+        {subtitle && (
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {subtitle}
+          </p>
+        )}
+
+        {getStatusBadge()}
       </CardContent>
-    </Card>;
+    </Card>
+  );
 };

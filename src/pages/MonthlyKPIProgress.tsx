@@ -106,33 +106,32 @@ const MonthlyKPIProgress = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-dashboard p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="relative overflow-hidden bg-gradient-to-r from-dashboard-card/10 via-dashboard-primary/5 to-dashboard-accent/10 backdrop-blur-sm rounded-2xl border border-white/10 shadow-2xl mb-8">
-          <div className="absolute inset-0 bg-gradient-to-br from-dashboard-primary/5 via-transparent to-dashboard-accent/5"></div>
-          <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-6 p-8">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-3 h-3 bg-gradient-to-r from-dashboard-success to-dashboard-primary rounded-full animate-pulse"></div>
-                <span className="text-xs font-medium text-dashboard-primary/70 uppercase tracking-wider">Real-time Dashboard</span>
+    <div className="min-h-screen bg-gradient-dashboard">
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-border shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Live Dashboard</span>
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-dashboard-primary via-dashboard-accent to-dashboard-primary bg-clip-text text-transparent leading-tight">
+              <h1 className="text-2xl md:text-3xl font-bold text-foreground">
                 Monthly Lead KPI Progress
               </h1>
-              <p className="text-lg text-dashboard-secondary/80 font-medium max-w-2xl leading-relaxed">
-                Track lead generation and positive reply metrics with advanced analytics and performance insights
+              <p className="text-sm text-muted-foreground">
+                Track lead generation and positive reply metrics in real time
               </p>
             </div>
-            <div className="flex items-center gap-4 shrink-0">
+            <div className="flex items-center gap-3">
               <Button
                 onClick={handleRefresh}
                 disabled={loading}
                 variant="outline"
-                size="lg"
-                className="bg-white/5 border-white/20 hover:bg-white/10 hover:border-dashboard-primary/40 text-dashboard-primary font-semibold shadow-lg transition-all duration-300 hover:shadow-xl"
+                size="default"
+                className="shadow-md hover:shadow-lg transition-all"
               >
-                <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh Data
               </Button>
               <ClientSelector 
@@ -144,29 +143,32 @@ const MonthlyKPIProgress = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
 
         {/* KPI Overview Grid */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-32 bg-dashboard-card rounded-lg animate-pulse" />
+              <div key={i} className="h-40 bg-card rounded-2xl animate-pulse shadow-md" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
             <KPICard
               title="Leads Generated This Month"
               value={selectedClientData.leadsGenerated}
-              subtitle={`vs ${selectedClientData.monthlyKPI} target: ${selectedClientData.leadsGenerated >= selectedClientData.monthlyKPI ? "Above Target 🎯" : "Below Target ⚠️"}`}
+              subtitle={`Target: ${selectedClientData.monthlyKPI}`}
               trend={selectedClientData.leadsGenerated >= selectedClientData.monthlyKPI ? "up" : "down"}
               status={selectedClientData.leadsGenerated >= selectedClientData.monthlyKPI ? "above-target" : "below-target"}
               icon={<Users className="h-5 w-5" />}
             />
             
             <KPICard
-              title="Projected Positive Replies (EOM)"
+              title="Projected Positive Replies"
               value={selectedClientData.projectedReplies}
-              subtitle={`vs ${selectedClientData.monthlyKPI} target: ${selectedClientData.projectedReplies >= selectedClientData.monthlyKPI ? "On Track 🎯" : "NOT On Track ⚠️"}`}
+              subtitle={`EOM Target: ${selectedClientData.monthlyKPI}`}
               trend={selectedClientData.projectedReplies >= selectedClientData.monthlyKPI ? "up" : "down"}
               status={selectedClientData.projectedReplies >= selectedClientData.monthlyKPI ? "on-target" : "below-target"}
               icon={<Target className="h-5 w-5" />}
@@ -184,7 +186,7 @@ const MonthlyKPIProgress = () => {
             <div className="md:col-span-1">
               <ProgressPieChart
                 percentage={selectedClientData.repliesProgress * 100}
-                title="Positive Replies % Progress"
+                title="Replies Progress"
               />
             </div>
             
@@ -193,6 +195,7 @@ const MonthlyKPIProgress = () => {
               value={selectedClientData.monthlyKPI}
               subtitle="Static target"
               icon={<Zap className="h-5 w-5" />}
+              status="neutral"
             />
           </div>
         )}
@@ -209,8 +212,8 @@ const MonthlyKPIProgress = () => {
         />
 
         {/* Comparison Metrics */}
-        <div>
-          <h2 className="text-xl font-semibold text-dashboard-primary mb-4">
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-foreground">
             Performance Comparisons
           </h2>
           <ComparisonMetrics metrics={comparisonMetrics} />

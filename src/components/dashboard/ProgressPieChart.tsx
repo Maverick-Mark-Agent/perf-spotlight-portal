@@ -1,5 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
 interface ProgressPieChartProps {
   percentage: number;
@@ -7,53 +7,63 @@ interface ProgressPieChartProps {
 }
 
 export const ProgressPieChart = ({ percentage, title }: ProgressPieChartProps) => {
-  const displayPercentage = Math.min(percentage, 100);
-  const remaining = Math.max(100 - displayPercentage, 0);
+  const achieved = Math.min(percentage, 100);
+  const remaining = Math.max(100 - percentage, 0);
 
   const data = [
-    { name: "Achieved", value: displayPercentage, color: "hsl(var(--dashboard-success))" },
-    { name: "Remaining", value: remaining, color: "hsl(var(--border))" },
+    { name: "Achieved", value: achieved },
+    { name: "Remaining", value: remaining },
   ];
 
+  const getColor = () => {
+    if (achieved >= 80) return "hsl(142 76% 36%)"; // success
+    if (achieved >= 50) return "hsl(38 92% 50%)"; // warning
+    return "hsl(217 91% 60%)"; // primary
+  };
+
+  const COLORS = [getColor(), "hsl(214 32% 91%)"];
+
   return (
-    <Card className="bg-dashboard-card border-border">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-dashboard-secondary">
+    <Card className="shadow-md hover:shadow-xl transition-all duration-300 rounded-2xl overflow-hidden border-l-4 border-l-primary bg-gradient-to-br from-white to-blue-50/30 group h-full">
+      <CardHeader className="pb-3">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           {title}
-        </CardTitle>
+        </p>
       </CardHeader>
-      <CardContent>
-        <div className="relative h-32">
+      <CardContent className="flex flex-col items-center justify-center pb-6">
+        <div className="relative w-32 h-32">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={data}
                 cx="50%"
                 cy="50%"
-                innerRadius={25}
-                outerRadius={50}
+                innerRadius={45}
+                outerRadius={60}
+                paddingAngle={2}
+                dataKey="value"
                 startAngle={90}
                 endAngle={-270}
-                dataKey="value"
               >
                 {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={COLORS[index]} 
+                    strokeWidth={0}
+                  />
                 ))}
               </Pie>
-              <Tooltip />
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
-              <div className="text-xl font-bold text-dashboard-primary">
-                {displayPercentage.toFixed(1)}%
-              </div>
+              <p className="text-3xl font-bold text-foreground">
+                {Math.round(achieved)}%
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Complete
+              </p>
             </div>
-          </div>
-        </div>
-        <div className="mt-2 text-center">
-          <div className="text-sm text-dashboard-secondary">
-            {displayPercentage.toFixed(1)}%
           </div>
         </div>
       </CardContent>

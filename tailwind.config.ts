@@ -65,6 +65,14 @@ export default {
           warning: "hsl(var(--dashboard-warning))",
           danger: "hsl(var(--dashboard-danger))",
         },
+        status: {
+          success: "hsl(var(--status-success))",
+          "success-bg": "hsl(var(--status-success-bg))",
+          warning: "hsl(var(--status-warning))",
+          "warning-bg": "hsl(var(--status-warning-bg))",
+          info: "hsl(var(--status-info))",
+          "info-bg": "hsl(var(--status-info-bg))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",

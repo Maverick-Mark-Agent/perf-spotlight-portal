@@ -187,23 +187,29 @@ const SendingVolumeDashboard = () => {
 
   return (
     <TooltipProvider>
-      <div className="min-h-screen bg-gradient-dashboard">
+      <div className="min-h-screen bg-muted/30">
       {/* Header */}
-      <div className="bg-white/5 backdrop-blur-md border-b border-white/10 shadow-xl">
-        <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="sticky top-0 z-50 bg-card/95 backdrop-blur-md border-b border-border shadow-md">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Button asChild variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10">
+              <Button asChild variant="ghost" size="sm" className="hover:bg-accent">
                 <Link to="/">
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to Portal
                 </Link>
               </Button>
-              <div className="h-6 w-px bg-white/20"></div>
-              <div>
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-dashboard-primary to-dashboard-accent bg-clip-text text-transparent">
-                  Sending Volume Overview
-                </h1>
+              <div className="h-6 w-px bg-border"></div>
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-primary/10 rounded-xl">
+                  <Send className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-foreground">
+                    Sending Volume Overview
+                  </h1>
+                  <p className="text-muted-foreground text-sm">Monitor daily email sending performance</p>
+                </div>
               </div>
             </div>
             <Button 
@@ -211,9 +217,9 @@ const SendingVolumeDashboard = () => {
               disabled={isWebhookLoading}
               variant="default"
               size="lg"
-              className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold px-8 py-6 text-lg shadow-2xl shadow-red-500/50 hover:shadow-red-600/60 transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold px-6 py-3 text-base shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl disabled:opacity-50"
             >
-              <Send className="h-6 w-6 mr-3" />
+              <Send className="h-5 w-5 mr-2" />
               {isWebhookLoading ? "Sending..." : "Send Volume Slack DM"}
             </Button>
           </div>

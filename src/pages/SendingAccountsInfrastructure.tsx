@@ -541,28 +541,33 @@ const SendingAccountsInfrastructure = () => {
   }, [emailAccounts]);
 
   return (
-    <div className="min-h-screen bg-gradient-dashboard">
+    <div className="min-h-screen bg-muted/30">
       {/* Header */}
-      <div className="bg-white/5 backdrop-blur-md border-b border-white/10 shadow-xl">
-        <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="sticky top-0 z-50 bg-card/95 backdrop-blur-md border-b border-border shadow-md">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Button asChild variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10">
+              <Button asChild variant="ghost" size="sm" className="hover:bg-accent">
                 <Link to="/">
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to Portal
                 </Link>
               </Button>
-              <div className="h-6 w-px bg-white/20"></div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-white via-dashboard-primary to-dashboard-accent bg-clip-text text-transparent">
-                  Sending Accounts Infrastructure
-                </h1>
-                <p className="text-white/70 mt-1">Email Infrastructure Management & Monitoring</p>
+              <div className="h-6 w-px bg-border"></div>
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-primary/10 rounded-xl">
+                  <Mail className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-foreground">
+                    Sending Accounts Infrastructure
+                  </h1>
+                  <p className="text-muted-foreground text-sm">Email Infrastructure Management & Monitoring</p>
+                </div>
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <Badge variant="secondary" className="bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40">
+              <Badge variant="secondary" className="bg-success/10 text-success border-success/40">
                 <Activity className="h-3 w-3 mr-1" />
                 All Systems Operational
               </Badge>
@@ -571,7 +576,7 @@ const SendingAccountsInfrastructure = () => {
                 disabled={loading}
                 variant="ghost" 
                 size="sm" 
-                className="text-white/70 hover:text-white hover:bg-white/10"
+                className="hover:bg-accent"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh Data
@@ -580,7 +585,8 @@ const SendingAccountsInfrastructure = () => {
                 onClick={downloadFailedAccounts}
                 disabled={loading}
                 size="sm"
-                className="relative overflow-hidden bg-gradient-to-r from-dashboard-accent to-dashboard-primary border-2 border-dashboard-accent/50 text-white font-medium px-3 py-2 rounded-lg transition-all duration-300 hover:scale-105 hover:border-dashboard-accent hover:shadow-lg hover:shadow-dashboard-accent/25 w-48 text-xs"
+                variant="outline"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 font-medium px-3 py-2 transition-all"
                >
                  <Download className="h-3 w-3 mr-2" />
                  Failed Accounts
@@ -589,7 +595,8 @@ const SendingAccountsInfrastructure = () => {
                 onClick={downloadZeroReplyRateAccounts}
                 disabled={loading}
                 size="sm"
-                className="bg-gradient-to-r from-dashboard-warning to-dashboard-warning/80 border-2 border-dashboard-warning/50 text-white font-medium px-3 py-2 rounded-lg transition-all duration-300 hover:scale-105 hover:border-dashboard-warning hover:shadow-lg hover:shadow-dashboard-warning/25 w-48 text-xs"
+                variant="outline"
+                className="border-warning/40 text-warning hover:bg-warning/10 font-medium px-3 py-2 transition-all"
                >
                  <Download className="h-3 w-3 mr-2" />
                  0% Reply Rate (50+)

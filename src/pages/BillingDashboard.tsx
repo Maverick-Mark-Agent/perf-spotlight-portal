@@ -244,17 +244,17 @@ const BillingDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-dashboard">
+    <div className="min-h-screen bg-muted/30">
       {/* Header */}
-      <div className="bg-white/10 backdrop-blur-md border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="sticky top-0 z-50 bg-card/95 backdrop-blur-md border-b border-border shadow-md">
+        <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button
                 asChild
                 variant="ghost"
                 size="sm"
-                className="text-white hover:bg-white/10"
+                className="hover:bg-accent"
               >
                 <Link to="/">
                   <ArrowLeft className="h-4 w-4 mr-2" />
@@ -262,17 +262,17 @@ const BillingDashboard = () => {
                 </Link>
               </Button>
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-dashboard-primary/20 rounded-lg">
-                  <DollarSign className="h-6 w-6 text-dashboard-primary" />
+                <div className="p-3 bg-primary/10 rounded-xl">
+                  <DollarSign className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-white">Billing Dashboard</h1>
-                  <p className="text-white/70 text-sm">Client revenue and KPI performance tracking</p>
+                  <h1 className="text-2xl font-bold text-foreground">Billing Dashboard</h1>
+                  <p className="text-muted-foreground text-sm">Client revenue and KPI performance tracking</p>
                 </div>
               </div>
             </div>
-            <div className="px-3 py-1 bg-dashboard-success/20 border border-dashboard-success/40 rounded-full">
-              <span className="text-xs font-medium text-dashboard-success">● Live Data</span>
+            <div className="px-3 py-1.5 bg-success/10 border border-success/40 rounded-full">
+              <span className="text-xs font-semibold text-success">● Live Data</span>
             </div>
           </div>
         </div>

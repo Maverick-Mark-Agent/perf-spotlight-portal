@@ -206,20 +206,20 @@ const BillingDashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-dashboard">
+      <div className="min-h-screen bg-muted/30">
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex items-center gap-4 mb-8">
-            <Skeleton className="h-10 w-10 rounded-lg" />
+            <Skeleton className="h-10 w-10 rounded-xl" />
             <Skeleton className="h-8 w-48" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-32 rounded-xl" />
+              <Skeleton key={i} className="h-32 rounded-2xl" />
             ))}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-64 rounded-xl" />
+              <Skeleton key={i} className="h-64 rounded-2xl" />
             ))}
           </div>
         </div>
@@ -229,12 +229,15 @@ const BillingDashboard = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-dashboard flex items-center justify-center">
-        <Card className="bg-white/10 backdrop-blur-md border-white/20 text-white">
+      <div className="min-h-screen bg-muted/30 flex items-center justify-center">
+        <Card className="bg-card border-2 border-destructive/40 shadow-lg rounded-2xl max-w-md">
           <CardContent className="p-8 text-center">
-            <div className="text-red-400 text-lg mb-4">Error loading billing data</div>
-            <p className="text-white/70">{error}</p>
-            <Button asChild className="mt-4">
+            <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Target className="h-8 w-8 text-destructive" />
+            </div>
+            <div className="text-destructive text-lg font-semibold mb-2">Error loading billing data</div>
+            <p className="text-muted-foreground mb-6">{error}</p>
+            <Button asChild className="rounded-xl">
               <Link to="/">Return to Home</Link>
             </Button>
           </CardContent>
@@ -281,22 +284,22 @@ const BillingDashboard = () => {
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Client Selection and Filters */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="bg-white/10 backdrop-blur-md border-white/20">
+          <Card className="bg-card border-2 border-border shadow-lg rounded-2xl">
             <CardHeader className="pb-3">
-              <CardTitle className="text-white text-sm font-medium flex items-center gap-2">
-                <Filter className="h-4 w-4" />
+              <CardTitle className="text-foreground text-sm font-semibold flex items-center gap-2">
+                <Filter className="h-4 w-4 text-primary" />
                 Client Selection
               </CardTitle>
             </CardHeader>
             <CardContent>
               <Select value={selectedClient} onValueChange={setSelectedClient}>
-                <SelectTrigger className="bg-white/5 border-white/20 text-white">
+                <SelectTrigger className="bg-background border-2 border-border rounded-xl">
                   <SelectValue placeholder="Select a client" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-white/20">
-                  <SelectItem value="all" className="text-white">All Active Clients</SelectItem>
+                <SelectContent>
+                  <SelectItem value="all">All Active Clients</SelectItem>
                   {activeClients.map((client) => (
-                    <SelectItem key={client.id} value={client.id} className="text-white">
+                    <SelectItem key={client.id} value={client.id}>
                       {client.name}
                     </SelectItem>
                   ))}
@@ -306,38 +309,44 @@ const BillingDashboard = () => {
           </Card>
 
           {/* Quick Stats */}
-          <Card className="bg-white/10 backdrop-blur-md border-white/20">
-            <CardContent className="p-4">
+          <Card className="bg-card border-2 border-border shadow-lg rounded-2xl hover:shadow-xl transition-shadow">
+            <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white/70 text-xs font-medium">Active Clients</p>
-                  <p className="text-xl font-bold text-white">{activeClients.length}</p>
+                  <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-1">Active Clients</p>
+                  <p className="text-3xl font-bold text-foreground">{activeClients.length}</p>
                 </div>
-                <Users className="h-6 w-6 text-dashboard-primary" />
+                <div className="p-3 bg-primary/10 rounded-xl">
+                  <Users className="h-6 w-6 text-primary" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-white/10 backdrop-blur-md border-white/20">
-            <CardContent className="p-4">
+          <Card className="bg-card border-2 border-success/20 shadow-lg rounded-2xl hover:shadow-xl transition-shadow">
+            <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white/70 text-xs font-medium">Above KPI</p>
-                  <p className="text-xl font-bold text-dashboard-success">{kpiCategories.aboveKPI.length}</p>
+                  <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-1">Above KPI</p>
+                  <p className="text-3xl font-bold text-success">{kpiCategories.aboveKPI.length}</p>
                 </div>
-                <TrendingUp className="h-6 w-6 text-dashboard-success" />
+                <div className="p-3 bg-success/10 rounded-xl">
+                  <TrendingUp className="h-6 w-6 text-success" />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-white/10 backdrop-blur-md border-white/20">
-            <CardContent className="p-4">
+          <Card className="bg-card border-2 border-warning/20 shadow-lg rounded-2xl hover:shadow-xl transition-shadow">
+            <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-white/70 text-xs font-medium">Below KPI</p>
-                  <p className="text-xl font-bold text-red-400">{kpiCategories.belowKPI.length}</p>
+                  <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-1">Below KPI</p>
+                  <p className="text-3xl font-bold text-warning">{kpiCategories.belowKPI.length}</p>
                 </div>
-                <Target className="h-6 w-6 text-red-400" />
+                <div className="p-3 bg-warning/10 rounded-xl">
+                  <Target className="h-6 w-6 text-warning" />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -345,31 +354,34 @@ const BillingDashboard = () => {
 
         {/* Selected Client Detail */}
         {selectedClientData && (
-          <Card className="bg-white/10 backdrop-blur-md border-white/20 mb-8">
+          <Card className="bg-card border-2 border-primary/20 shadow-lg rounded-2xl mb-8">
             <CardHeader>
-              <CardTitle className="text-white text-xl">{selectedClientData.name} - Detailed View</CardTitle>
+              <CardTitle className="text-foreground text-xl font-bold flex items-center gap-2">
+                <Calculator className="h-5 w-5 text-primary" />
+                {selectedClientData.name} - Detailed View
+              </CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="text-center p-4 bg-white/5 rounded-lg">
-                <div className="text-2xl font-bold text-white">${selectedClientData.monthlyRevenue.toLocaleString()}</div>
-                <div className="text-white/70 text-sm">Monthly Revenue</div>
+              <div className="text-center p-5 bg-primary/5 border-2 border-primary/20 rounded-xl">
+                <div className="text-3xl font-bold text-foreground mb-1">${selectedClientData.monthlyRevenue.toLocaleString()}</div>
+                <div className="text-muted-foreground text-sm font-medium">Monthly Revenue</div>
               </div>
-              <div className="text-center p-4 bg-white/5 rounded-lg">
-                <div className="text-2xl font-bold text-white">{selectedClientData.positiveRepliesMTD}</div>
-                <div className="text-white/70 text-sm">Leads MTD</div>
+              <div className="text-center p-5 bg-info/5 border-2 border-info/20 rounded-xl">
+                <div className="text-3xl font-bold text-foreground mb-1">{selectedClientData.positiveRepliesMTD}</div>
+                <div className="text-muted-foreground text-sm font-medium">Leads MTD</div>
               </div>
-              <div className="text-center p-4 bg-white/5 rounded-lg">
-                <div className="text-2xl font-bold text-white">{selectedClientData.monthlyKPI}</div>
-                <div className="text-white/70 text-sm">Monthly Target</div>
+              <div className="text-center p-5 bg-accent/5 border-2 border-accent/20 rounded-xl">
+                <div className="text-3xl font-bold text-foreground mb-1">{selectedClientData.monthlyKPI}</div>
+                <div className="text-muted-foreground text-sm font-medium">Monthly Target</div>
               </div>
-              <div className="text-center p-4 bg-white/5 rounded-lg">
-                <div className={`text-2xl font-bold ${
-                  selectedClientData.kpiProgress >= 100 ? 'text-dashboard-success' : 
-                  selectedClientData.kpiProgress >= 80 ? 'text-dashboard-warning' : 'text-red-400'
+              <div className="text-center p-5 bg-muted/30 border-2 border-border rounded-xl">
+                <div className={`text-3xl font-bold mb-1 ${
+                  selectedClientData.kpiProgress >= 100 ? 'text-success' : 
+                  selectedClientData.kpiProgress >= 80 ? 'text-warning' : 'text-destructive'
                 }`}>
                   {selectedClientData.kpiProgress.toFixed(1)}%
                 </div>
-                <div className="text-white/70 text-sm">KPI Progress</div>
+                <div className="text-muted-foreground text-sm font-medium">KPI Progress</div>
               </div>
             </CardContent>
           </Card>
@@ -377,23 +389,23 @@ const BillingDashboard = () => {
 
         {/* Charts and Analytics */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 bg-white/10 backdrop-blur-md">
-            <TabsTrigger value="overview" className="text-white data-[state=active]:bg-dashboard-primary">Overview</TabsTrigger>
-            <TabsTrigger value="revenue" className="text-white data-[state=active]:bg-dashboard-primary">Revenue Analysis</TabsTrigger>
-            <TabsTrigger value="performance" className="text-white data-[state=active]:bg-dashboard-primary">KPI Performance</TabsTrigger>
-            <TabsTrigger value="table" className="text-white data-[state=active]:bg-dashboard-primary">Total View</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-4 bg-card border-2 border-border shadow-md rounded-xl p-1">
+            <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Overview</TabsTrigger>
+            <TabsTrigger value="revenue" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Revenue Analysis</TabsTrigger>
+            <TabsTrigger value="performance" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">KPI Performance</TabsTrigger>
+            <TabsTrigger value="table" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Total View</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Enhanced KPI Progress Chart - Line Chart */}
-              <Card className="bg-white/10 backdrop-blur-md border-white/20">
+              <Card className="bg-card border-2 border-border shadow-lg rounded-2xl">
                 <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Target className="h-5 w-5" />
+                  <CardTitle className="text-foreground flex items-center gap-2">
+                    <Target className="h-5 w-5 text-primary" />
                     KPI Progress Trend (Sorted by Performance)
                   </CardTitle>
-                  <p className="text-white/70 text-sm">Client KPI achievement trend from lowest to highest performers</p>
+                  <p className="text-muted-foreground text-sm">Client KPI achievement trend from lowest to highest performers</p>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={400}>

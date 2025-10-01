@@ -39,7 +39,10 @@ const MonthlyKPIProgress = () => {
   const fetchAirtableData = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.functions.invoke('airtable-clients');
+      // Add timestamp to bust cache
+      const { data, error } = await supabase.functions.invoke('airtable-clients', {
+        body: { timestamp: Date.now() }
+      });
       
       if (error) throw error;
       

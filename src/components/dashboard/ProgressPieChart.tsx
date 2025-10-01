@@ -24,9 +24,9 @@ export const ProgressPieChart = ({ percentage, title }: ProgressPieChartProps) =
   const COLORS = [getColor(), "hsl(214 32% 91%)"];
 
   return (
-    <Card className="shadow-md hover:shadow-xl transition-all duration-300 rounded-2xl overflow-hidden border-l-4 border-l-primary bg-gradient-to-br from-white to-blue-50/30 group h-full">
+    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl overflow-hidden border-l-4 border-l-primary border-2 border-primary/20 bg-card group h-full">
       <CardHeader className="pb-3">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        <p className="text-xs font-semibold text-foreground/70 uppercase tracking-wider">
           {title}
         </p>
       </CardHeader>
@@ -60,7 +60,7 @@ export const ProgressPieChart = ({ percentage, title }: ProgressPieChartProps) =
               <p className="text-3xl font-bold text-foreground">
                 {Math.round(achieved)}%
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs font-medium text-foreground/60">
                 Complete
               </p>
             </div>

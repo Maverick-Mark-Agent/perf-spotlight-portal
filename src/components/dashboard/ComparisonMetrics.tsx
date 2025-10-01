@@ -43,9 +43,9 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-dashboard-card border border-border p-3 rounded-lg shadow-lg">
-          <p className="text-dashboard-primary font-medium text-sm mb-1">{data.fullName}</p>
-          <p className="text-dashboard-primary text-lg font-bold">
+        <div className="bg-card border-2 border-primary/20 p-3 rounded-lg shadow-xl">
+          <p className="text-foreground font-semibold text-sm mb-1">{data.fullName}</p>
+          <p className="text-primary text-lg font-bold">
             {data.value}
           </p>
         </div>
@@ -55,9 +55,9 @@ export const ComparisonMetrics = ({ metrics }: ComparisonMetricsProps) => {
   };
 
   return (
-    <Card className="bg-dashboard-card border-border">
+    <Card className="bg-card border-2 border-primary/10 shadow-lg">
       <CardHeader className="pb-4">
-        <CardTitle className="text-lg font-semibold text-dashboard-primary">
+        <CardTitle className="text-lg font-bold text-foreground">
           Performance Comparison
         </CardTitle>
       </CardHeader>

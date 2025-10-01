@@ -29,13 +29,13 @@ export const KPICard = ({
   const getStatusStyles = () => {
     switch (status) {
       case "above-target":
-        return "border-l-4 border-l-success bg-gradient-to-br from-white to-green-50/30";
+        return "border-l-4 border-l-success bg-card border-2 border-success/20";
       case "on-target":
-        return "border-l-4 border-l-success bg-gradient-to-br from-white to-green-50/30";
+        return "border-l-4 border-l-success bg-card border-2 border-success/20";
       case "below-target":
-        return "border-l-4 border-l-warning bg-gradient-to-br from-white to-amber-50/30";
+        return "border-l-4 border-l-warning bg-card border-2 border-warning/20";
       default:
-        return "border-l-4 border-l-primary bg-gradient-to-br from-white to-blue-50/30";
+        return "border-l-4 border-l-primary bg-card border-2 border-primary/20";
     }
   };
 
@@ -70,16 +70,16 @@ export const KPICard = ({
   };
 
   return (
-    <Card className={`${getStatusStyles()} shadow-md hover:shadow-xl transition-all duration-300 rounded-2xl overflow-hidden group`}>
+    <Card className={`${getStatusStyles()} shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl overflow-hidden group`}>
       <CardHeader className="pb-3 space-y-0">
         <div className="flex items-start justify-between">
           <div className="space-y-1 flex-1">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <p className="text-xs font-semibold text-foreground/70 uppercase tracking-wider">
               {title}
             </p>
           </div>
           {icon && (
-            <div className="p-2 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all">
+            <div className="p-2 rounded-lg bg-primary/20 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all">
               {icon}
             </div>
           )}
@@ -106,7 +106,7 @@ export const KPICard = ({
         )}
 
         {subtitle && (
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="text-sm text-foreground/60 font-medium leading-relaxed">
             {subtitle}
           </p>
         )}

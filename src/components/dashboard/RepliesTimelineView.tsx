@@ -62,19 +62,19 @@ export const RepliesTimelineView = ({
   };
 
   return (
-    <Card className="shadow-md hover:shadow-xl transition-all duration-300 rounded-2xl overflow-hidden bg-gradient-to-br from-white to-slate-50/30">
-      <CardHeader className="border-b bg-white/50 backdrop-blur-sm">
+    <Card className="shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl overflow-hidden bg-card border-2 border-primary/10">
+      <CardHeader className="border-b-2 bg-card/50 backdrop-blur-sm">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-bold text-foreground">
               Positive Replies Timeline
             </h3>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-foreground/60 font-medium mt-1">
               Track your progress across different time periods
             </p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Monthly Target</p>
+            <p className="text-xs font-semibold text-foreground/70 uppercase tracking-wider">Monthly Target</p>
             <p className="text-2xl font-bold text-primary">{monthlyKpiTarget}</p>
           </div>
         </div>
@@ -88,7 +88,7 @@ export const RepliesTimelineView = ({
             return (
               <div
                 key={period.title}
-                className="group relative p-5 rounded-xl border border-border bg-white hover:border-primary/40 hover:shadow-lg transition-all duration-300"
+                className="group relative p-5 rounded-xl border-2 border-border bg-card hover:border-primary/40 hover:shadow-lg transition-all duration-300"
               >
                 {/* Icon Badge */}
                 <div className={`inline-flex p-3 rounded-lg ${period.bgColor} ${period.color} mb-4 group-hover:scale-110 transition-transform`}>
@@ -96,7 +96,7 @@ export const RepliesTimelineView = ({
                 </div>
 
                 {/* Title */}
-                <p className="text-sm font-medium text-muted-foreground mb-2">
+                <p className="text-sm font-semibold text-foreground/70 mb-2">
                   {period.title}
                 </p>
 
@@ -111,12 +111,12 @@ export const RepliesTimelineView = ({
                 {/* Progress Bar */}
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Progress</span>
+                    <span className="text-foreground/60 font-medium">Progress</span>
                     <span className={`font-semibold ${period.color}`}>
                       {Math.round(percentage)}%
                     </span>
                   </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div className="h-2.5 bg-muted/80 rounded-full overflow-hidden border border-border">
                     <div
                       className={`h-full ${getProgressColor(percentage)} transition-all duration-500 rounded-full`}
                       style={{ width: `${Math.min(percentage, 100)}%` }}
@@ -137,10 +137,10 @@ export const RepliesTimelineView = ({
         </div>
 
         {/* Monthly Comparison */}
-        <div className="mt-8 p-5 rounded-xl border border-border bg-gradient-to-r from-blue-50/50 to-purple-50/50">
+        <div className="mt-8 p-5 rounded-xl border-2 border-primary/20 bg-card shadow-md">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">
+              <p className="text-sm font-semibold text-foreground/70 mb-1">
                 Last Month vs Current Month
               </p>
               <div className="flex items-baseline gap-3">

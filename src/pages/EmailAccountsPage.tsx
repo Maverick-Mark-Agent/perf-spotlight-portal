@@ -1096,82 +1096,31 @@ const SendingAccountsInfrastructure = () => {
                     <div className="text-white/70">No Data Available</div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Bar Chart */}
-                    <div className="h-80">
-                      <h3 className="text-white/90 text-lg font-semibold mb-4">{selectedProviderMetric} by Email Provider</h3>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={emailProviderData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                          <XAxis 
-                            dataKey="name" 
-                            stroke="rgba(255,255,255,0.7)"
-                            angle={-45}
-                            textAnchor="end"
-                            height={80}
-                            interval={0}
-                            fontSize={11}
-                          />
-                          <YAxis stroke="rgba(255,255,255,0.7)" />
-                          <Tooltip 
-                            contentStyle={{
-                              backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                              border: '1px solid rgba(255, 255, 255, 0.1)',
-                              borderRadius: '8px',
-                              color: 'white'
-                            }}
-                            formatter={(value: number) => {
-                              if (selectedProviderMetric === 'Reply Rate') {
-                                return [`${value.toFixed(1)}%`, 'Avg Reply Rate'];
-                              } else if (selectedProviderMetric === 'Daily Sending Availability') {
-                                return [value.toLocaleString(), 'Total Daily Limit'];
-                              } else {
-                                return [value.toLocaleString(), 'Total Sent'];
-                              }
-                            }}
-                          />
-                          <Bar 
-                            dataKey={
-                              selectedProviderMetric === 'Daily Sending Availability' ? 'totalDailyLimit' :
-                              selectedProviderMetric === 'Total Sent' ? 'totalSent' : 'avgReplyRate'
-                            }
-                            fill="hsl(var(--dashboard-accent))"
-                            radius={[4, 4, 0, 0]}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                    
-                    {/* Summary Table */}
-                    <div className="h-80 overflow-y-auto">
-                      <h3 className="text-white/90 text-lg font-semibold mb-4">Provider Performance Summary</h3>
-                      <div className="space-y-3">
-                        {emailProviderData.map((provider: any, index) => (
-                          <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                            <div className="flex justify-between items-start mb-2">
-                              <h4 className="text-white font-medium">{provider.name}</h4>
-                              <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40 ml-2">
-                                {provider.qualifyingAccountCount} qualifying accounts
-                              </Badge>
-                            </div>
-                            <div className="grid grid-cols-1 gap-3 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Daily Sending Limit:</span>
-                                <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}</div>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Total Sent:</span>
-                                <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Avg Reply Rate (≥50 sent):</span>
-                                <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(1)}%</div>
-                              </div>
-                            </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {emailProviderData.map((provider: any, index) => (
+                      <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <div className="flex justify-between items-start mb-3">
+                          <h4 className="text-white font-medium text-lg">{provider.name}</h4>
+                          <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40 ml-2">
+                            {provider.qualifyingAccountCount} accounts
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-white/70">Daily Sending Limit:</span>
+                            <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}</div>
                           </div>
-                        ))}
+                          <div className="flex justify-between">
+                            <span className="text-white/70">Total Sent:</span>
+                            <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-white/70">Avg Reply Rate (≥50 sent):</span>
+                            <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(1)}%</div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
                 )
               )}

@@ -3,33 +3,36 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import MonthlyKPIProgress from "./pages/MonthlyKPIProgress";
-import SendingAccountsInfrastructure from "./pages/SendingAccountsInfrastructure";
-import SendingVolumeDashboard from "./pages/SendingVolumeDashboard";
-import BillingDashboard from "./pages/BillingDashboard";
-import NotFound from "./pages/NotFound";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import HomePage from "./pages/HomePage";
+import KPIDashboard from "./pages/KPIDashboard";
+import EmailAccountsPage from "./pages/EmailAccountsPage";
+import VolumeDashboard from "./pages/VolumeDashboard";
+import BillingPage from "./pages/BillingPage";
+import NotFoundPage from "./pages/NotFoundPage";
 
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/kpi-progress" element={<MonthlyKPIProgress />} />
-          <Route path="/sending-accounts" element={<SendingAccountsInfrastructure />} />
-          <Route path="/sending-volume" element={<SendingVolumeDashboard />} />
-          <Route path="/billing" element={<BillingDashboard />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/kpi-dashboard" element={<KPIDashboard />} />
+            <Route path="/email-accounts" element={<EmailAccountsPage />} />
+            <Route path="/volume-dashboard" element={<VolumeDashboard />} />
+            <Route path="/billing" element={<BillingPage />} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;

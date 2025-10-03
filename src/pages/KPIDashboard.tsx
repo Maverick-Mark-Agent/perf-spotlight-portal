@@ -6,9 +6,10 @@ import { RepliesTimelineView } from "@/components/dashboard/RepliesTimelineView"
 import { ComparisonMetrics } from "@/components/dashboard/ComparisonMetrics";
 import { ClientPerformanceLists } from "@/components/dashboard/ClientPerformanceLists";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw } from "lucide-react";
+import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw, ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "react-router-dom";
 
 interface ClientData {
   id: string;
@@ -111,17 +112,26 @@ const MonthlyKPIProgress = () => {
       <div className="sticky top-0 z-50 bg-card/95 backdrop-blur-md border-b border-border shadow-md">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Live Dashboard</span>
+            <div className="flex items-center gap-4">
+              <Button asChild variant="ghost" size="sm" className="hover:bg-accent">
+                <Link to="/">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Portal
+                </Link>
+              </Button>
+              <div className="h-8 w-px bg-border"></div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Live Dashboard</span>
+                </div>
+                <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+                  Monthly Lead KPI Progress
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Track lead generation and positive reply metrics in real time
+                </p>
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-foreground">
-                Monthly Lead KPI Progress
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Track lead generation and positive reply metrics in real time
-              </p>
             </div>
             <div className="flex items-center gap-3">
               <Button

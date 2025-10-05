@@ -124,96 +124,6 @@ const SendingAccountsInfrastructure = () => {
   const fetchEmailAccounts = async (isRefresh = false) => {
     try {
       await refreshInfrastructure(isRefresh);
-
-      const accounts = emailAccounts;
-      
-      // Calculate metrics
-      const totalAccounts = accounts.length;
-      
-      // Count unique clients
-      const uniqueClients = new Set(
-        accounts.map(account => {
-          const clientField = account.fields['Client'];
-          return clientField && clientField.length > 0 ? clientField[0] : 'Unknown';
-        })
-      ).size;
-      
-      const avgAccountsPerClient = uniqueClients > 0 ? (totalAccounts / uniqueClients).toFixed(1) : '0';
-      
-      // Count connected vs disconnected
-      const connectedCount = accounts.filter(account => account.fields['Status'] === 'Connected').length;
-      const disconnectedCount = totalAccounts - connectedCount;
-      
-      // Calculate price metrics
-      const totalPrice = accounts.reduce((sum, account) => {
-        const price = parseFloat(account.fields['Price']) || 0;
-        return sum + price;
-      }, 0);
-      
-      const avgCostPerClient = uniqueClients > 0 ? (totalPrice / uniqueClients).toFixed(2) : '0';
-
-      // Debug logging
-      console.log('📊 Dashboard Stats Calculated:', {
-        totalAccounts,
-        uniqueClients,
-        avgAccountsPerClient,
-        connectedCount,
-        disconnectedCount,
-        totalPrice,
-        avgCostPerClient
-      });
-
-      setAccountStats({
-        total: totalAccounts,
-        avgPerClient: avgAccountsPerClient,
-        connected: connectedCount,
-        disconnected: disconnectedCount,
-        totalPrice: totalPrice,
-        avgCostPerClient: avgCostPerClient
-      });
-
-      // Calculate reseller distribution
-      const resellerCounts = {};
-      accounts.forEach(account => {
-        const reseller = account.fields['Tag - Reseller'] || 'Unknown';
-        resellerCounts[reseller] = (resellerCounts[reseller] || 0) + 1;
-      });
-
-      const resellerChartData = Object.entries(resellerCounts).map(([name, count]) => ({
-        name,
-        value: count as number,
-        percentage: (((count as number) / totalAccounts) * 100).toFixed(1)
-      }));
-
-      setResellerData(resellerChartData);
-
-      // Calculate account type distribution
-      const accountTypeCounts = {};
-      accounts.forEach(account => {
-        const accountType = account.fields['Account Type'] || 'Unknown';
-        accountTypeCounts[accountType] = (accountTypeCounts[accountType] || 0) + 1;
-      });
-
-      const accountTypeChartData = Object.entries(accountTypeCounts).map(([name, count]) => ({
-        name,
-        value: count as number,
-        percentage: (((count as number) / totalAccounts) * 100).toFixed(1)
-      }));
-
-      setAccountTypeData(accountTypeChartData);
-      
-      // Generate simplified price analysis data
-      generatePriceAnalysisData(accounts);
-      
-      // Generate client accounts data
-      generateClientAccountsData(accounts);
-      
-      // Generate email provider performance data
-      generateEmailProviderData(accounts);
-      
-      // Generate client sending capacity data
-      generateClientSendingData(accounts);
-
     } catch (error) {
       console.error('Error fetching email accounts:', error);
     }
@@ -621,6 +531,88 @@ const SendingAccountsInfrastructure = () => {
     if (emailAccounts.length > 0) {
       generateClientSendingData(emailAccounts);
     }
+  }, [emailAccounts]);
+
+  // Process email accounts data whenever it changes from context
+  useEffect(() => {
+    if (emailAccounts.length === 0) return; // Skip if no data
+
+    const accounts = emailAccounts;
+
+    // Calculate metrics
+    const totalAccounts = accounts.length;
+
+    // Count unique clients
+    const uniqueClients = new Set(
+      accounts.map(account => {
+        const clientField = account.fields['Client'];
+        return clientField && clientField.length > 0 ? clientField[0] : 'Unknown';
+      })
+    ).size;
+
+    const avgAccountsPerClient = uniqueClients > 0 ? (totalAccounts / uniqueClients).toFixed(1) : '0';
+
+    // Count connected vs disconnected
+    const connectedCount = accounts.filter(account => account.fields['Status'] === 'Connected').length;
+    const disconnectedCount = totalAccounts - connectedCount;
+
+    // Calculate price metrics
+    const totalPrice = accounts.reduce((sum, account) => {
+      const price = parseFloat(account.fields['Price']) || 0;
+      return sum + price;
+    }, 0);
+
+    const avgCostPerClient = uniqueClients > 0 ? (totalPrice / uniqueClients).toFixed(2) : '0';
+
+    // Debug logging
+    console.log('📊 Dashboard Stats Calculated:', {
+      totalAccounts,
+      uniqueClients,
+      avgAccountsPerClient,
+      connectedCount,
+      disconnectedCount,
+      totalPrice,
+      avgCostPerClient
+    });
+
+    setAccountStats({
+      total: totalAccounts,
+      avgPerClient: avgAccountsPerClient,
+      connected: connectedCount,
+      disconnected: disconnectedCount,
+      totalPrice: totalPrice,
+      avgCostPerClient: avgCostPerClient
+    });
+
+    // Calculate reseller distribution
+    const resellerCounts = {};
+    accounts.forEach(account => {
+      const reseller = account.fields['Tag - Reseller'] || 'Unknown';
+      resellerCounts[reseller] = (resellerCounts[reseller] || 0) + 1;
+    });
+
+    const resellerChartData = Object.entries(resellerCounts).map(([name, count]) => ({
+      name,
+      value: count as number,
+      percentage: (((count as number) / totalAccounts) * 100).toFixed(1)
+    }));
+
+    setResellerData(resellerChartData);
+
+    // Calculate account type distribution
+    const accountTypeCounts = {};
+    accounts.forEach(account => {
+      const accountType = account.fields['Account Type'] || 'Unknown';
+      accountTypeCounts[accountType] = (accountTypeCounts[accountType] || 0) + 1;
+    });
+
+    const accountTypeChartData = Object.entries(accountTypeCounts).map(([name, count]) => ({
+      name,
+      value: count as number,
+      percentage: (((count as number) / totalAccounts) * 100).toFixed(1)
+    }));
+
+    setAccountTypeData(accountTypeChartData);
   }, [emailAccounts]);
 
   return (

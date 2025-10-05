@@ -1451,7 +1451,7 @@ const SendingAccountsInfrastructure = () => {
         </div>
 
         {/* Client Detail Modal */}
-        <Dialog open={isClientModalOpen} onOpenChange={setIsClientModalOpen}>
+        <Dialog open={isClientModalOpen} onOpenChange={setInfrastructureModalOpen}>
           <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden bg-gray-900 border-white/20 flex flex-col">
             <DialogHeader className="flex-shrink-0">
               <DialogTitle className="text-white flex items-center space-x-2">

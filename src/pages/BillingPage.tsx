@@ -49,7 +49,7 @@ const BillingDashboard = () => {
     const fetchBillingData = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase.functions.invoke('airtable-clients');
+        const { data, error } = await supabase.functions.invoke('hybrid-workspace-analytics');
         
         if (error) {
           throw new Error(error.message || 'Failed to fetch client data');

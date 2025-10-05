@@ -1,24 +1,19 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowLeft, TrendingUp, Mail, Users, BarChart3, Calendar, Send, Target, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw } from "lucide-react";
+import { ArrowLeft, TrendingUp, BarChart3, Send, Target, RefreshCw, Users, AlertCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
-interface ClientSchedule {
-  clientName: string;
-  todayEmails: number;
-  tomorrowEmails: number;
-  totalScheduled: number;
-  threeDayAverage: number;
-}
-
 interface ClientData {
   name: string;
   emails: number;
+  emailsToday: number;
+  emailsLast7Days: number;
+  emailsLast14Days: number;
+  emailsLast30Days: number;
   target: number;
   projection: number;
   targetPercentage: number;
@@ -27,75 +22,80 @@ interface ClientData {
   isProjectedAboveTarget: boolean;
   variance: number;
   projectedVariance: number;
+  dailyQuota: number;
+  expectedByNow: number;
+  isOnTrack: boolean;
+  dailyAverage: number;
   distanceToTarget: number;
   rank: number;
 }
 
+const CACHE_KEY = 'volume-dashboard-data';
+const CACHE_TIMESTAMP_KEY = 'volume-dashboard-timestamp';
+const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+
 const VolumeDashboard = () => {
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
-  const [schedules, setSchedules] = useState<ClientSchedule[]>([]);
   const [clientData, setClientData] = useState<ClientData[]>([]);
-  const [targetVolumePerDay, setTargetVolumePerDay] = useState(0);
-  const [isLoadingSchedules, setIsLoadingSchedules] = useState(true);
   const [isLoadingClients, setIsLoadingClients] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRefreshingClients, setIsRefreshingClients] = useState(false);
-  const [sortField, setSortField] = useState<'avgScheduled' | 'avgTarget' | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isUsingCache, setIsUsingCache] = useState(false);
 
+  // Load cached data on mount
   useEffect(() => {
-    fetchScheduledEmails();
+    const cachedData = localStorage.getItem(CACHE_KEY);
+    const cachedTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
+
+    if (cachedData && cachedTimestamp) {
+      try {
+        const parsedData = JSON.parse(cachedData);
+        const timestamp = new Date(cachedTimestamp);
+        setClientData(parsedData);
+        setLastUpdated(timestamp);
+        setIsUsingCache(true);
+        setIsLoadingClients(false);
+        console.log("Loaded cached volume dashboard data from", timestamp);
+      } catch (error) {
+        console.error("Error loading cached data:", error);
+      }
+    }
+
+    // Fetch fresh data
     fetchClientData();
   }, []);
 
-  const fetchScheduledEmails = async (isRefresh = false) => {
-    try {
-      if (isRefresh) {
-        setIsRefreshing(true);
-      }
-      console.log("Fetching scheduled emails from Airtable...");
-      const { data, error } = await supabase.functions.invoke('airtable-campaigns');
-      
-      if (error) throw error;
-      
-      console.log("Scheduled emails data:", data);
-      setSchedules(data.schedules || []);
-      setTargetVolumePerDay(data.targetVolumePerDay || 0);
-      
-      if (isRefresh) {
-        toast({
-          title: "Success",
-          description: "Scheduled emails refreshed successfully",
-        });
-      }
-    } catch (error) {
-      console.error("Error fetching scheduled emails:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch scheduled emails data",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingSchedules(false);
-      if (isRefresh) {
-        setIsRefreshing(false);
-      }
-    }
-  };
+  // Set up hourly auto-refresh
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      console.log("Auto-refreshing volume dashboard data...");
+      fetchClientData();
+    }, CACHE_DURATION);
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   const fetchClientData = async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setIsRefreshingClients(true);
       }
-      console.log("Fetching client sending volume from Airtable...");
-      const { data, error } = await supabase.functions.invoke('airtable-sending-volume');
-      
+      console.log("Fetching client sending volume data...");
+      const { data, error} = await supabase.functions.invoke('volume-dashboard-data');
+
       if (error) throw error;
-      
+
       console.log("Client data:", data);
-      setClientData(data.clients || []);
-      
+      const clients = data.clients || [];
+      setClientData(clients);
+
+      // Cache the data
+      const timestamp = new Date();
+      localStorage.setItem(CACHE_KEY, JSON.stringify(clients));
+      localStorage.setItem(CACHE_TIMESTAMP_KEY, timestamp.toISOString());
+      setLastUpdated(timestamp);
+      setIsUsingCache(false);
+
       if (isRefresh) {
         toast({
           title: "Success",
@@ -117,56 +117,24 @@ const VolumeDashboard = () => {
     }
   };
 
-  const handleSort = (field: 'avgScheduled' | 'avgTarget') => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('desc');
-    }
-  };
-
-  const sortedSchedules = useMemo(() => {
-    if (!sortField) return schedules;
-    
-    return [...schedules].sort((a, b) => {
-      let aVal = 0;
-      let bVal = 0;
-      
-      if (sortField === 'avgScheduled') {
-        aVal = a.totalScheduled;
-        bVal = b.totalScheduled;
-      } else if (sortField === 'avgTarget') {
-        aVal = a.threeDayAverage;
-        bVal = b.threeDayAverage;
-      }
-      
-      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
-    });
-  }, [schedules, sortField, sortDirection]);
-
   const handleWebhookTrigger = async () => {
     setIsWebhookLoading(true);
     try {
-      const response = await fetch('https://longrun.up.railway.app/webhook/677d43c6-3863-4352-b924-8782f33db6e8', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      console.log("Sending volume report to Slack...");
+      const { data, error } = await supabase.functions.invoke('send-volume-slack-dm');
+
+      if (error) throw error;
+
+      console.log("Slack response:", data);
+      toast({
+        title: "Success",
+        description: "Volume report sent to Slack successfully",
       });
-      
-      if (response.ok) {
-        toast({
-          title: "Webhook triggered successfully",
-          description: "The webhook has been called.",
-        });
-      } else {
-        throw new Error('Failed to trigger webhook');
-      }
     } catch (error) {
+      console.error("Error sending to Slack:", error);
       toast({
         title: "Error",
-        description: "Failed to trigger webhook. Please try again.",
+        description: "Failed to send volume report to Slack. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -183,7 +151,22 @@ const VolumeDashboard = () => {
 
   const totalEmails = clientData.reduce((sum, client) => sum + client.emails, 0);
   const totalTargets = clientData.reduce((sum, client) => sum + client.target, 0);
-  const overallTargetPercentage = (totalEmails / totalTargets) * 100;
+  const overallTargetPercentage = totalTargets > 0 ? (totalEmails / totalTargets) * 100 : 0;
+
+  const formatLastUpdated = () => {
+    if (!lastUpdated) return '';
+    const now = new Date();
+    const diffMs = now.getTime() - lastUpdated.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+
+    return lastUpdated.toLocaleString();
+  };
 
   return (
     <TooltipProvider>
@@ -208,27 +191,86 @@ const VolumeDashboard = () => {
                   <h1 className="text-2xl font-bold text-foreground">
                     Sending Volume Overview
                   </h1>
-                  <p className="text-muted-foreground text-sm">Monitor daily email sending performance</p>
+                  <p className="text-muted-foreground text-sm">
+                    Monitor daily email sending performance
+                    {lastUpdated && (
+                      <span className="ml-2">
+                        • Updated {formatLastUpdated()}
+                        {isUsingCache && <span className="text-yellow-600 ml-1">(cached)</span>}
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
             </div>
-            <Button 
-              onClick={handleWebhookTrigger}
-              disabled={isWebhookLoading}
-              variant="default"
-              size="lg"
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold px-6 py-3 text-base shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl disabled:opacity-50"
-            >
-              <Send className="h-5 w-5 mr-2" />
-              {isWebhookLoading ? "Sending..." : "Send Volume Slack DM"}
-            </Button>
+            <div className="flex items-center gap-3">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() => fetchClientData(true)}
+                    disabled={isRefreshingClients}
+                    variant="outline"
+                    size="lg"
+                    className="px-6 py-3 text-base shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl"
+                  >
+                    <RefreshCw className={`h-5 w-5 mr-2 ${isRefreshingClients ? 'animate-spin' : ''}`} />
+                    {isRefreshingClients ? "Refreshing..." : "Refresh Data"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Manually refresh volume data (auto-refreshes hourly)</p>
+                </TooltipContent>
+              </Tooltip>
+              <Button
+                onClick={handleWebhookTrigger}
+                disabled={isWebhookLoading}
+                variant="default"
+                size="lg"
+                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold px-6 py-3 text-base shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl disabled:opacity-50"
+              >
+                <Send className="h-5 w-5 mr-2" />
+                {isWebhookLoading ? "Sending..." : "Send Volume Slack DM"}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-12">
         {/* Performance Highlights */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-12">
+          {/* Critical Clients - NEW */}
+          <Card className="bg-dashboard-danger/15 backdrop-blur-sm border-dashboard-danger/50 shadow-2xl">
+            <CardHeader>
+              <CardTitle className="text-dashboard-danger flex items-center gap-2 text-xl font-bold">
+                <AlertCircle className="h-6 w-6" />
+                Critical Clients
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {clientData
+                .filter(client => client.emails > 0 && client.projectedPercentage < 80)
+                .slice(0, 3)
+                .map((client) => (
+                <div key={client.name} className="flex items-center justify-between p-4 bg-white/10 rounded-lg border border-dashboard-danger/40">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-dashboard-danger text-white flex items-center justify-center font-bold text-sm">
+                      !
+                    </div>
+                    <div>
+                      <span className="text-foreground font-semibold block">{client.name}</span>
+                      <span className="text-muted-foreground text-sm">Projected: {client.projectedPercentage.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-dashboard-danger font-bold text-lg">{client.projection.toLocaleString()}</span>
+                    <div className="text-muted-foreground text-xs">Target: {client.target.toLocaleString()}</div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
           {/* Top Performers */}
           <Card className="bg-dashboard-success/15 backdrop-blur-sm border-dashboard-success/50 shadow-2xl">
             <CardHeader>
@@ -307,7 +349,7 @@ const VolumeDashboard = () => {
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-muted-foreground text-sm">Average Achievement</span>
                   <span className="text-foreground font-bold text-lg">
-                    {(clientData.reduce((sum, c) => sum + c.targetPercentage, 0) / clientData.length).toFixed(1)}%
+                    {clientData.length > 0 ? (clientData.reduce((sum, c) => sum + c.targetPercentage, 0) / clientData.length).toFixed(1) : '0.0'}%
                   </span>
                 </div>
               </div>
@@ -326,154 +368,16 @@ const VolumeDashboard = () => {
           </Card>
         </div>
 
-        {/* Scheduled Emails Section */}
-        <Card className="bg-white/5 backdrop-blur-sm border-white/10 shadow-2xl mb-12">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div>
-                  <CardTitle className="text-white flex items-center gap-3 text-xl">
-                    <Calendar className="h-6 w-6 text-dashboard-primary" />
-                    Scheduled Emails
-                  </CardTitle>
-                  <p className="text-white/60 mt-1 text-sm">Today & Tomorrow per client</p>
-                </div>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={() => fetchScheduledEmails(true)}
-                      disabled={isRefreshing}
-                      variant="ghost"
-                      size="sm"
-                      className="text-white/70 hover:text-white hover:bg-white/10"
-                    >
-                      <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Refresh scheduled emails data</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <div className="flex gap-6">
-                {schedules.length > 0 && (
-                  <>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-100">
-                        {schedules.reduce((sum, s) => sum + s.todayEmails, 0).toLocaleString()}
-                      </div>
-                      <div className="text-xs text-blue-200">Total Today</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-purple-100">
-                        {schedules.reduce((sum, s) => sum + s.tomorrowEmails, 0).toLocaleString()}
-                      </div>
-                      <div className="text-xs text-purple-200">Total Tomorrow</div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {isLoadingSchedules ? (
-              <div className="text-center py-8 text-white/60">Loading scheduled emails...</div>
-            ) : schedules.length === 0 ? (
-              <div className="text-center py-8 text-white/60">No scheduled emails found</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-white/10">
-                      <th className="text-left py-3 px-4 text-white/80 font-semibold">Client</th>
-                      <th className="text-right py-3 px-4 text-white/80 font-semibold">Today</th>
-                      <th className="text-right py-3 px-4 text-white/80 font-semibold">Tomorrow</th>
-                      <th 
-                        className="text-right py-3 px-4 text-white/80 font-semibold cursor-pointer hover:text-white transition-colors"
-                        onClick={() => handleSort('avgScheduled')}
-                      >
-                        <div className="flex items-center justify-end gap-2">
-                          Average Scheduled
-                          {sortField === 'avgScheduled' ? (
-                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
-                          ) : (
-                            <ArrowUpDown className="h-4 w-4 opacity-50" />
-                          )}
-                        </div>
-                      </th>
-                      <th 
-                        className="text-right py-3 px-4 text-white/80 font-semibold cursor-pointer hover:text-white transition-colors"
-                        onClick={() => handleSort('avgTarget')}
-                      >
-                        <div className="flex items-center justify-end gap-2">
-                          Average Target Volume
-                          {sortField === 'avgTarget' ? (
-                            sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
-                          ) : (
-                            <ArrowUpDown className="h-4 w-4 opacity-50" />
-                          )}
-                        </div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedSchedules.map((schedule, index) => (
-                      <tr 
-                        key={schedule.clientName}
-                        className={`border-b border-white/5 hover:bg-white/5 transition-colors ${
-                          index % 2 === 0 ? 'bg-white/[0.02]' : ''
-                        }`}
-                      >
-                        <td className="py-3 px-4 text-white font-medium">{schedule.clientName}</td>
-                        <td className="py-3 px-4 text-right text-blue-100 font-semibold">
-                          {schedule.todayEmails.toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 text-right text-purple-100 font-semibold">
-                          {schedule.tomorrowEmails.toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 text-right text-green-100 font-bold">
-                          {Math.round(schedule.totalScheduled).toLocaleString()}
-                        </td>
-                        <td className="py-3 px-4 text-right text-orange-100 font-bold">
-                          {Math.round(schedule.threeDayAverage || 0).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Main Performance Display */}
         <Card className="bg-white/5 backdrop-blur-sm border-white/10 shadow-2xl">
           <CardHeader className="pb-6">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div>
-                  <CardTitle className="text-white flex items-center gap-3 text-2xl">
-                    <Users className="h-7 w-7 text-dashboard-primary" />
-                    Sending Volume MTD
-                  </CardTitle>
-                  <p className="text-white/60 mt-2">All clients with actual vs target performance comparison</p>
-                </div>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={() => fetchClientData(true)}
-                      disabled={isRefreshingClients}
-                      variant="ghost"
-                      size="sm"
-                      className="text-white/70 hover:text-white hover:bg-white/10"
-                    >
-                      <RefreshCw className={`h-4 w-4 ${isRefreshingClients ? 'animate-spin' : ''}`} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Refresh sending volume data</p>
-                  </TooltipContent>
-                </Tooltip>
+              <div>
+                <CardTitle className="text-white flex items-center gap-3 text-2xl">
+                  <Users className="h-7 w-7 text-dashboard-primary" />
+                  Sending Volume MTD
+                </CardTitle>
+                <p className="text-white/60 mt-2">All clients with actual vs target performance comparison</p>
               </div>
             </div>
           </CardHeader>
@@ -483,145 +387,134 @@ const VolumeDashboard = () => {
             ) : clientData.length === 0 ? (
               <div className="text-center py-8 text-white/60">No client data found</div>
             ) : (
-              <div className="grid gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {clientData.map((client) => {
                 const percentage = (client.emails / client.target) * 100;
-                const isCurrentlyExceeding = client.isAboveTarget;
-                const isClose = client.targetPercentage >= 80 && client.targetPercentage < 100;
-                const isFarBehind = client.targetPercentage < 50;
-                
+
+                // Color based on projection, not current status
+                const isProjectedOnTrack = client.projectedPercentage >= 100;
+                const isProjectedClose = client.projectedPercentage >= 80 && client.projectedPercentage < 100;
+                const isProjectedBehind = client.projectedPercentage < 80;
+
                 return (
-                  <div 
-                    key={client.name} 
-                    className={`p-6 rounded-xl border-2 transition-all duration-300 hover:scale-[1.02] ${
-                      isCurrentlyExceeding 
-                        ? 'bg-gradient-to-r from-green-500/20 to-green-600/30 border-green-400/50 shadow-green-500/20' 
-                        : isClose 
-                        ? 'bg-gradient-to-r from-yellow-500/20 to-yellow-600/30 border-yellow-400/50 shadow-yellow-500/20'
-                        : isFarBehind
-                        ? 'bg-gradient-to-r from-red-500/20 to-red-600/30 border-red-400/50 shadow-red-500/20'
-                        : 'bg-gradient-to-r from-orange-500/20 to-orange-600/30 border-orange-400/50 shadow-orange-500/20'
-                    } shadow-xl`}
+                  <Card
+                    key={client.name}
+                    className={`border-2 transition-all duration-300 hover:scale-[1.02] ${
+                      isProjectedOnTrack
+                        ? 'bg-gradient-to-br from-green-500/20 to-green-600/30 border-green-400/50'
+                        : isProjectedClose
+                        ? 'bg-gradient-to-br from-yellow-500/20 to-yellow-600/30 border-yellow-400/50'
+                        : 'bg-gradient-to-br from-red-500/20 to-red-600/30 border-red-400/50'
+                    }`}
                   >
-                    {/* Header Section */}
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xl ${
-                          isCurrentlyExceeding 
-                            ? 'bg-green-400 text-green-900' 
-                            : isClose
-                            ? 'bg-yellow-400 text-yellow-900'
-                            : isFarBehind
-                            ? 'bg-red-400 text-red-900'
-                            : 'bg-orange-400 text-orange-900'
-                        }`}>
-                          {isCurrentlyExceeding ? '✓' : `${client.targetPercentage.toFixed(0)}%`}
-                        </div>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
                         <div>
-                          <h3 className={`text-2xl font-bold ${
-                            isCurrentlyExceeding ? 'text-green-100' : isClose ? 'text-yellow-100' : isFarBehind ? 'text-red-100' : 'text-orange-100'
+                          <CardTitle className={`text-lg font-bold ${
+                            isProjectedOnTrack ? 'text-green-100' : isProjectedClose ? 'text-yellow-100' : 'text-red-100'
                           }`}>
                             {client.name}
-                          </h3>
-                          <p className={`text-sm ${
-                            isCurrentlyExceeding ? 'text-green-200' : isClose ? 'text-yellow-200' : isFarBehind ? 'text-red-200' : 'text-orange-200'
+                          </CardTitle>
+                          <p className={`text-xs mt-1 ${
+                            isProjectedOnTrack ? 'text-green-200' : isProjectedClose ? 'text-yellow-200' : 'text-red-200'
                           }`}>
-                            {isCurrentlyExceeding ? 'Target Exceeded!' : isClose ? 'Close to Target' : isFarBehind ? 'Far Behind Target' : 'Below Target'}
+                            {isProjectedOnTrack ? '✓ On Pace' : isProjectedClose ? 'Near Target' : 'Behind Pace'}
                           </p>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-4xl font-bold ${
-                          isCurrentlyExceeding ? 'text-green-100' : isClose ? 'text-yellow-100' : isFarBehind ? 'text-red-100' : 'text-orange-100'
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
+                          isProjectedOnTrack
+                            ? 'bg-green-400 text-green-900'
+                            : isProjectedClose
+                            ? 'bg-yellow-400 text-yellow-900'
+                            : 'bg-red-400 text-red-900'
                         }`}>
-                          {client.emails.toLocaleString()}
-                        </div>
-                        <p className={`text-sm ${
-                          isCurrentlyExceeding ? 'text-green-200' : isClose ? 'text-yellow-200' : isFarBehind ? 'text-red-200' : 'text-orange-200'
-                        }`}>
-                          Target: {client.target.toLocaleString()}
-                        </p>
-                        <p className={`text-xs font-semibold mt-1 ${
-                          client.variance >= 0 ? 'text-green-300' : 'text-red-300'
-                        }`}>
-                          {client.variance >= 0 ? '+' : ''}{client.variance.toLocaleString()} variance
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {/* Main Progress Bar - MTD vs Target */}
-                    <div className="space-y-2 mb-4">
-                      <div className="flex justify-between text-sm font-semibold text-white mb-2">
-                        <span>Month-to-Date Progress</span>
-                        <span className={isCurrentlyExceeding ? 'text-green-300' : ''}>{client.targetPercentage.toFixed(1)}%</span>
-                      </div>
-                      <div className="relative h-6 rounded-full overflow-hidden bg-white/10">
-                        <div 
-                          className={`h-6 rounded-full transition-all duration-1000 flex items-center justify-end pr-2 ${
-                            isCurrentlyExceeding 
-                              ? 'bg-gradient-to-r from-green-400 to-green-500' 
-                              : isClose
-                              ? 'bg-gradient-to-r from-yellow-400 to-yellow-500'
-                              : isFarBehind
-                              ? 'bg-gradient-to-r from-red-400 to-red-500'
-                              : 'bg-gradient-to-r from-orange-400 to-orange-500'
-                          }`}
-                          style={{ width: `${Math.min(percentage, 100)}%` }}
-                        >
-                          {percentage > 15 && (
-                            <span className="text-xs font-bold text-white drop-shadow-lg">
-                              {client.emails.toLocaleString()}
-                            </span>
-                          )}
-                        </div>
-                        <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-white/70 pointer-events-none">
-                          {percentage <= 15 && client.emails.toLocaleString()}
+                          {isProjectedOnTrack ? '✓' : `${Math.round(client.projectedPercentage)}%`}
                         </div>
                       </div>
-                    </div>
-                    
-                    {/* Projection Info - Less Visible */}
-                    <div className="pt-3 border-t border-white/10 opacity-60 hover:opacity-100 transition-opacity duration-300">
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-4">
-                          <div>
-                            <p className="text-white/50 mb-0.5">Projected EOM</p>
-                            <p className="text-white/80 font-semibold text-sm">
-                              {client.projection.toLocaleString()}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-white/50 mb-0.5">Projected %</p>
-                            <p className={`font-semibold text-sm ${
-                              client.isProjectedAboveTarget ? 'text-green-300' : 'text-white/80'
-                            }`}>
-                              {client.projectedPercentage.toFixed(1)}%
-                            </p>
-                          </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {/* Main Stats */}
+                      <div>
+                        <div className="flex justify-between items-baseline mb-1">
+                          <span className={`text-2xl font-bold ${
+                            isProjectedOnTrack ? 'text-green-100' : isProjectedClose ? 'text-yellow-100' : 'text-red-100'
+                          }`}>
+                            {client.emails.toLocaleString()}
+                          </span>
+                          <span className="text-xs text-white/60">/ {client.target.toLocaleString()}</span>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div className="relative h-2 rounded-full overflow-hidden bg-white/10">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-1000 ${
+                              isProjectedOnTrack
+                                ? 'bg-gradient-to-r from-green-400 to-green-500'
+                                : isProjectedClose
+                                ? 'bg-gradient-to-r from-yellow-400 to-yellow-500'
+                                : 'bg-gradient-to-r from-red-400 to-red-500'
+                            }`}
+                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                          ></div>
+                        </div>
+
+                        <div className="flex justify-between text-xs text-white/60 mt-1">
+                          <span>{client.targetPercentage.toFixed(1)}% of target</span>
+                          <span className={client.emails >= client.expectedByNow ? 'text-green-300' : 'text-red-300'}>
+                            {client.emails >= client.expectedByNow ? '✓' : '⚠'} {client.expectedByNow.toLocaleString()} exp
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Daily Pace */}
+                      <div className="flex items-center justify-between p-2 rounded bg-white/5">
+                        <div>
+                          <p className="text-xs text-white/50">Today</p>
+                          <p className="text-sm font-semibold text-white/80">{client.emailsToday.toLocaleString()}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-white/50 mb-0.5">Projected Variance</p>
-                          <p className={`font-semibold text-sm ${
-                            client.projectedVariance >= 0 ? 'text-green-300' : 'text-red-300'
-                          }`}>
-                            {client.projectedVariance >= 0 ? '+' : ''}{client.projectedVariance.toLocaleString()}
-                          </p>
+                          <p className="text-xs text-white/50">Need/day</p>
+                          <p className="text-sm font-semibold text-white/80">{client.dailyQuota.toLocaleString()}</p>
                         </div>
                       </div>
-                      
-                      {/* Small Projection Bar */}
-                      <div className="relative h-2 rounded-full overflow-hidden bg-white/5 mt-2">
-                        <div 
-                          className={`h-2 rounded-full transition-all duration-1000 ${
-                            client.isProjectedAboveTarget 
-                              ? 'bg-green-400/50' 
-                              : 'bg-white/30'
-                          }`}
-                          style={{ width: `${Math.min(client.projectedPercentage, 100)}%` }}
-                        ></div>
+
+                      {/* Projection */}
+                      <div className="pt-2 border-t border-white/10">
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="text-white/50">Projected EOM</span>
+                          <span className={`font-semibold ${
+                            client.isProjectedAboveTarget ? 'text-green-300' : 'text-white/80'
+                          }`}>
+                            {client.projection.toLocaleString()} ({client.projectedPercentage.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="relative h-1.5 rounded-full overflow-hidden bg-white/5">
+                          <div
+                            className={`h-1.5 rounded-full transition-all duration-1000 ${
+                              client.isProjectedAboveTarget ? 'bg-green-400/50' : 'bg-red-400/50'
+                            }`}
+                            style={{ width: `${Math.min(client.projectedPercentage, 100)}%` }}
+                          ></div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
+
+                      {/* Rolling Windows */}
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <div className="p-1.5 bg-white/5 rounded text-center">
+                          <p className="text-[10px] text-white/50">7d</p>
+                          <p className="text-xs font-semibold text-white/80">{client.emailsLast7Days.toLocaleString()}</p>
+                        </div>
+                        <div className="p-1.5 bg-white/5 rounded text-center">
+                          <p className="text-[10px] text-white/50">14d</p>
+                          <p className="text-xs font-semibold text-white/80">{client.emailsLast14Days.toLocaleString()}</p>
+                        </div>
+                        <div className="p-1.5 bg-white/5 rounded text-center">
+                          <p className="text-[10px] text-white/50">30d</p>
+                          <p className="text-xs font-semibold text-white/80">{client.emailsLast30Days.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 );
               })}
               </div>

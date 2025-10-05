@@ -10,10 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
+// Removed localStorage caching due to quota limits with large dataset (4000+ accounts)
+// Data is now fetched fresh on each page load for real-time accuracy
+
 const SendingAccountsInfrastructure = () => {
   const [emailAccounts, setEmailAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Fetching all records...');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [accountStats, setAccountStats] = useState({
     total: 0,
     avgPerClient: '0',
@@ -32,10 +36,25 @@ const SendingAccountsInfrastructure = () => {
   const [expandedAccountTypes, setExpandedAccountTypes] = useState(new Set());
   const [expandedStatuses, setExpandedStatuses] = useState(new Set());
   const [emailProviderData, setEmailProviderData] = useState([]);
-  const [selectedProviderMetric, setSelectedProviderMetric] = useState('Daily Sending Availability');
+  const [selectedProviderView, setSelectedProviderView] = useState('Total Email Sent');
   const [clientSendingData, setClientSendingData] = useState([]);
   const [selectedClientForSending, setSelectedClientForSending] = useState('All Clients');
   const [clientAccountFilter, setClientAccountFilter] = useState(null);
+
+  const formatLastUpdated = () => {
+    if (!lastUpdated) return '';
+    const now = new Date();
+    const diffMs = now.getTime() - lastUpdated.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+
+    return lastUpdated.toLocaleString();
+  };
 
   // Function to download accounts with 0% reply rate and 50+ emails sent as CSV
   const downloadZeroReplyRateAccounts = useCallback(() => {
@@ -83,15 +102,20 @@ const SendingAccountsInfrastructure = () => {
     document.body.removeChild(link);
   }, [emailAccounts]);
 
-  const fetchEmailAccounts = async () => {
+  const fetchEmailAccounts = async (isRefresh = false) => {
     setLoading(true);
+
     try {
-      const { data, error } = await supabase.functions.invoke('airtable-email-accounts');
-      
+      const { data, error } = await supabase.functions.invoke('hybrid-email-accounts-v2');
+
       if (error) throw error;
-      
+
       const accounts = data.records || [];
       setEmailAccounts(accounts);
+
+      // Update timestamp
+      const timestamp = new Date();
+      setLastUpdated(timestamp);
       
       // Calculate metrics
       const totalAccounts = accounts.length;
@@ -117,7 +141,18 @@ const SendingAccountsInfrastructure = () => {
       }, 0);
       
       const avgCostPerClient = uniqueClients > 0 ? (totalPrice / uniqueClients).toFixed(2) : '0';
-      
+
+      // Debug logging
+      console.log('📊 Dashboard Stats Calculated:', {
+        totalAccounts,
+        uniqueClients,
+        avgAccountsPerClient,
+        connectedCount,
+        disconnectedCount,
+        totalPrice,
+        avgCostPerClient
+      });
+
       setAccountStats({
         total: totalAccounts,
         avgPerClient: avgAccountsPerClient,
@@ -282,61 +317,85 @@ const SendingAccountsInfrastructure = () => {
         providerGroups[provider] = {
           name: provider,
           accounts: [],
-          totalDailyLimit: 0,
-          totalSent: 0,
-          replyRates: [],
-          qualifyingAccountCount: 0,
+          totalDailyLimit: 0,           // Sum of Volume Per Account (calculated limits)
+          currentDailyLimit: 0,         // Sum of Daily Limit from Email Bison (warmup status)
+          totalSent: 0,                 // All emails sent (all accounts)
+          totalReplies: 0,              // All replies (all accounts)
+          totalRepliesQualifying: 0,    // Sum of replies from accounts with ≥50 sent
+          totalSentQualifying: 0,       // Sum of sent from accounts with ≥50 sent
+          qualifyingAccountCount: 0,    // Count of accounts with ≥50 sent
+          totalAccountCount: 0,         // Total account count
           avgReplyRate: 0
         };
       }
       
-      // Always add Daily Limit to the provider group (for Daily Sending Availability calculation)
-      const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
-      providerGroups[provider].totalDailyLimit += dailyLimit;
+      // Track for ALL accounts
+      providerGroups[provider].totalAccountCount += 1;
       providerGroups[provider].accounts.push(account);
-      
-      // Only include in reply rate calculation if account has 50+ emails sent and valid reply rate
-      if (totalSent >= 50 && !isNaN(replyRateRaw)) {
-        // Normalize reply rate to 0-100 scale (Airtable returns 0-1 for percent fields)
-        const replyRatePercent = replyRateRaw > 1 ? replyRateRaw : replyRateRaw * 100;
-        
-        providerGroups[provider].totalSent += totalSent;
-        providerGroups[provider].replyRates.push(replyRatePercent);
+
+      // Track daily limits
+      const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0; // Current Email Bison limit
+      const volumePerAccount = parseFloat(account.fields['Volume Per Account']) || 0; // Calculated theoretical limit
+      providerGroups[provider].currentDailyLimit += dailyLimit;
+      providerGroups[provider].totalDailyLimit += volumePerAccount;
+
+      // Track emails sent and replies (for "Total Email Sent" view)
+      const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
+      providerGroups[provider].totalSent += totalSent;
+      providerGroups[provider].totalReplies += totalReplied;
+
+      // Track raw totals for weighted reply rate calculation (accounts with ≥50 sent)
+      if (totalSent >= 50) {
+        providerGroups[provider].totalRepliesQualifying += totalReplied;
+        providerGroups[provider].totalSentQualifying += totalSent;
         providerGroups[provider].qualifyingAccountCount += 1;
       }
     });
     
-    // Calculate averages and sort by selected metric
+    // Calculate metrics and sort by selected view
     const providerData = Object.values(providerGroups).map((provider: any) => {
+      // Calculate weighted reply rate for accounts with ≥50 sent
       let avgReplyRate = 0;
-      
-      if (provider.qualifyingAccountCount > 0 && provider.replyRates.length > 0) {
-        // Calculate: SUM(all reply_rate_percentage values) ÷ COUNT(records in group)
-        const sum = provider.replyRates.reduce((total, rate) => total + rate, 0);
-        avgReplyRate = Math.round((sum / provider.replyRates.length) * 10) / 10; // Round to 1 decimal
+      if (provider.totalSentQualifying > 0) {
+        avgReplyRate = (provider.totalRepliesQualifying / provider.totalSentQualifying) * 100;
+        avgReplyRate = Math.round(avgReplyRate * 10) / 10; // Round to 1 decimal
       }
-      
+
+      // Calculate overall reply rate (all accounts)
+      let overallReplyRate = 0;
+      if (provider.totalSent > 0) {
+        overallReplyRate = (provider.totalReplies / provider.totalSent) * 100;
+      }
+
+      // Calculate warmup/utilization rate
+      let utilizationRate = 0;
+      if (provider.totalDailyLimit > 0) {
+        utilizationRate = (provider.currentDailyLimit / provider.totalDailyLimit) * 100;
+      }
+
       return {
         ...provider,
         avgReplyRate,
+        overallReplyRate,
+        utilizationRate,
         hasData: provider.accounts.length > 0 // Show all providers that have accounts
       };
     }).filter(provider => provider.hasData);
     
-    // Sort based on selected metric
+    // Sort based on selected view (highest to lowest)
     let sortedData;
-    switch (selectedProviderMetric) {
-      case 'Daily Sending Availability':
-        sortedData = providerData.sort((a, b) => b.totalDailyLimit - a.totalDailyLimit);
-        break;
-      case 'Total Sent':
+    switch (selectedProviderView) {
+      case 'Total Email Sent':
         sortedData = providerData.sort((a, b) => b.totalSent - a.totalSent);
         break;
-      case 'Reply Rate':
+      case 'Accounts 50+':
         sortedData = providerData.sort((a, b) => b.avgReplyRate - a.avgReplyRate);
         break;
+      case 'Daily Availability':
+        sortedData = providerData.sort((a, b) => b.totalDailyLimit - a.totalDailyLimit);
+        break;
       default:
-        sortedData = providerData;
+        sortedData = providerData.sort((a, b) => b.totalSent - a.totalSent);
     }
     
     setEmailProviderData(sortedData);
@@ -518,7 +577,23 @@ const SendingAccountsInfrastructure = () => {
     });
   }, []);
 
+  // Fetch data on mount and cleanup old cache
   useEffect(() => {
+    // Clear any old cached data to free up space
+    const oldCacheKeys = [
+      'email-accounts-data',
+      'email-accounts-timestamp',
+      'email-accounts-data-v2',
+      'email-accounts-timestamp-v2',
+      'email-accounts-data-v2-fixed',
+      'email-accounts-timestamp-v2-fixed',
+      'email-accounts-data-v2-longrun',
+      'email-accounts-timestamp-v2-longrun',
+      'email-accounts-data-v2-scaledmail',
+      'email-accounts-timestamp-v2-scaledmail'
+    ];
+    oldCacheKeys.forEach(key => localStorage.removeItem(key));
+
     fetchEmailAccounts();
   }, []);
 
@@ -532,7 +607,7 @@ const SendingAccountsInfrastructure = () => {
     if (emailAccounts.length > 0) {
       generateEmailProviderData(emailAccounts);
     }
-  }, [selectedProviderMetric, emailAccounts]);
+  }, [selectedProviderView, emailAccounts]);
 
   useEffect(() => {
     if (emailAccounts.length > 0) {
@@ -562,7 +637,14 @@ const SendingAccountsInfrastructure = () => {
                   <h1 className="text-2xl font-bold text-foreground">
                     Sending Accounts Infrastructure
                   </h1>
-                  <p className="text-muted-foreground text-sm">Email Infrastructure Management & Monitoring</p>
+                  <p className="text-muted-foreground text-sm">
+                    Email Infrastructure Management & Monitoring
+                    {lastUpdated && (
+                      <span className="ml-2">
+                        • Updated {formatLastUpdated()}
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
             </div>
@@ -571,11 +653,11 @@ const SendingAccountsInfrastructure = () => {
                 <Activity className="h-3 w-3 mr-1" />
                 All Systems Operational
               </Badge>
-              <Button 
-                onClick={fetchEmailAccounts} 
+              <Button
+                onClick={() => fetchEmailAccounts(true)}
                 disabled={loading}
-                variant="ghost" 
-                size="sm" 
+                variant="ghost"
+                size="sm"
                 className="hover:bg-accent"
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
@@ -875,16 +957,16 @@ const SendingAccountsInfrastructure = () => {
                       <PieChart>
                         <Pie
                           data={(() => {
-                            const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Maverick'
+                            const maverickCount = emailAccounts.filter(account =>
+                              account.fields['Bison Instance'] === 'Maverick'
                             ).length;
-                            const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'LongRun'
+                            const longrunCount = emailAccounts.filter(account =>
+                              account.fields['Bison Instance'] === 'Long Run'
                             ).length;
-                            
+
                             return [
                               { name: 'Maverick', value: maverickCount, color: '#8B5CF6' },
-                              { name: 'LongRun', value: longrunCount, color: '#F59E0B' }
+                              { name: 'Long Run', value: longrunCount, color: '#F59E0B' }
                             ];
                           })()}
                           cx="50%"
@@ -894,16 +976,16 @@ const SendingAccountsInfrastructure = () => {
                           dataKey="value"
                         >
                           {(() => {
-                            const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Maverick'
+                            const maverickCount = emailAccounts.filter(account =>
+                              account.fields['Bison Instance'] === 'Maverick'
                             ).length;
-                            const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'LongRun'
+                            const longrunCount = emailAccounts.filter(account =>
+                              account.fields['Bison Instance'] === 'Long Run'
                             ).length;
-                            
+
                             return [
                               { name: 'Maverick', value: maverickCount, color: '#8B5CF6' },
-                              { name: 'LongRun', value: longrunCount, color: '#F59E0B' }
+                              { name: 'Long Run', value: longrunCount, color: '#F59E0B' }
                             ];
                           })().map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
@@ -916,26 +998,10 @@ const SendingAccountsInfrastructure = () => {
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <div className="text-center">
                         <div className="text-3xl font-bold text-white">
-                          {(() => {
-                            const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Maverick'
-                            ).length;
-                            const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'LongRun'
-                            ).length;
-                            return maverickCount > longrunCount ? maverickCount : longrunCount;
-                          })()}
+                          {emailAccounts.length}
                         </div>
                         <div className="text-white/70 text-sm">
-                          {(() => {
-                            const maverickCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'Maverick'
-                            ).length;
-                            const longrunCount = emailAccounts.filter(account => 
-                              account.fields['Workspace'] === 'LongRun'
-                            ).length;
-                            return maverickCount > longrunCount ? 'Maverick' : 'LongRun';
-                          })()} Lead
+                          Total Accounts
                         </div>
                       </div>
                     </div>
@@ -946,18 +1012,18 @@ const SendingAccountsInfrastructure = () => {
                     <div className="flex items-center space-x-3">
                       <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#8B5CF6' }}></div>
                       <div className="text-white text-sm">
-                        <div className="font-medium">Maverick</div>
+                        <div className="font-medium">Maverick Bison</div>
                         <div className="text-white/70">
-                          {emailAccounts.filter(account => account.fields['Workspace'] === 'Maverick').length} accounts
+                          {emailAccounts.filter(account => account.fields['Bison Instance'] === 'Maverick').length} accounts
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
                       <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#F59E0B' }}></div>
                       <div className="text-white text-sm">
-                        <div className="font-medium">LongRun</div>
+                        <div className="font-medium">Long Run Bison</div>
                         <div className="text-white/70">
-                          {emailAccounts.filter(account => account.fields['Workspace'] === 'LongRun').length} accounts
+                          {emailAccounts.filter(account => account.fields['Bison Instance'] === 'Long Run').length} accounts
                         </div>
                       </div>
                     </div>
@@ -1069,18 +1135,18 @@ const SendingAccountsInfrastructure = () => {
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
                 <Mail className="h-5 w-5 text-dashboard-primary" />
-                <span>Tag - Email Provider Performance</span>
+                <span>Email Provider Performance</span>
               </CardTitle>
               <div className="flex items-center space-x-4 mt-4">
-                <label className="text-white/70 text-sm">Sort by:</label>
-                <Select value={selectedProviderMetric} onValueChange={setSelectedProviderMetric}>
+                <label className="text-white/70 text-sm">Show:</label>
+                <Select value={selectedProviderView} onValueChange={setSelectedProviderView}>
                   <SelectTrigger className="bg-white/10 border-white/20 text-white w-64">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Daily Sending Availability">Daily Sending Availability</SelectItem>
-                    <SelectItem value="Total Sent">Total Sent</SelectItem>
-                    <SelectItem value="Reply Rate">Reply Rate (Avg)</SelectItem>
+                    <SelectItem value="Total Email Sent">Total Email Sent by Provider</SelectItem>
+                    <SelectItem value="Accounts 50+">Accounts with ≥50 Emails Sent</SelectItem>
+                    <SelectItem value="Daily Availability">Daily Sending Availability</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1102,22 +1168,67 @@ const SendingAccountsInfrastructure = () => {
                         <div className="flex justify-between items-start mb-3">
                           <h4 className="text-white font-medium text-lg">{provider.name}</h4>
                           <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40 ml-2">
-                            {provider.qualifyingAccountCount} accounts
+                            {selectedProviderView === 'Accounts 50+'
+                              ? provider.qualifyingAccountCount
+                              : provider.totalAccountCount} accounts
                           </Badge>
                         </div>
                         <div className="grid grid-cols-1 gap-3 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-white/70">Daily Sending Limit:</span>
-                            <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}</div>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-white/70">Total Sent:</span>
-                            <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-white/70">Avg Reply Rate (≥50 sent):</span>
-                            <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(1)}%</div>
-                          </div>
+
+                          {/* MODE 1: Total Email Sent by Provider */}
+                          {selectedProviderView === 'Total Email Sent' && (
+                            <>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Total Sent:</span>
+                                <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Total Replies:</span>
+                                <div className="text-white font-semibold">{provider.totalReplies.toLocaleString()}</div>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Reply Rate:</span>
+                                <div className="text-white font-semibold">{provider.overallReplyRate.toFixed(2)}%</div>
+                              </div>
+                            </>
+                          )}
+
+                          {/* MODE 2: Accounts with ≥50 Emails Sent */}
+                          {selectedProviderView === 'Accounts 50+' && (
+                            <>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Total Sent (≥50):</span>
+                                <div className="text-white font-semibold">{provider.totalSentQualifying.toLocaleString()}</div>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Total Replies (≥50):</span>
+                                <div className="text-white font-semibold">{provider.totalRepliesQualifying.toLocaleString()}</div>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Avg Reply Rate:</span>
+                                <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(2)}%</div>
+                              </div>
+                            </>
+                          )}
+
+                          {/* MODE 3: Daily Sending Availability */}
+                          {selectedProviderView === 'Daily Availability' && (
+                            <>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Theoretical Limit:</span>
+                                <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}/day</div>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Current Limit:</span>
+                                <div className="text-white font-semibold">{provider.currentDailyLimit.toLocaleString()}/day</div>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-white/70">Warmup Progress:</span>
+                                <div className="text-white font-semibold">{provider.utilizationRate.toFixed(1)}%</div>
+                              </div>
+                            </>
+                          )}
+
                         </div>
                       </div>
                     ))}

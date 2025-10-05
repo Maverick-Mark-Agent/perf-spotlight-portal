@@ -1,0 +1,1324 @@
+{
+  "id": "tblZr0fEKZiTZtx58",
+  "name": "👨‍💻 Clients",
+  "primaryFieldId": "fldC98XhiLBFkeKx5",
+  "fields": [
+    {
+      "type": "singleLineText",
+      "id": "fldC98XhiLBFkeKx5",
+      "name": "Client Company Name"
+    },
+    {
+      "type": "multipleRecordLinks",
+      "options": {
+        "linkedTableId": "tblUz8inqzWcWWTZY",
+        "isReversed": false,
+        "prefersSingleRecordLink": false,
+        "inverseLinkFieldId": "fldj2a3UpcpHuEVYx"
+      },
+      "id": "fldQY9w1NxjBTsC8H",
+      "name": "Positive Replies"
+    },
+    {
+      "type": "number",
+      "options": {
+        "precision": 0
+      },
+      "id": "fldnj1njXaymypa9e",
+      "name": "Monthly KPI"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldQY9w1NxjBTsC8H"
+      },
+      "id": "fldFyykhZKaNP4C5z",
+      "name": "Positive Replies MTD"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  {fldFyykhZKaNP4C5z},\r\n  ROUND(\r\n    {fldFyykhZKaNP4C5z} \r\n    + (\r\n        ({fldFyykhZKaNP4C5z} / MIN(DAY(TODAY()), 26)) \r\n        * (26 - MIN(DAY(TODAY()), 26))\r\n      ),\r\n    0\r\n  )\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldFyykhZKaNP4C5z"
+        ],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldginz4WdNVRFP30",
+      "name": "Projection: Positive Replies Received (by EOM)"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  {fldnj1njXaymypa9e} != 0,\r\n  ROUND(({fldFyykhZKaNP4C5z} / {fldnj1njXaymypa9e}), 3),\r\n  BLANK()\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldnj1njXaymypa9e",
+          "fldFyykhZKaNP4C5z"
+        ],
+        "result": {
+          "type": "percent",
+          "options": {
+            "precision": 2
+          }
+        }
+      },
+      "id": "fld5rq699pzFyqymB",
+      "name": "MTD - Leads Generated Progress"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  AND(\r\n    {fldnj1njXaymypa9e},\r\n    {fldFyykhZKaNP4C5z}\r\n  ),\r\n  (\r\n    (\r\n      {fldFyykhZKaNP4C5z} \r\n      + (\r\n          ({fldFyykhZKaNP4C5z} / MIN(DAY(TODAY()), 26)) \r\n          * (26 - MIN(DAY(TODAY()), 26))\r\n        )\r\n    ) - {fldnj1njXaymypa9e}\r\n  ) / {fldnj1njXaymypa9e}\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldnj1njXaymypa9e",
+          "fldFyykhZKaNP4C5z"
+        ],
+        "result": {
+          "type": "percent",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldNPPsJtbNeaF591",
+      "name": "Projection Positive Replies % Progress"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldQY9w1NxjBTsC8H"
+      },
+      "id": "fldXcffAfk7Atz0sd",
+      "name": "Positive Replies Received"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldQY9w1NxjBTsC8H"
+      },
+      "id": "fldVTeI7zvg0sD2nG",
+      "name": "Positive Replies Last Month"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldQY9w1NxjBTsC8H"
+      },
+      "id": "fldPjqeILOSNOVQEX",
+      "name": "Positive Replies Current Month"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldQY9w1NxjBTsC8H"
+      },
+      "id": "fldYzAZZsVGsKm8UN",
+      "name": "Positive Replies Last 14-7 Days"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldQY9w1NxjBTsC8H"
+      },
+      "id": "fldbvnazvv15LnyiB",
+      "name": "Positive Replies Last 7 Days"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  AND(\r\n    {fldYzAZZsVGsKm8UN},\r\n    {fldbvnazvv15LnyiB}\r\n  ),\r\n  (\r\n    {fldbvnazvv15LnyiB} - {fldYzAZZsVGsKm8UN}\r\n  ) / {fldYzAZZsVGsKm8UN}\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldYzAZZsVGsKm8UN",
+          "fldbvnazvv15LnyiB"
+        ],
+        "result": {
+          "type": "percent",
+          "options": {
+            "precision": 2
+          }
+        }
+      },
+      "id": "fldHSplBVQray64UK",
+      "name": "Last Week VS Week Before Positive Replies % Progress"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  {fldVTeI7zvg0sD2nG} != 0,\r\n  ROUND(( {fldPjqeILOSNOVQEX} - {fldVTeI7zvg0sD2nG} ) / {fldVTeI7zvg0sD2nG}, 3) *100,\r\n  BLANK()\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldVTeI7zvg0sD2nG",
+          "fldPjqeILOSNOVQEX"
+        ],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 1
+          }
+        }
+      },
+      "id": "fldPIsNIeVaOhSGA5",
+      "name": "Positive Replies Last VS This Month "
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldQY9w1NxjBTsC8H"
+      },
+      "id": "fldlvXmX1HR4rnUu1",
+      "name": "Positive Replies Last 30 Days"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "RECORD_ID()",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "singleLineText"
+        }
+      },
+      "id": "fldMVWl9LDtyL8t77",
+      "name": "Airtable ID"
+    },
+    {
+      "type": "singleLineText",
+      "id": "fld1j7kyU2Upf0NQs",
+      "name": "Full Name"
+    },
+    {
+      "type": "currency",
+      "options": {
+        "precision": 0,
+        "symbol": "$"
+      },
+      "id": "flduhIDff6L6I9h8o",
+      "name": "Retainer"
+    },
+    {
+      "type": "date",
+      "options": {
+        "dateFormat": {
+          "name": "local",
+          "format": "l"
+        }
+      },
+      "id": "fld7RY75AoyLD5gFc",
+      "name": "Billing Date"
+    },
+    {
+      "type": "email",
+      "id": "fld7nYduTI7Nzh35d",
+      "name": "Email"
+    },
+    {
+      "type": "phoneNumber",
+      "id": "fldI8zLWbXQxDSAEX",
+      "name": "Phone"
+    },
+    {
+      "type": "url",
+      "id": "fldmVkMR0VxvDIBDT",
+      "name": "Website"
+    },
+    {
+      "type": "date",
+      "options": {
+        "dateFormat": {
+          "name": "local",
+          "format": "l"
+        }
+      },
+      "id": "fldCll6a9iGSTpQMg",
+      "name": "Join Date"
+    },
+    {
+      "type": "multipleRecordLinks",
+      "options": {
+        "linkedTableId": "tblGTaOd8phAiuaEH",
+        "isReversed": false,
+        "prefersSingleRecordLink": true,
+        "inverseLinkFieldId": "fldi1ZiQIwIJjon7O"
+      },
+      "id": "fld8JhpGtz1Dx8Qki",
+      "name": "Onboarding Form Linked"
+    },
+    {
+      "type": "multipleLookupValues",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fld8JhpGtz1Dx8Qki",
+        "fieldIdInLinkedTable": "fld1f33ds3DT0MIMH",
+        "result": {
+          "type": "singleLineText"
+        }
+      },
+      "id": "fldlf3HJIhg1I7xQ6",
+      "name": "Form ID (from Onboarding Form Linked)"
+    },
+    {
+      "type": "multipleRecordLinks",
+      "options": {
+        "linkedTableId": "tblU3vgCFmVP960g9",
+        "isReversed": false,
+        "prefersSingleRecordLink": false,
+        "inverseLinkFieldId": "fldhRjcdbJvSg1Ac5"
+      },
+      "id": "fldDX16OxlvCt8WFI",
+      "name": "Email Accounts"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldDX16OxlvCt8WFI"
+      },
+      "id": "fldlhL5QEibv7PYhO",
+      "name": "Email Accounts Owned"
+    },
+    {
+      "type": "multipleRecordLinks",
+      "options": {
+        "linkedTableId": "tblpBFNERY2cvYQNY",
+        "isReversed": false,
+        "prefersSingleRecordLink": false,
+        "inverseLinkFieldId": "fldQJhOrQXQ3cucAP"
+      },
+      "id": "fldVjR4IiTdJYlXUP",
+      "name": "Warmy Reports"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "{fldXcffAfk7Atz0sd} * 500",
+        "referencedFieldIds": [
+          "fldXcffAfk7Atz0sd"
+        ],
+        "result": {
+          "type": "currency",
+          "options": {
+            "precision": 2,
+            "symbol": "$"
+          }
+        }
+      },
+      "id": "fld8Pkl52T3PoZuCL",
+      "name": "ROI"
+    },
+    {
+      "type": "number",
+      "options": {
+        "precision": 2
+      },
+      "id": "fldwi8ibCb2A5k9Jx",
+      "name": "Return On Investment"
+    },
+    {
+      "type": "singleLineText",
+      "id": "fld9ySWkO0qibN4LG",
+      "name": "Production Pipeline"
+    },
+    {
+      "type": "rating",
+      "options": {
+        "icon": "star",
+        "max": 5,
+        "color": "yellowBright"
+      },
+      "id": "fldv39l82OVbqA8LM",
+      "name": "Client Importance"
+    },
+    {
+      "type": "singleSelect",
+      "options": {
+        "choices": [
+          {
+            "id": "selqXYrnGr7XOrBRz",
+            "name": "Churn Risk",
+            "color": "orangeBright"
+          },
+          {
+            "id": "selc0Mp0CSAoujw1F",
+            "name": "Happy",
+            "color": "greenBright"
+          },
+          {
+            "id": "seld5QJjWOGyXZJaD",
+            "name": "Neutral",
+            "color": "blueLight1"
+          }
+        ]
+      },
+      "id": "fldcGvBiYOjU4qMTY",
+      "name": "Subjective Satisfactory Level"
+    },
+    {
+      "type": "multipleRecordLinks",
+      "options": {
+        "linkedTableId": "tblKyaHAY9mBbWnRx",
+        "isReversed": false,
+        "prefersSingleRecordLink": false,
+        "inverseLinkFieldId": "fldb4OsvyrLsStmMP"
+      },
+      "id": "fldeHj7Qp3sFqqJWK",
+      "name": "Domains"
+    },
+    {
+      "type": "multipleLookupValues",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldeHj7Qp3sFqqJWK",
+        "fieldIdInLinkedTable": "fld8WVDfVGeiKkyfp",
+        "result": {
+          "type": "singleLineText"
+        }
+      },
+      "id": "fldoAtQ3UTKH6ASai",
+      "name": "Name (from Domains)"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldeHj7Qp3sFqqJWK"
+      },
+      "id": "fldBRKubbqDKt9rqm",
+      "name": "Domains Owned"
+    },
+    {
+      "type": "multipleRecordLinks",
+      "options": {
+        "linkedTableId": "tblDRbKpGXXHBlq8h",
+        "isReversed": false,
+        "prefersSingleRecordLink": false,
+        "inverseLinkFieldId": "fldFaeNe2H6JPJiQ8"
+      },
+      "id": "fldusJSoDMAgM70zw",
+      "name": "Campaign Production Pipeline"
+    },
+    {
+      "type": "singleSelect",
+      "options": {
+        "choices": [
+          {
+            "id": "selV1FZBPjmDTLbyu",
+            "name": "Infrastructure",
+            "color": "pinkLight1"
+          },
+          {
+            "id": "sel2wjT18Dv958rxi",
+            "name": "Onboarding",
+            "color": "blueBright"
+          },
+          {
+            "id": "selr4U1FuBRy1WEcj",
+            "name": "On Track",
+            "color": "greenBright"
+          },
+          {
+            "id": "selWGvkNwmUVXahoX",
+            "name": "At Risk",
+            "color": "yellowBright"
+          },
+          {
+            "id": "selFg2UaCLlbqrp8B",
+            "name": "Offboarding",
+            "color": "redLight1"
+          },
+          {
+            "id": "sellGdmMVHUKzWwOH",
+            "name": "Churned",
+            "color": "orangeBright"
+          }
+        ]
+      },
+      "id": "fldq8134Pn94atEnj",
+      "name": "Client Status"
+    },
+    {
+      "type": "singleCollaborator",
+      "id": "fldw5oy4xsljYFo7y",
+      "name": "Project Manager"
+    },
+    {
+      "type": "singleCollaborator",
+      "id": "fldoORjx5HgIEj6LU",
+      "name": "Campaign Manager"
+    },
+    {
+      "type": "date",
+      "options": {
+        "dateFormat": {
+          "name": "local",
+          "format": "l"
+        }
+      },
+      "id": "fld87MGZOwDWdL0lb",
+      "name": "Churn Date"
+    },
+    {
+      "type": "url",
+      "id": "fld68OG2qOq0a9UvG",
+      "name": "Onboarding Call"
+    },
+    {
+      "type": "multilineText",
+      "id": "fldYxHCUdXdm7lbKV",
+      "name": "Targeting"
+    },
+    {
+      "type": "multilineText",
+      "id": "fldFCwq3mb2iTl2xH",
+      "name": "Infrastructure"
+    },
+    {
+      "type": "singleLineText",
+      "id": "fldR8sF7LOw6lSB1d",
+      "name": "Slack Channel ID"
+    },
+    {
+      "type": "singleSelect",
+      "options": {
+        "choices": [
+          {
+            "id": "selRk6aZZgEwD56Cm",
+            "name": "Maverick Bison",
+            "color": "blueLight2"
+          },
+          {
+            "id": "selybvCaCz9j3zfai",
+            "name": "Instantly",
+            "color": "cyanLight2"
+          },
+          {
+            "id": "selhtWG1YKXqcWvzJ",
+            "name": "Smartlead",
+            "color": "tealLight2"
+          },
+          {
+            "id": "selnpnG7UcZCkkdKy",
+            "name": "LongRun Bison",
+            "color": "yellowBright"
+          }
+        ]
+      },
+      "id": "fldxwlkWUmJiU9J39",
+      "name": "Sending Platform Used"
+    },
+    {
+      "type": "singleLineText",
+      "id": "fldaSzUplSnlP6utS",
+      "name": "Workspace Name"
+    },
+    {
+      "type": "singleLineText",
+      "id": "fldqizO1KVJBIv2SE",
+      "name": "Workspace ID"
+    },
+    {
+      "type": "checkbox",
+      "options": {
+        "icon": "check",
+        "color": "greenBright"
+      },
+      "id": "fldu8RuCEAsPrUEEU",
+      "name": "Positive Notifications Enabled?"
+    },
+    {
+      "type": "multipleRecordLinks",
+      "options": {
+        "linkedTableId": "tbln9sxZ8xScru0e1",
+        "isReversed": false,
+        "prefersSingleRecordLink": false,
+        "inverseLinkFieldId": "fldCnaH6FrK58nhfU"
+      },
+      "id": "fldRDmG6SzhUEkHpB",
+      "name": "Ad-Hoc Task Manager"
+    },
+    {
+      "type": "multipleRecordLinks",
+      "options": {
+        "linkedTableId": "tblL2eq7KCWfK1Zpo",
+        "isReversed": false,
+        "prefersSingleRecordLink": false,
+        "inverseLinkFieldId": "fld1jnoqKkEwl0v0D"
+      },
+      "id": "fld51MqWvgo2DopIK",
+      "name": "Campaigns Performance"
+    },
+    {
+      "type": "singleLineText",
+      "id": "fld66j5Dan1GUzVOp",
+      "name": "API "
+    },
+    {
+      "type": "multipleRecordLinks",
+      "options": {
+        "linkedTableId": "tbloVXXsEjD7YLOHq",
+        "isReversed": false,
+        "prefersSingleRecordLink": false,
+        "inverseLinkFieldId": "fldEc6VLE1lozKkiF"
+      },
+      "id": "fldIUvXhpX5UR8e0M",
+      "name": "Campaigns Performance copy"
+    },
+    {
+      "type": "multipleRecordLinks",
+      "options": {
+        "linkedTableId": "tblmWv1xAqQ9Jy75J",
+        "isReversed": false,
+        "prefersSingleRecordLink": false,
+        "inverseLinkFieldId": "fldOS82rF7SQ5jlzO"
+      },
+      "id": "fldKqheAt0FVcECzS",
+      "name": "Order - Email Accounts"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldKqheAt0FVcECzS"
+      },
+      "id": "fldxTp9RyfMPVjuQw",
+      "name": "Number of New Internal Orders"
+    },
+    {
+      "type": "multipleLookupValues",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldKqheAt0FVcECzS",
+        "fieldIdInLinkedTable": "fld3WvBdQtTafiHEU",
+        "result": {
+          "type": "singleSelect",
+          "options": {
+            "choices": [
+              {
+                "id": "selVNlcmlxMlDFBp5",
+                "name": "00 - New",
+                "color": "blueLight2"
+              },
+              {
+                "id": "selZZfEBxdqC9VogB",
+                "name": "10 - In Progress",
+                "color": "cyanLight2"
+              },
+              {
+                "id": "selzhfXbB33jpz3Lu",
+                "name": "20 - Blocked",
+                "color": "tealLight2"
+              },
+              {
+                "id": "seln5TZ6lSMFuoyrd",
+                "name": "30 - Waiting on Providers to Finalize",
+                "color": "yellowLight2"
+              },
+              {
+                "id": "sel1C1biGW6HSLhmI",
+                "name": "50 - Order Completed",
+                "color": "greenLight2"
+              }
+            ]
+          }
+        }
+      },
+      "id": "fldY7GtfQLKKyzdBH",
+      "name": "Order Status"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": false,
+        "recordLinkFieldId": null
+      },
+      "id": "fldHBkABUrrfkmj2p",
+      "name": "Google Email Accounts Owned"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": false,
+        "recordLinkFieldId": null
+      },
+      "id": "fldLK2XmPbdtQ6Ek3",
+      "name": "Microsoft Email Accounts Owned"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": false,
+        "recordLinkFieldId": null
+      },
+      "id": "fldWqYMAJYaYqVQ0R",
+      "name": "SMTP Email Accounts Owned"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": false,
+        "recordLinkFieldId": null
+      },
+      "id": "fld6zxtruP1ljYt9N",
+      "name": "SMTP Email Accounts Count copy copy copy"
+    },
+    {
+      "type": "singleSelect",
+      "options": {
+        "choices": [
+          {
+            "id": "selvqsy6XrNO3Ee12",
+            "name": "B2B",
+            "color": "blueLight2"
+          },
+          {
+            "id": "selgf66YEFsqcHpvK",
+            "name": "Insurance",
+            "color": "cyanLight2"
+          },
+          {
+            "id": "selsQSm4ogQnGooYZ",
+            "name": "Inbox Reselling",
+            "color": "tealLight2"
+          }
+        ]
+      },
+      "id": "fldY9lt9LE4qHDifC",
+      "name": "Partnership Type"
+    },
+    {
+      "type": "number",
+      "options": {
+        "precision": 1
+      },
+      "id": "fldWLekCeZmKCh4kf",
+      "name": "Today Volume"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": false,
+        "recordLinkFieldId": null
+      },
+      "id": "fldVDqzSAIKkxPdHE",
+      "name": "Outlook Email Accounts Owned"
+    },
+    {
+      "type": "singleSelect",
+      "options": {
+        "choices": [
+          {
+            "id": "selTiIdYWmLnHVrSu",
+            "name": "🟢 No Issues",
+            "color": "greenBright"
+          },
+          {
+            "id": "selKZXCn15jZeRc1t",
+            "name": "🔴 Volume Issues",
+            "color": "redBright"
+          },
+          {
+            "id": "selr0MMnACNESS3eu",
+            "name": "🟤 Offer Issues",
+            "color": "yellowDark1"
+          },
+          {
+            "id": "selYHIeaJ8qEYOALK",
+            "name": "🟠 Deliverability Issues",
+            "color": "orangeLight1"
+          }
+        ]
+      },
+      "id": "fldqtZFPGEUAE6hlp",
+      "name": "Issues"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  {fldYzAZZsVGsKm8UN} != 0,\r\n  ROUND(( {fldbvnazvv15LnyiB} - {fldYzAZZsVGsKm8UN} ) / {fldYzAZZsVGsKm8UN}, 3),\r\n  BLANK()\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldYzAZZsVGsKm8UN",
+          "fldbvnazvv15LnyiB"
+        ],
+        "result": {
+          "type": "percent",
+          "options": {
+            "precision": 2
+          }
+        }
+      },
+      "id": "fldyOGLgbfc7oO8zs",
+      "name": "Last 14-7 Days Compared to Last 7 Days"
+    },
+    {
+      "type": "count",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fld51MqWvgo2DopIK"
+      },
+      "id": "fldcNoL6JJVlJ1IL1",
+      "name": "Nu. of Active Campaigns"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fld51MqWvgo2DopIK",
+        "fieldIdInLinkedTable": "fldz0AfRzkD8w25pB",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "percent",
+          "options": {
+            "precision": 2
+          }
+        }
+      },
+      "id": "fldda0xiZjVmANMCn",
+      "name": "Average Reply Rate (Active Campaigns)"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "{fld2pSZwmLsDYoCY8} * 26",
+        "referencedFieldIds": [
+          "fld2pSZwmLsDYoCY8"
+        ],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldaZE5xeAbSn7Hq3",
+      "name": "Monthly Sending Target"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fld51MqWvgo2DopIK",
+        "fieldIdInLinkedTable": "fld6xWqzw366Cgech",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldyvcYwB3XnzYkfX",
+      "name": "Emails Sent - MTD (Linked to Campaigns)"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fld51MqWvgo2DopIK",
+        "fieldIdInLinkedTable": "fldJ4XLXHfEXeXqi9",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fld4WyVrYflSIqDiP",
+      "name": "Emails Sent - Last 30 Days (Linked to Campaigns)"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  AND(\r\n    {fldaZE5xeAbSn7Hq3}, \r\n    {fldyvcYwB3XnzYkfX}\r\n  ),\r\n  ROUND(\r\n    (\r\n      ({fldyvcYwB3XnzYkfX} - {fldaZE5xeAbSn7Hq3})\r\n      / {fldaZE5xeAbSn7Hq3}\r\n    ),\r\n    2\r\n  )\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldaZE5xeAbSn7Hq3",
+          "fldyvcYwB3XnzYkfX"
+        ],
+        "result": {
+          "type": "percent",
+          "options": {
+            "precision": 2
+          }
+        }
+      },
+      "id": "fldx7HX4jmyqPQ67Y",
+      "name": "Monthly Target VS MTD Emails Sent (% Progress)"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  {fldyvcYwB3XnzYkfX},\r\n  ROUND(\r\n    {fldyvcYwB3XnzYkfX} \r\n    + (\r\n        ({fldyvcYwB3XnzYkfX} / MIN(DAY(TODAY()), 26)) \r\n        * (26 - MIN(DAY(TODAY()), 26))\r\n      ),\r\n    0\r\n  )\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldyvcYwB3XnzYkfX"
+        ],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldOrq7v9FzvoQyfO",
+      "name": "Projection: Emails Sent by EOM"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fld51MqWvgo2DopIK",
+        "fieldIdInLinkedTable": "fldb6LUvTqZgad1z5",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldVNu84797UHkmav",
+      "name": "Emails Sent - Last 7 Days (Linked to Campaigns)"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fld51MqWvgo2DopIK",
+        "fieldIdInLinkedTable": "fldZebZuahkKM4KZg",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fld8PeBkjdLW5C21q",
+      "name": "Emails Sent - Last14/7 Days (Linked to Campaigns)"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  AND(\r\n    {fld8PeBkjdLW5C21q},\r\n    {fldVNu84797UHkmav}\r\n  ),\r\n  (\r\n    {fldVNu84797UHkmav} \r\n    - {fld8PeBkjdLW5C21q}\r\n  ) \r\n  / {fld8PeBkjdLW5C21q}\r\n)\r\n",
+        "referencedFieldIds": [
+          "fld8PeBkjdLW5C21q",
+          "fldVNu84797UHkmav"
+        ],
+        "result": {
+          "type": "percent",
+          "options": {
+            "precision": 2
+          }
+        }
+      },
+      "id": "fldpiUdYjMER2OADX",
+      "name": "Emails Sent Last 14 vs Last 7 Days"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fld51MqWvgo2DopIK",
+        "fieldIdInLinkedTable": "fldIwCcoa6mmJRLfg",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldejB6w2r4bvoYHr",
+      "name": "Emails Sent - Previous Month (Linked to Campaigns)"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fld51MqWvgo2DopIK",
+        "fieldIdInLinkedTable": "fldOEIYxb8GQu9n3G",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldn5kh4vQaVXLDEU",
+      "name": "Emails Sent - Current Month (Linked to Campaigns)"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  AND(\r\n    {fldejB6w2r4bvoYHr}, \r\n    {fldn5kh4vQaVXLDEU}\r\n  ),\r\n  ROUND(\r\n    (\r\n      ({fldn5kh4vQaVXLDEU} - {fldejB6w2r4bvoYHr}) \r\n      / {fldejB6w2r4bvoYHr}\r\n    ),\r\n    2\r\n  )\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldejB6w2r4bvoYHr",
+          "fldn5kh4vQaVXLDEU"
+        ],
+        "result": {
+          "type": "percent",
+          "options": {
+            "precision": 2
+          }
+        }
+      },
+      "id": "fldMhJJn2w1926mDn",
+      "name": "Emails Sent Previous VS Current Month (% Progress)"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  AND(\r\n    {fldyvcYwB3XnzYkfX},\r\n    {fldFyykhZKaNP4C5z}\r\n  ),\r\n  \"1 Lead every \" & ROUND({fldyvcYwB3XnzYkfX} / {fldFyykhZKaNP4C5z}, 0) & \" Emails Sent\"\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldyvcYwB3XnzYkfX",
+          "fldFyykhZKaNP4C5z"
+        ],
+        "result": {
+          "type": "singleLineText"
+        }
+      },
+      "id": "fldiqtOYz6XtXSswP",
+      "name": "MTD Lead To Emails Sent Ratio"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldDX16OxlvCt8WFI",
+        "fieldIdInLinkedTable": "fldpQGorzYx1Qcity",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "currency",
+          "options": {
+            "precision": 2,
+            "symbol": "$"
+          }
+        }
+      },
+      "id": "fldSsAhbynCtWkYHn",
+      "name": "Infrastructure Price"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldDX16OxlvCt8WFI",
+        "fieldIdInLinkedTable": "fldsDPb7vKJsAfLmm",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldUZEezVSJkXkTyp",
+      "name": "Connected Accounts"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldDX16OxlvCt8WFI",
+        "fieldIdInLinkedTable": "fldsDPb7vKJsAfLmm",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldVpzdQxSRcrLKk7",
+      "name": "Disconnected Accounts"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldDX16OxlvCt8WFI",
+        "fieldIdInLinkedTable": "fldXIakrniRS0VKS9",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldaxheszJibPrSgP",
+      "name": "Max Volume"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fldDX16OxlvCt8WFI",
+        "fieldIdInLinkedTable": "fldn9Py3mXIcgXNJa",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldxUL2MH6fcLwjbn",
+      "name": "Available Sending"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  {fldyvcYwB3XnzYkfX},\r\n  {fldyvcYwB3XnzYkfX} / DAY(TODAY())\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldyvcYwB3XnzYkfX"
+        ],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 0
+          }
+        }
+      },
+      "id": "fldKKxLW1SAi1E37o",
+      "name": "MTD: Average Daily Sending"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "IF(\r\n  AND(\r\n    {fldyvcYwB3XnzYkfX},\r\n    {fldxUL2MH6fcLwjbn}\r\n  ),\r\n  (({fldyvcYwB3XnzYkfX} / DAY(TODAY())) - {fldxUL2MH6fcLwjbn}) \r\n  / {fldxUL2MH6fcLwjbn}\r\n)\r\n",
+        "referencedFieldIds": [
+          "fldyvcYwB3XnzYkfX",
+          "fldxUL2MH6fcLwjbn"
+        ],
+        "result": {
+          "type": "percent",
+          "options": {
+            "precision": 2
+          }
+        }
+      },
+      "id": "fld40TDMTLPtNLFyc",
+      "name": "Account Usage Index:"
+    },
+    {
+      "type": "singleSelect",
+      "options": {
+        "choices": [
+          {
+            "id": "selsWSRu5vuBHuH8S",
+            "name": "YES",
+            "color": "blueLight2"
+          }
+        ]
+      },
+      "id": "fldChPk0KzHx4ofZE",
+      "name": "Include Today's Volume?"
+    },
+    {
+      "type": "number",
+      "options": {
+        "precision": 0
+      },
+      "id": "fld2pSZwmLsDYoCY8",
+      "name": "3-Day Sending Average"
+    },
+    {
+      "type": "rollup",
+      "options": {
+        "isValid": true,
+        "recordLinkFieldId": "fld51MqWvgo2DopIK",
+        "fieldIdInLinkedTable": "fldpScwwBzTgEh73m",
+        "referencedFieldIds": [],
+        "result": {
+          "type": "number",
+          "options": {
+            "precision": 1
+          }
+        }
+      },
+      "id": "fldgsfIYVvKFr45Lq",
+      "name": "Today's Volume"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "{fldFyykhZKaNP4C5z} * 500",
+        "referencedFieldIds": [
+          "fldFyykhZKaNP4C5z"
+        ],
+        "result": {
+          "type": "currency",
+          "options": {
+            "precision": 2,
+            "symbol": "$"
+          }
+        }
+      },
+      "id": "fldJbJkx7dilzFg2n",
+      "name": "ROI - MTD"
+    },
+    {
+      "type": "number",
+      "options": {
+        "precision": 0
+      },
+      "id": "fld9AYBPQ3mXS7OBv",
+      "name": "Healthy Tag ID"
+    },
+    {
+      "type": "number",
+      "options": {
+        "precision": 0
+      },
+      "id": "fldtMRvEJIyBVLEoG",
+      "name": "Damaged Tag ID"
+    },
+    {
+      "type": "singleLineText",
+      "id": "fldW53dnXWScR4eY7",
+      "name": "CRM"
+    },
+    {
+      "type": "currency",
+      "options": {
+        "precision": 2,
+        "symbol": "$"
+      },
+      "id": "fldYJpqjs3x3bdGiu",
+      "name": "Price Per Lead"
+    },
+    {
+      "type": "formula",
+      "options": {
+        "isValid": true,
+        "formula": "{fldFyykhZKaNP4C5z} * {fldYJpqjs3x3bdGiu}",
+        "referencedFieldIds": [
+          "fldFyykhZKaNP4C5z",
+          "fldYJpqjs3x3bdGiu"
+        ],
+        "result": {
+          "type": "currency",
+          "options": {
+            "precision": 2,
+            "symbol": "$"
+          }
+        }
+      },
+      "id": "fldptIXzPZOfg65lE",
+      "name": "Payout"
+    },
+    {
+      "type": "multipleSelects",
+      "options": {
+        "choices": [
+          {
+            "id": "seloRUvKpimIizqYv",
+            "name": "2H Campaign Updates",
+            "color": "blueLight2"
+          },
+          {
+            "id": "sel2gGG7KQYfXjBrv",
+            "name": "Positive Reply Notification",
+            "color": "cyanLight2"
+          },
+          {
+            "id": "selFWQItIVs1QpL7F",
+            "name": "Daily Campaigns Performance",
+            "color": "tealLight2"
+          }
+        ]
+      },
+      "id": "fldYy7JgxxDEAXhPf",
+      "name": "Tech Setup"
+    }
+  ],
+  "views": [
+    {
+      "id": "viw8WmNNz6D27KYen",
+      "name": "Kirk Hodgson PR",
+      "type": "grid"
+    },
+    {
+      "id": "viw8qix1j5FxSUwtN",
+      "name": "Kim Wallace PR",
+      "type": "grid"
+    },
+    {
+      "id": "viw64QH45lWTBONKj",
+      "name": "Positive Replies",
+      "type": "grid"
+    },
+    {
+      "id": "viwcLFMur29HT4QAD",
+      "name": "Emails Sent",
+      "type": "grid"
+    },
+    {
+      "id": "viw63KdiojX8Zn5or",
+      "name": "Email Accounts",
+      "type": "grid"
+    },
+    {
+      "id": "viwrwn0Y4XFrFiyIP",
+      "name": "Table",
+      "type": "grid"
+    },
+    {
+      "id": "viwAme9Pt5jGSQQQH",
+      "name": "List",
+      "type": "levels"
+    },
+    {
+      "id": "viw1ENVkW5ynmN1dJ",
+      "name": "Active CLients",
+      "type": "grid"
+    },
+    {
+      "id": "viwBKJCqWCPRQ3Yxu",
+      "name": "Developers",
+      "type": "grid"
+    },
+    {
+      "id": "viwMkRI2ZTAAMtq5E",
+      "name": "Positive Replies Breakdown",
+      "type": "grid"
+    },
+    {
+      "id": "viwNsuFbXkDTGVnuY",
+      "name": "Today's Volume",
+      "type": "grid"
+    },
+    {
+      "id": "viwNTuw1eNHRjo0m2",
+      "name": "Tag",
+      "type": "grid"
+    }
+  ]
+}

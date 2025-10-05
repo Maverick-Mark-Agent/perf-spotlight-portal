@@ -28,25 +28,36 @@ interface ClientPerformanceListsProps {
 }
 
 export const ClientPerformanceLists = ({ clients }: ClientPerformanceListsProps) => {
-  const [expandedList, setExpandedList] = useState<'above' | 'below' | null>(null);
+  const [expandedList, setExpandedList] = useState<'above' | 'below' | 'ontrack' | null>(null);
 
-  const clientsAboveTarget = clients.filter(client => 
-    client.projectedReplies >= client.monthlyKPI && client.monthlyKPI > 0
+  // Above Target: Current positive replies meet or exceed monthly KPI
+  const clientsAboveTarget = clients.filter(client => {
+    const meetsTarget = client.leadsGenerated >= client.monthlyKPI && client.monthlyKPI > 0;
+    console.log(`${client.name}: leadsGenerated=${client.leadsGenerated}, monthlyKPI=${client.monthlyKPI}, meetsTarget=${meetsTarget}`);
+    return meetsTarget;
+  });
+
+  // On Track: Not there yet, but projected to hit target
+  const clientsOnTrack = clients.filter(client =>
+    client.leadsGenerated < client.monthlyKPI &&
+    client.projectedReplies >= client.monthlyKPI &&
+    client.monthlyKPI > 0
   );
-  
-  const clientsBelowTarget = clients.filter(client => 
+
+  // Below Target: Projected to miss target
+  const clientsBelowTarget = clients.filter(client =>
     client.projectedReplies < client.monthlyKPI && client.monthlyKPI > 0
   );
 
-  const handleListToggle = (listType: 'above' | 'below') => {
+  const handleListToggle = (listType: 'above' | 'below' | 'ontrack') => {
     setExpandedList(expandedList === listType ? null : listType);
   };
 
   const ClientCard = ({ client }: { client: ClientData }) => {
-    const progressPercentage = client.monthlyKPI > 0 
-      ? (client.projectedReplies / client.monthlyKPI) * 100 
+    const progressPercentage = client.monthlyKPI > 0
+      ? (client.positiveRepliesLast30Days / client.monthlyKPI) * 100
       : 0;
-    
+
     return (
       <Card className="bg-card border-2 border-border hover:shadow-lg transition-shadow">
         <CardHeader className="pb-3">
@@ -62,9 +73,9 @@ export const ClientPerformanceLists = ({ clients }: ClientPerformanceListsProps)
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <div className="text-sm font-medium text-foreground/60">Projected Replies</div>
+              <div className="text-sm font-medium text-foreground/60">Last 30 Days</div>
               <div className="text-xl font-bold text-foreground">
-                {client.projectedReplies}
+                {client.positiveRepliesLast30Days}
               </div>
             </div>
             <div className="space-y-1">
@@ -74,7 +85,7 @@ export const ClientPerformanceLists = ({ clients }: ClientPerformanceListsProps)
               </div>
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-foreground/60 font-medium">Progress to Target</span>
@@ -82,7 +93,7 @@ export const ClientPerformanceLists = ({ clients }: ClientPerformanceListsProps)
                 "font-semibold",
                 progressPercentage >= 100 ? "text-success" : "text-destructive"
               )}>
-                {client.projectedReplies} / {client.monthlyKPI}
+                {client.positiveRepliesLast30Days} / {client.monthlyKPI}
               </span>
             </div>
             <div className="w-full bg-muted/80 rounded-full h-2.5 border border-border">
@@ -122,45 +133,36 @@ export const ClientPerformanceLists = ({ clients }: ClientPerformanceListsProps)
   };
 
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-foreground mb-2">
-          Client Performance Overview
-        </h2>
-        <p className="text-foreground/60 font-medium">
-          Clients categorized by their projected positive replies vs Monthly KPI targets
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Clients Above Target */}
-        <Card className="bg-card border-2 border-success/30 shadow-lg">
-          <CardHeader 
-            className="cursor-pointer hover:bg-success/5 transition-colors"
+        <Card className="bg-card border-2 border-success/30 shadow-md">
+          <CardHeader
+            className="cursor-pointer hover:bg-success/5 transition-colors py-3"
             onClick={() => handleListToggle('above')}
           >
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-success/20 rounded-lg">
-                  <TrendingUp className="h-5 w-5 text-success" />
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-success/20 rounded-lg">
+                  <TrendingUp className="h-4 w-4 text-success" />
                 </div>
                 <div>
-                  <CardTitle className="text-lg font-bold text-success">
+                  <CardTitle className="text-sm font-bold text-success">
                     Above Target
                   </CardTitle>
-                  <p className="text-sm font-medium text-foreground/60">
+                  <p className="text-xs font-medium text-foreground/60">
                     {clientsAboveTarget.length} client{clientsAboveTarget.length !== 1 ? 's' : ''}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-success border-success font-semibold">
+                <Badge variant="outline" className="text-success border-success font-semibold text-xs">
                   {clientsAboveTarget.length}
                 </Badge>
                 {expandedList === 'above' ? (
-                  <ChevronDown className="h-4 w-4 text-foreground/60" />
+                  <ChevronDown className="h-3.5 w-3.5 text-foreground/60" />
                 ) : (
-                  <ChevronRight className="h-4 w-4 text-foreground/60" />
+                  <ChevronRight className="h-3.5 w-3.5 text-foreground/60" />
                 )}
               </div>
             </div>
@@ -184,34 +186,85 @@ export const ClientPerformanceLists = ({ clients }: ClientPerformanceListsProps)
           )}
         </Card>
 
+        {/* Clients On Track */}
+        <Card className="bg-card border-2 border-warning/30 shadow-md">
+          <CardHeader
+            className="cursor-pointer hover:bg-warning/5 transition-colors py-3"
+            onClick={() => handleListToggle('ontrack')}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-warning/20 rounded-lg">
+                  <Target className="h-4 w-4 text-warning" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm font-bold text-warning">
+                    On Track
+                  </CardTitle>
+                  <p className="text-xs font-medium text-foreground/60">
+                    {clientsOnTrack.length} client{clientsOnTrack.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-warning border-warning font-semibold text-xs">
+                  {clientsOnTrack.length}
+                </Badge>
+                {expandedList === 'ontrack' ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-foreground/60" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-foreground/60" />
+                )}
+              </div>
+            </div>
+          </CardHeader>
+
+          {expandedList === 'ontrack' && (
+            <CardContent className="pt-0">
+              <div className="space-y-4">
+                {clientsOnTrack.length > 0 ? (
+                  clientsOnTrack.map((client) => (
+                    <ClientCard key={client.id} client={client} />
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-foreground/60">
+                    <Target className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p className="font-medium">No clients on track</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
         {/* Clients Below Target */}
-        <Card className="bg-card border-2 border-destructive/30 shadow-lg">
-          <CardHeader 
-            className="cursor-pointer hover:bg-destructive/5 transition-colors"
+        <Card className="bg-card border-2 border-destructive/30 shadow-md">
+          <CardHeader
+            className="cursor-pointer hover:bg-destructive/5 transition-colors py-3"
             onClick={() => handleListToggle('below')}
           >
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-destructive/20 rounded-lg">
-                  <TrendingDown className="h-5 w-5 text-destructive" />
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-destructive/20 rounded-lg">
+                  <TrendingDown className="h-4 w-4 text-destructive" />
                 </div>
                 <div>
-                  <CardTitle className="text-lg font-bold text-destructive">
+                  <CardTitle className="text-sm font-bold text-destructive">
                     Below Target
                   </CardTitle>
-                  <p className="text-sm font-medium text-foreground/60">
+                  <p className="text-xs font-medium text-foreground/60">
                     {clientsBelowTarget.length} client{clientsBelowTarget.length !== 1 ? 's' : ''}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-destructive border-destructive font-semibold">
+                <Badge variant="outline" className="text-destructive border-destructive font-semibold text-xs">
                   {clientsBelowTarget.length}
                 </Badge>
                 {expandedList === 'below' ? (
-                  <ChevronDown className="h-4 w-4 text-foreground/60" />
+                  <ChevronDown className="h-3.5 w-3.5 text-foreground/60" />
                 ) : (
-                  <ChevronRight className="h-4 w-4 text-foreground/60" />
+                  <ChevronRight className="h-3.5 w-3.5 text-foreground/60" />
                 )}
               </div>
             </div>

@@ -32,6 +32,9 @@ const Index = () => {
                 <Link to="/kpi-dashboard">KPI Dashboard</Link>
               </Button>
               <Button asChild variant="outline" className="shadow-sm hover:shadow-md transition-all">
+                <Link to="/client-portal">Client Portal</Link>
+              </Button>
+              <Button asChild variant="outline" className="shadow-sm hover:shadow-md transition-all">
                 <Link to="/email-accounts">Infrastructure</Link>
               </Button>
               <Button asChild variant="outline" className="shadow-sm hover:shadow-md transition-all">

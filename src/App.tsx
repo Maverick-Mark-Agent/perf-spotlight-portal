@@ -15,6 +15,7 @@ import RevenueDashboard from "./pages/RevenueDashboard";
 import ClientPortalPage from "./pages/ClientPortalPage";
 import ClientPortalHub from "./pages/ClientPortalHub";
 import NotFoundPage from "./pages/NotFoundPage";
+import ZipDashboard from "./pages/ZipDashboard";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
               <Route path="/revenue-dashboard" element={<RevenueDashboard />} />
               <Route path="/client-portal" element={<ClientPortalHub />} />
               <Route path="/client-portal/:workspace" element={<ClientPortalPage />} />
+              <Route path="/zip-dashboard" element={<ZipDashboard />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFoundPage />} />
             </Routes>

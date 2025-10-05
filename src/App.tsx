@@ -11,6 +11,7 @@ import KPITestPage from "./pages/KPITestPage";
 import EmailAccountsPage from "./pages/EmailAccountsPage";
 import VolumeDashboard from "./pages/VolumeDashboard";
 import BillingPage from "./pages/BillingPage";
+import RevenueDashboard from "./pages/RevenueDashboard";
 import ClientPortalPage from "./pages/ClientPortalPage";
 import ClientPortalHub from "./pages/ClientPortalHub";
 import NotFoundPage from "./pages/NotFoundPage";
@@ -32,6 +33,7 @@ const App = () => (
               <Route path="/email-accounts" element={<EmailAccountsPage />} />
               <Route path="/volume-dashboard" element={<VolumeDashboard />} />
               <Route path="/billing" element={<BillingPage />} />
+              <Route path="/revenue-dashboard" element={<RevenueDashboard />} />
               <Route path="/client-portal" element={<ClientPortalHub />} />
               <Route path="/client-portal/:workspace" element={<ClientPortalPage />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

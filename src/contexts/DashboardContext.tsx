@@ -52,6 +52,44 @@ interface InfrastructureFilters {
   clientAccountFilter: string | null;
 }
 
+interface RevenueClientData {
+  workspace_name: string;
+  billing_type: 'per_lead' | 'retainer';
+  current_month_leads: number;
+  current_month_revenue: number;
+  current_month_costs: number;
+  current_month_profit: number;
+  projected_leads: number;
+  projected_revenue: number;
+  projected_profit: number;
+  last_month_leads: number;
+  last_month_revenue: number;
+  last_month_profit: number;
+  mom_revenue_change: number;
+  mom_profit_change: number;
+  profit_margin: number;
+  price_per_lead: number;
+  retainer_amount: number;
+  rank: number;
+}
+
+interface RevenueTotals {
+  total_mtd_revenue: number;
+  total_mtd_costs: number;
+  total_mtd_profit: number;
+  total_projected_revenue: number;
+  total_per_lead_revenue: number;
+  total_retainer_revenue: number;
+}
+
+interface RevenueDashboardState {
+  clients: RevenueClientData[];
+  totals: RevenueTotals;
+  lastUpdated: Date | null;
+  loading: boolean;
+  isUsingCache: boolean;
+}
+
 interface KPIDashboardState {
   clients: ClientData[];
   selectedClient: string | null;
@@ -100,6 +138,10 @@ interface DashboardContextType {
   setInfrastructureModalOpen: (open: boolean) => void;
   refreshInfrastructure: (force?: boolean) => Promise<void>;
 
+  // Revenue Dashboard
+  revenueDashboard: RevenueDashboardState;
+  refreshRevenueDashboard: (force?: boolean) => Promise<void>;
+
   // Global
   refreshAll: () => Promise<void>;
 }
@@ -115,6 +157,8 @@ const CACHE_KEYS = {
   KPI_VIEW_MODE: 'kpi-view-mode',
   VOLUME_DATA: 'volume-dashboard-data',
   VOLUME_TIMESTAMP: 'volume-dashboard-timestamp',
+  REVENUE_DATA: 'revenue-dashboard-data',
+  REVENUE_TIMESTAMP: 'revenue-dashboard-timestamp',
   // Infrastructure doesn't use localStorage cache due to quota limits (4000+ accounts)
 };
 
@@ -164,6 +208,22 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     expandedStatuses: new Set(),
     selectedClient: null,
     isClientModalOpen: false,
+    lastUpdated: null,
+    loading: true,
+    isUsingCache: false,
+  });
+
+  // ============= Revenue Dashboard State =============
+  const [revenueDashboard, setRevenueDashboard] = useState<RevenueDashboardState>({
+    clients: [],
+    totals: {
+      total_mtd_revenue: 0,
+      total_mtd_costs: 0,
+      total_mtd_profit: 0,
+      total_projected_revenue: 0,
+      total_per_lead_revenue: 0,
+      total_retainer_revenue: 0,
+    },
     lastUpdated: null,
     loading: true,
     isUsingCache: false,
@@ -357,6 +417,51 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     await fetchInfrastructureData(force);
   }, [fetchInfrastructureData]);
 
+  // ============= Revenue Dashboard Functions =============
+
+  const fetchRevenueData = useCallback(async (force: boolean = false) => {
+    try {
+      if (!force && revenueDashboard.clients.length > 0) {
+        // Silent background refresh
+      } else {
+        setRevenueDashboard(prev => ({ ...prev, loading: true }));
+      }
+
+      const { data, error } = await supabase.functions.invoke('revenue-analytics');
+
+      if (error) throw error;
+
+      const clients = data?.clients || [];
+      const totals = data?.totals || {
+        total_mtd_revenue: 0,
+        total_mtd_costs: 0,
+        total_mtd_profit: 0,
+        total_projected_revenue: 0,
+        total_per_lead_revenue: 0,
+        total_retainer_revenue: 0,
+      };
+      const timestamp = new Date();
+
+      setRevenueDashboard({
+        clients,
+        totals,
+        lastUpdated: timestamp,
+        loading: false,
+        isUsingCache: false,
+      });
+
+      // Cache the data
+      saveToCache(CACHE_KEYS.REVENUE_DATA, CACHE_KEYS.REVENUE_TIMESTAMP, { clients, totals }, timestamp);
+    } catch (error) {
+      console.error('Error fetching Revenue data:', error);
+      setRevenueDashboard(prev => ({ ...prev, loading: false }));
+    }
+  }, [revenueDashboard.clients.length]);
+
+  const refreshRevenueDashboard = useCallback(async (force: boolean = true) => {
+    await fetchRevenueData(force);
+  }, [fetchRevenueData]);
+
   // ============= Global Functions =============
 
   const refreshAll = useCallback(async () => {
@@ -364,8 +469,9 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       fetchKPIData(true),
       fetchVolumeData(true),
       fetchInfrastructureData(true),
+      fetchRevenueData(true),
     ]);
-  }, [fetchKPIData, fetchVolumeData, fetchInfrastructureData]);
+  }, [fetchKPIData, fetchVolumeData, fetchInfrastructureData, fetchRevenueData]);
 
   // ============= Initial Load & Hydration =============
 
@@ -399,10 +505,24 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       console.log('Loaded Volume dashboard from cache:', volumeCache.timestamp);
     }
 
+    // Load Revenue Dashboard from cache
+    const revenueCache = loadFromCache<{ clients: RevenueClientData[], totals: RevenueTotals }>(CACHE_KEYS.REVENUE_DATA, CACHE_KEYS.REVENUE_TIMESTAMP);
+    if (revenueCache.data) {
+      setRevenueDashboard({
+        clients: revenueCache.data.clients,
+        totals: revenueCache.data.totals,
+        lastUpdated: revenueCache.timestamp,
+        loading: false,
+        isUsingCache: true,
+      });
+      console.log('Loaded Revenue dashboard from cache:', revenueCache.timestamp);
+    }
+
     // Fetch fresh data in background
     fetchKPIData(false);
     fetchVolumeData(false);
     fetchInfrastructureData(false);
+    fetchRevenueData(false);
 
     // Set up auto-refresh interval (1 hour)
     const intervalId = setInterval(() => {
@@ -429,6 +549,8 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     setInfrastructureSelectedClient,
     setInfrastructureModalOpen,
     refreshInfrastructure,
+    revenueDashboard,
+    refreshRevenueDashboard,
     refreshAll,
   };
 

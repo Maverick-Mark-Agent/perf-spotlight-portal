@@ -41,7 +41,7 @@ const Index = () => {
                 <Link to="/volume-dashboard">Volume Dashboard</Link>
               </Button>
               <Button asChild variant="outline" className="shadow-sm hover:shadow-md transition-all">
-                <Link to="/billing">Billing Dashboard</Link>
+                <Link to="/revenue-dashboard">Revenue Dashboard</Link>
               </Button>
             </div>
           </div>

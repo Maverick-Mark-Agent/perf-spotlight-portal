@@ -148,7 +148,7 @@ interface DashboardContextType {
 
 // ============= Cache Configuration =============
 
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds (reduced from 1 hour for fresher data)
 
 const CACHE_KEYS = {
   KPI_DATA: 'kpi-dashboard-data',

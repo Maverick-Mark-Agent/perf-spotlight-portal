@@ -114,7 +114,7 @@ serve(async (req) => {
       custom_variables: lead.custom_variables,
       bison_conversation_url: conversationUrl,
       pipeline_stage: 'new', // Always start in "New Lead" stage
-      date_received: reply?.date_received || new Date().toISOString(),
+      date_received: reply?.date_received ?? new Date().toISOString(), // Fixed: use ?? instead of ||
       lead_value: 0, // Default value
       tags: null, // Will be populated if we add tag fetching later
     };

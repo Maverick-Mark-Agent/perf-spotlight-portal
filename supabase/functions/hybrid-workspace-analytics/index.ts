@@ -79,6 +79,24 @@ serve(async (req) => {
     const dateRanges = getDateRanges();
     console.log('Date ranges:', dateRanges);
 
+    // Fetch client registry for display names and active status
+    console.log('Fetching client_registry for display names...');
+    const { data: registryClients, error: registryError } = await supabase
+      .from('client_registry')
+      .select('*')
+      .eq('is_active', true);
+
+    if (registryError) {
+      console.error('Error fetching client_registry:', registryError);
+    }
+
+    // Build lookup by workspace name
+    const registryLookup: Record<string, any> = {};
+    (registryClients || []).forEach(client => {
+      registryLookup[client.workspace_name] = client;
+    });
+    console.log(`Loaded ${Object.keys(registryLookup).length} active clients from registry`);
+
     // Fetch all workspaces from Email Bison
     const workspacesResponse = await fetch(`${EMAIL_BISON_BASE_URL}/workspaces/v1.1`, {
       headers: {
@@ -138,19 +156,27 @@ serve(async (req) => {
     // Loop through workspaces SEQUENTIALLY
     for (const workspace of workspaces) {
       try {
-        // Find matching Airtable client record
+        // Check if workspace is active in client_registry
+        const registryClient = registryLookup[workspace.name];
+        if (!registryClient) {
+          console.log(`Skipping workspace "${workspace.name}" - not in active client registry`);
+          continue;
+        }
+
+        // Find matching Airtable client record (for supplemental data)
         const airtableRecord = allClientRecords.find(
           (record: any) => record.fields['Workspace Name'] === workspace.name
         );
 
         if (!airtableRecord) {
-          console.log(`Skipping workspace "${workspace.name}" - no matching client in Airtable`);
-          continue;
+          console.log(`Warning: No Airtable record for "${workspace.name}" - using registry data only`);
         }
 
-        const fields = airtableRecord.fields;
-        const clientName = fields['Client Company Name'] || 'Unknown Client';
-        const monthlyKPI = fields['Monthly KPI'] || 0;
+        const fields = airtableRecord?.fields || {};
+
+        // Use display_name from client_registry, fallback to workspace name
+        const clientName = registryClient.display_name || workspace.name;
+        const monthlyKPI = registryClient.monthly_kpi_target || 0;
 
         // Switch to workspace
         console.log(`Switching to workspace: ${workspace.name} (ID: ${workspace.id})`);

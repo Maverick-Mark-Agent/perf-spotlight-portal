@@ -6,32 +6,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Client pricing data (hardcoded from CSV until tables are created)
-const CLIENT_PRICING = {
-  // Retainer clients
-  'Shane Miller': { billing_type: 'retainer', retainer_amount: 2175, price_per_lead: 0 },
-  'Ozment media': { billing_type: 'retainer', retainer_amount: 560, price_per_lead: 0 },
-  'Kirk Hodgson': { billing_type: 'retainer', retainer_amount: 1500, price_per_lead: 0 },
-  'StreetSmart Commercial': { billing_type: 'retainer', retainer_amount: 1500, price_per_lead: 0 },
-  'SMA Insurance': { billing_type: 'retainer', retainer_amount: 2000, price_per_lead: 0 },
-  'SAVANTY': { billing_type: 'retainer', retainer_amount: 688, price_per_lead: 0 },
-  'StreetSmart Trucking': { billing_type: 'retainer', retainer_amount: 1500, price_per_lead: 0 },
-  'JMISON YERGLER': { billing_type: 'retainer', retainer_amount: 1500, price_per_lead: 0 },
-  'RAIDAINT ENERGY': { billing_type: 'retainer', retainer_amount: 2500, price_per_lead: 0 },
-
-  // Per-lead clients
-  'Nick Sahah': { billing_type: 'per_lead', price_per_lead: 20, retainer_amount: 0 },
-  'Tony S': { billing_type: 'per_lead', price_per_lead: 20, retainer_amount: 0 },
-  'Devin Hodo': { billing_type: 'per_lead', price_per_lead: 25, retainer_amount: 0 },
-  'Gregg Blanchard': { billing_type: 'per_lead', price_per_lead: 30, retainer_amount: 0 },
-  'Danny s': { billing_type: 'per_lead', price_per_lead: 25, retainer_amount: 0 },
-  'David Amiri': { billing_type: 'per_lead', price_per_lead: 25, retainer_amount: 0 },
-  'Rob Russell': { billing_type: 'per_lead', price_per_lead: 25, retainer_amount: 0 },
-  'John Roberts': { billing_type: 'per_lead', price_per_lead: 25, retainer_amount: 0 },
-  'StreetSmart P&C': { billing_type: 'per_lead', price_per_lead: 25, retainer_amount: 0 },
-  'Kim Wallace': { billing_type: 'per_lead', price_per_lead: 17.50, retainer_amount: 0 },
-  'Jason Binyon': { billing_type: 'per_lead', price_per_lead: 15, retainer_amount: 0 },
+// Normalize client names for matching (handles case, spacing, special chars)
+const normalizeClientName = (name: string): string => {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '');
 };
+
+// NOTE: Pricing data now comes from client_registry table in Supabase
+// No more hardcoded pricing or name mapping!
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -42,6 +27,9 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
+    // Get authorization from incoming request
+    const authHeader = req.headers.get('Authorization');
+
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing Supabase credentials');
     }
@@ -50,15 +38,47 @@ serve(async (req) => {
 
     console.log('Fetching revenue analytics...');
 
-    // Get KPI data from hybrid-workspace-analytics
-    const { data: kpiData, error: kpiError } = await supabase.functions.invoke('hybrid-workspace-analytics');
+    // Step 1: Get client pricing from client_registry
+    console.log('📥 Fetching client pricing from client_registry...');
+    const { data: registryClients, error: registryError } = await supabase
+      .from('client_registry')
+      .select('*')
+      .eq('is_active', true);
 
-    if (kpiError) {
-      throw new Error(`Error fetching KPI data: ${kpiError.message}`);
+    if (registryError) {
+      throw new Error(`Error fetching client_registry: ${registryError.message}`);
     }
 
+    console.log(`  Found ${registryClients.length} active clients in registry`);
+
+    // Build pricing lookup by workspace name
+    const pricingLookup: Record<string, any> = {};
+    registryClients.forEach(client => {
+      pricingLookup[client.workspace_name] = {
+        billing_type: client.billing_type,
+        price_per_lead: parseFloat(client.price_per_lead) || 0,
+        retainer_amount: parseFloat(client.retainer_amount) || 0,
+        workspace_id: client.workspace_id,
+        display_name: client.display_name, // Add display_name from registry
+      };
+    });
+
+    // Step 2: Get KPI data from hybrid-workspace-analytics using HTTP fetch (forward auth)
+    console.log('📥 Fetching KPI data from hybrid-workspace-analytics...');
+    const kpiResponse = await fetch(`${supabaseUrl}/functions/v1/hybrid-workspace-analytics`, {
+      headers: {
+        'Authorization': authHeader || '',
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!kpiResponse.ok) {
+      throw new Error(`Error fetching KPI data: ${kpiResponse.status} ${kpiResponse.statusText}`);
+    }
+
+    const kpiData = await kpiResponse.json();
     const kpiClients = kpiData?.clients || [];
-    console.log(`Fetched ${kpiClients.length} clients from KPI dashboard`);
+    console.log(`  Found ${kpiClients.length} clients from KPI dashboard`);
 
     // Calculate days remaining in month for projections
     const now = new Date();
@@ -69,12 +89,15 @@ serve(async (req) => {
 
     // Process each client with revenue calculations
     const revenueClients = kpiClients.map(client => {
-      const pricing = CLIENT_PRICING[client.name];
+      // Look up pricing from registry (exact workspace name match)
+      const pricing = pricingLookup[client.name];
 
       if (!pricing) {
-        console.log(`⚠️ No pricing found for ${client.name}`);
+        console.log(`⚠️ No pricing found in client_registry for "${client.name}"`);
         return null;
       }
+
+      console.log(`✅ Matched "${client.name}" → ${pricing.billing_type} → $${pricing.price_per_lead || pricing.retainer_amount}`);
 
       // Current month billable leads (from KPI dashboard - these are interested leads)
       const currentMonthLeads = client.leadsGenerated || 0;
@@ -126,7 +149,7 @@ serve(async (req) => {
         : 0;
 
       return {
-        workspace_name: client.name,
+        workspace_name: pricing.display_name || client.name, // Use display_name if available
         billing_type: pricing.billing_type,
 
         // Current Month (MTD)

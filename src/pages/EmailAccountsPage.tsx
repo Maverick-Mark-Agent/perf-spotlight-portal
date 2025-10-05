@@ -4,20 +4,47 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign, Download } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useDashboardContext } from "@/contexts/DashboardContext";
 
 // Removed localStorage caching due to quota limits with large dataset (4000+ accounts)
 // Data is now fetched fresh on each page load for real-time accuracy
 
 const SendingAccountsInfrastructure = () => {
-  const [emailAccounts, setEmailAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    infrastructureDashboard,
+    setInfrastructureFilter,
+    setInfrastructureExpandedAccountTypes,
+    setInfrastructureExpandedStatuses,
+    setInfrastructureSelectedClient,
+    setInfrastructureModalOpen,
+    refreshInfrastructure,
+  } = useDashboardContext();
+
+  const {
+    emailAccounts,
+    filters,
+    expandedAccountTypes,
+    expandedStatuses,
+    selectedClient,
+    isClientModalOpen,
+    loading,
+    lastUpdated,
+  } = infrastructureDashboard;
+
+  // Destructure filters for easier access
+  const {
+    selectedAnalysis,
+    selectedProviderView,
+    selectedClientForSending,
+    clientAccountFilter,
+  } = filters;
+
   const [loadingMessage, setLoadingMessage] = useState('Fetching all records...');
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // Local UI state for computed data
   const [accountStats, setAccountStats] = useState({
     total: 0,
     avgPerClient: '0',
@@ -29,17 +56,9 @@ const SendingAccountsInfrastructure = () => {
   const [resellerData, setResellerData] = useState([]);
   const [accountTypeData, setAccountTypeData] = useState([]);
   const [priceAnalysisData, setPriceAnalysisData] = useState([]);
-  const [selectedAnalysis, setSelectedAnalysis] = useState('Email Provider');
   const [clientAccountsData, setClientAccountsData] = useState([]);
-  const [selectedClient, setSelectedClient] = useState(null);
-  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
-  const [expandedAccountTypes, setExpandedAccountTypes] = useState(new Set());
-  const [expandedStatuses, setExpandedStatuses] = useState(new Set());
   const [emailProviderData, setEmailProviderData] = useState([]);
-  const [selectedProviderView, setSelectedProviderView] = useState('Total Email Sent');
   const [clientSendingData, setClientSendingData] = useState([]);
-  const [selectedClientForSending, setSelectedClientForSending] = useState('All Clients');
-  const [clientAccountFilter, setClientAccountFilter] = useState(null);
 
   const formatLastUpdated = () => {
     if (!lastUpdated) return '';
@@ -103,19 +122,10 @@ const SendingAccountsInfrastructure = () => {
   }, [emailAccounts]);
 
   const fetchEmailAccounts = async (isRefresh = false) => {
-    setLoading(true);
-
     try {
-      const { data, error } = await supabase.functions.invoke('hybrid-email-accounts-v2');
+      await refreshInfrastructure(isRefresh);
 
-      if (error) throw error;
-
-      const accounts = data.records || [];
-      setEmailAccounts(accounts);
-
-      // Update timestamp
-      const timestamp = new Date();
-      setLastUpdated(timestamp);
+      const accounts = emailAccounts;
       
       // Calculate metrics
       const totalAccounts = accounts.length;
@@ -203,11 +213,9 @@ const SendingAccountsInfrastructure = () => {
       
       // Generate client sending capacity data
       generateClientSendingData(accounts);
-      
+
     } catch (error) {
       console.error('Error fetching email accounts:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -532,29 +540,29 @@ const SendingAccountsInfrastructure = () => {
   };
 
   const openClientModal = useCallback((client: any) => {
-    setSelectedClient(client);
-    setIsClientModalOpen(true);
-    setExpandedAccountTypes(new Set());
-    setExpandedStatuses(new Set());
-    setClientAccountFilter(null);
-  }, []);
+    setInfrastructureSelectedClient(client);
+    setInfrastructureModalOpen(true);
+    setInfrastructureExpandedAccountTypes(new Set());
+    setInfrastructureExpandedStatuses(new Set());
+    setInfrastructureFilter('clientAccountFilter', null);
+  }, [setInfrastructureSelectedClient, setInfrastructureModalOpen, setInfrastructureExpandedAccountTypes, setInfrastructureExpandedStatuses, setInfrastructureFilter]);
 
   const openClientModalWithFilter = useCallback((client: any, filter: string) => {
-    setSelectedClient(client);
-    setIsClientModalOpen(true);
-    setExpandedAccountTypes(new Set());
-    setExpandedStatuses(new Set());
-    setClientAccountFilter(filter);
-  }, []);
+    setInfrastructureSelectedClient(client);
+    setInfrastructureModalOpen(true);
+    setInfrastructureExpandedAccountTypes(new Set());
+    setInfrastructureExpandedStatuses(new Set());
+    setInfrastructureFilter('clientAccountFilter', filter);
+  }, [setInfrastructureSelectedClient, setInfrastructureModalOpen, setInfrastructureExpandedAccountTypes, setInfrastructureExpandedStatuses, setInfrastructureFilter]);
 
   const closeClientModal = useCallback(() => {
-    setIsClientModalOpen(false);
-    setSelectedClient(null);
-    setClientAccountFilter(null);
-  }, []);
+    setInfrastructureModalOpen(false);
+    setInfrastructureSelectedClient(null);
+    setInfrastructureFilter('clientAccountFilter', null);
+  }, [setInfrastructureModalOpen, setInfrastructureSelectedClient, setInfrastructureFilter]);
 
   const toggleAccountType = useCallback((accountType: string) => {
-    setExpandedAccountTypes(prev => {
+    setInfrastructureExpandedAccountTypes(prev => {
       const newSet = new Set(prev);
       if (newSet.has(accountType)) {
         newSet.delete(accountType);
@@ -563,10 +571,10 @@ const SendingAccountsInfrastructure = () => {
       }
       return newSet;
     });
-  }, []);
+  }, [setInfrastructureExpandedAccountTypes]);
 
   const toggleStatus = useCallback((statusKey: string) => {
-    setExpandedStatuses(prev => {
+    setInfrastructureExpandedStatuses(prev => {
       const newSet = new Set(prev);
       if (newSet.has(statusKey)) {
         newSet.delete(statusKey);
@@ -575,7 +583,7 @@ const SendingAccountsInfrastructure = () => {
       }
       return newSet;
     });
-  }, []);
+  }, [setInfrastructureExpandedStatuses]);
 
   // Fetch data on mount and cleanup old cache
   useEffect(() => {
@@ -1044,7 +1052,7 @@ const SendingAccountsInfrastructure = () => {
               </CardTitle>
               <div className="flex items-center space-x-4 mt-4">
                 <label className="text-white/70 text-sm">Analyze by:</label>
-                <Select value={selectedAnalysis} onValueChange={setSelectedAnalysis}>
+                <Select value={selectedAnalysis} onValueChange={(value) => setInfrastructureFilter('selectedAnalysis', value)}>
                   <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
                     <SelectValue />
                   </SelectTrigger>
@@ -1139,7 +1147,7 @@ const SendingAccountsInfrastructure = () => {
               </CardTitle>
               <div className="flex items-center space-x-4 mt-4">
                 <label className="text-white/70 text-sm">Show:</label>
-                <Select value={selectedProviderView} onValueChange={setSelectedProviderView}>
+                <Select value={selectedProviderView} onValueChange={(value) => setInfrastructureFilter('selectedProviderView', value)}>
                   <SelectTrigger className="bg-white/10 border-white/20 text-white w-64">
                     <SelectValue />
                   </SelectTrigger>
@@ -1253,14 +1261,14 @@ const SendingAccountsInfrastructure = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setSelectedClientForSending('Insufficient Capacity')}
+                    onClick={() => setInfrastructureFilter('selectedClientForSending', 'Insufficient Capacity')}
                     className={`border-dashboard-warning/40 text-dashboard-warning hover:bg-dashboard-warning/10 ${
                       selectedClientForSending === 'Insufficient Capacity' ? 'bg-dashboard-warning/20' : ''
                     }`}
                   >
                     Show Insufficient Capacity
                   </Button>
-                  <Select value={selectedClientForSending} onValueChange={setSelectedClientForSending}>
+                  <Select value={selectedClientForSending} onValueChange={(value) => setInfrastructureFilter('selectedClientForSending', value)}>
                     <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
                       <SelectValue />
                     </SelectTrigger>

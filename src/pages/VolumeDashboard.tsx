@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -6,96 +6,21 @@ import { ArrowLeft, TrendingUp, BarChart3, Send, Target, RefreshCw, Users, Alert
 import { Link } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-
-interface ClientData {
-  name: string;
-  emails: number;
-  emailsToday: number;
-  emailsLast7Days: number;
-  emailsLast14Days: number;
-  emailsLast30Days: number;
-  target: number;
-  projection: number;
-  targetPercentage: number;
-  projectedPercentage: number;
-  isAboveTarget: boolean;
-  isProjectedAboveTarget: boolean;
-  variance: number;
-  projectedVariance: number;
-  dailyQuota: number;
-  expectedByNow: number;
-  isOnTrack: boolean;
-  dailyAverage: number;
-  distanceToTarget: number;
-  rank: number;
-}
-
-const CACHE_KEY = 'volume-dashboard-data';
-const CACHE_TIMESTAMP_KEY = 'volume-dashboard-timestamp';
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+import { useDashboardContext } from "@/contexts/DashboardContext";
 
 const VolumeDashboard = () => {
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
-  const [clientData, setClientData] = useState<ClientData[]>([]);
-  const [isLoadingClients, setIsLoadingClients] = useState(true);
   const [isRefreshingClients, setIsRefreshingClients] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [isUsingCache, setIsUsingCache] = useState(false);
 
-  // Load cached data on mount
-  useEffect(() => {
-    const cachedData = localStorage.getItem(CACHE_KEY);
-    const cachedTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
-
-    if (cachedData && cachedTimestamp) {
-      try {
-        const parsedData = JSON.parse(cachedData);
-        const timestamp = new Date(cachedTimestamp);
-        setClientData(parsedData);
-        setLastUpdated(timestamp);
-        setIsUsingCache(true);
-        setIsLoadingClients(false);
-        console.log("Loaded cached volume dashboard data from", timestamp);
-      } catch (error) {
-        console.error("Error loading cached data:", error);
-      }
-    }
-
-    // Fetch fresh data
-    fetchClientData();
-  }, []);
-
-  // Set up hourly auto-refresh
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      console.log("Auto-refreshing volume dashboard data...");
-      fetchClientData();
-    }, CACHE_DURATION);
-
-    return () => clearInterval(intervalId);
-  }, []);
+  const { volumeDashboard, refreshVolumeDashboard } = useDashboardContext();
+  const { clients: clientData, loading: isLoadingClients, lastUpdated, isUsingCache } = volumeDashboard;
 
   const fetchClientData = async (isRefresh = false) => {
+    if (isRefresh) {
+      setIsRefreshingClients(true);
+    }
     try {
-      if (isRefresh) {
-        setIsRefreshingClients(true);
-      }
-      console.log("Fetching client sending volume data...");
-      const { data, error} = await supabase.functions.invoke('volume-dashboard-data');
-
-      if (error) throw error;
-
-      console.log("Client data:", data);
-      const clients = data.clients || [];
-      setClientData(clients);
-
-      // Cache the data
-      const timestamp = new Date();
-      localStorage.setItem(CACHE_KEY, JSON.stringify(clients));
-      localStorage.setItem(CACHE_TIMESTAMP_KEY, timestamp.toISOString());
-      setLastUpdated(timestamp);
-      setIsUsingCache(false);
-
+      await refreshVolumeDashboard(isRefresh);
       if (isRefresh) {
         toast({
           title: "Success",
@@ -110,7 +35,6 @@ const VolumeDashboard = () => {
         variant: "destructive",
       });
     } finally {
-      setIsLoadingClients(false);
       if (isRefresh) {
         setIsRefreshingClients(false);
       }

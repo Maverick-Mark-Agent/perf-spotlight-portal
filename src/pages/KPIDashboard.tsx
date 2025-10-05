@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { ClientOverviewCard } from "@/components/dashboard/ClientOverviewCard";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { ProgressPieChart } from "@/components/dashboard/ProgressPieChart";
@@ -7,117 +6,24 @@ import { ComparisonMetrics } from "@/components/dashboard/ComparisonMetrics";
 import { ClientPerformanceLists } from "@/components/dashboard/ClientPerformanceLists";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw, ArrowLeft } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
-
-interface ClientData {
-  id: string;
-  name: string;
-  leadsGenerated: number;
-  projectedReplies: number;
-  leadsTarget: number;
-  repliesTarget: number;
-  monthlyKPI: number;
-  currentProgress: number;
-  repliesProgress: number;
-  positiveRepliesLast30Days: number;
-  positiveRepliesLast7Days: number;
-  positiveRepliesLast14Days: number;
-  positiveRepliesCurrentMonth: number;
-  positiveRepliesLastMonth: number;
-  lastWeekVsWeekBeforeProgress: number;
-  positiveRepliesLastVsThisMonth: number;
-}
-
-const CACHE_KEY = 'kpi-dashboard-data';
-const CACHE_TIMESTAMP_KEY = 'kpi-dashboard-timestamp';
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+import { useDashboardContext } from "@/contexts/DashboardContext";
 
 const MonthlyKPIProgress = () => {
-  const [clients, setClients] = useState<ClientData[]>([]);
-  const [selectedClient, setSelectedClient] = useState<string | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState("30-days");
-  const [loading, setLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [isUsingCache, setIsUsingCache] = useState(false);
   const { toast } = useToast();
+  const {
+    kpiDashboard,
+    setKPISelectedClient,
+    setKPIViewMode,
+    refreshKPIDashboard,
+  } = useDashboardContext();
 
-  // View mode: 'overview' or 'detail'
-  const [viewMode, setViewMode] = useState<'overview' | 'detail'>('overview');
-
-  // Load cached data on mount
-  useEffect(() => {
-    const cachedData = localStorage.getItem(CACHE_KEY);
-    const cachedTimestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
-
-    if (cachedData && cachedTimestamp) {
-      try {
-        const parsedData = JSON.parse(cachedData);
-        const timestamp = new Date(cachedTimestamp);
-        setClients(parsedData);
-        setLastUpdated(timestamp);
-        setIsUsingCache(true);
-        setLoading(false);
-        console.log("Loaded cached KPI dashboard data from", timestamp);
-      } catch (error) {
-        console.error("Error loading cached data:", error);
-      }
-    }
-
-    // Fetch fresh data
-    fetchAirtableData();
-  }, []);
-
-  // Set up hourly auto-refresh
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      console.log("Auto-refreshing KPI dashboard data...");
-      fetchAirtableData();
-    }, CACHE_DURATION);
-
-    return () => clearInterval(intervalId);
-  }, []);
-
-  const fetchAirtableData = async (isRefresh = false) => {
-    try {
-      if (!isRefresh && clients.length > 0) {
-        // Don't show loading if we already have cached data
-      } else {
-        setLoading(true);
-      }
-
-      // Add timestamp to bust cache
-      const { data, error } = await supabase.functions.invoke('hybrid-workspace-analytics', {
-        body: { timestamp: Date.now() }
-      });
-
-      if (error) throw error;
-
-      if (data?.clients) {
-        setClients(data.clients);
-
-        // Cache the data
-        const timestamp = new Date();
-        localStorage.setItem(CACHE_KEY, JSON.stringify(data.clients));
-        localStorage.setItem(CACHE_TIMESTAMP_KEY, timestamp.toISOString());
-        setLastUpdated(timestamp);
-        setIsUsingCache(false);
-      }
-    } catch (error) {
-      console.error('Error fetching Airtable data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch client data from Airtable",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Destructure dashboard state
+  const { clients, selectedClient, viewMode, loading, lastUpdated, isUsingCache } = kpiDashboard;
 
   const handleRefresh = async () => {
-    await fetchAirtableData(true);
+    await refreshKPIDashboard(true);
     toast({
       title: "Success",
       description: "Data refreshed successfully",
@@ -173,8 +79,8 @@ const MonthlyKPIProgress = () => {
                 ) : (
                   <Button
                     onClick={() => {
-                      setViewMode('overview');
-                      setSelectedClient(null);
+                      setKPIViewMode('overview');
+                      setKPISelectedClient(null);
                     }}
                     variant="ghost"
                     size="sm"
@@ -252,8 +158,8 @@ const MonthlyKPIProgress = () => {
                     key={client.id}
                     client={client}
                     onClick={() => {
-                      setSelectedClient(client.id);
-                      setViewMode('detail');
+                      setKPISelectedClient(client.id);
+                      setKPIViewMode('detail');
                     }}
                   />
                 ))}

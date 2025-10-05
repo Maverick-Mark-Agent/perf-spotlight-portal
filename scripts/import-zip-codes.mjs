@@ -1,10 +1,24 @@
 import fs from 'fs/promises';
 import { createClient } from '@supabase/supabase-js';
 
-const [,, csvPath, monthArg] = process.argv;
+// Args: <csvPath> <YYYY-MM> [--client-col "Client Name"] [--zip-col "Zip"]
+const args = process.argv.slice(2);
+const csvPath = args[0];
+const monthArg = args[1];
 if (!csvPath || !monthArg) {
-  console.error('Usage: node scripts/import-zip-codes.mjs "<abs_csv_path>" <YYYY-MM>');
+  console.error('Usage: node scripts/import-zip-codes.mjs "<abs_csv_path>" <YYYY-MM> [--client-col "Client"] [--zip-col "ZIP"]');
   process.exit(1);
+}
+let CLIENT_COL = 'Client';
+let ZIP_COL = 'ZIP';
+for (let i = 2; i < args.length; i++) {
+  if (args[i] === '--client-col' && args[i + 1]) {
+    CLIENT_COL = args[i + 1];
+    i++;
+  } else if (args[i] === '--zip-col' && args[i + 1]) {
+    ZIP_COL = args[i + 1];
+    i++;
+  }
 }
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -15,10 +29,6 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-// Adjust these to your CSV headers
-const CLIENT_COL = 'Client';
-const ZIP_COL = 'ZIP';
 
 function parseCSV(text) {
   const lines = text.split(/\r?\n/).filter(Boolean);

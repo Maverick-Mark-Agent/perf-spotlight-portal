@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import { createClient } from '@supabase/supabase-js';
 
 // Args: <csvPath> <YYYY-MM> [--client-col "Client Name"] [--zip-col "Zip"]
@@ -21,6 +22,23 @@ for (let i = 2; i < args.length; i++) {
   }
 }
 
+// Attempt to auto-load .env if envs are missing
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  try {
+    const envText = fsSync.readFileSync('.env', 'utf8');
+    envText.split(/\r?\n/).forEach((line) => {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (m) {
+        const key = m[1];
+        let val = m[2];
+        if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+        if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
+        if (!process.env[key]) process.env[key] = val;
+      }
+    });
+  } catch {}
+}
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -31,19 +49,39 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter(Boolean);
+  const cleaned = text.replace(/^\uFEFF/, '');
+  const lines = cleaned.split(/\r?\n/).filter(Boolean);
   if (lines.length === 0) return [];
-  const headers = lines[0].split(',').map(h => h.trim());
-  const cIdx = headers.findIndex(h => h === CLIENT_COL);
-  const zIdx = headers.findIndex(h => h === ZIP_COL);
-  if (cIdx === -1 || zIdx === -1) throw new Error(`CSV missing required columns: ${CLIENT_COL}, ${ZIP_COL}`);
+  const rawHeaders = lines[0].split(',');
+  const headers = rawHeaders.map(h => h.trim());
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalized = headers.map(norm);
+
+  // Build candidate lists (include user-provided names and common variants)
+  const clientCandidates = [norm(CLIENT_COL), 'client', 'clientname', 'name', 'territory', 'agency', 'workspace'];
+  const zipCandidates = [norm(ZIP_COL), 'zip', 'zipcode', 'zip_code', 'zipcodes', 'postal', 'postalcode'];
+
+  const findIdx = (candidates) => {
+    for (const c of candidates) {
+      const idx = normalized.findIndex(h => h === c);
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+
+  const cIdx = findIdx(clientCandidates); // allow -1 → UNKNOWN client
+  const zIdx = findIdx(zipCandidates);
+  if (zIdx === -1) throw new Error(`CSV missing required ZIP column. Tried variants: ${zipCandidates.join(', ')}`);
 
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(',').map(c => c.trim());
-    const client_name = cols[cIdx];
-    const zip = cols[zIdx];
-    if (client_name && zip) rows.push({ client_name, zip });
+    const cols = lines[i].split(',');
+    while (cols.length < headers.length) cols.push('');
+    const get = (idx) => (cols[idx] || '').trim();
+    const client_name = cIdx !== -1 ? get(cIdx) : 'UNKNOWN';
+    const zipRaw = get(zIdx);
+    const zip = zipRaw.replace(/[^0-9]/g, '');
+    if (zip) rows.push({ client_name, zip });
   }
   return rows;
 }

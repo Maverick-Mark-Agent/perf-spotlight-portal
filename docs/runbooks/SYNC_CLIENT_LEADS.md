@@ -298,6 +298,69 @@ nohup ./sync-script.sh > sync.log 2>&1 &
 tail -f sync.log
 ```
 
+### Error 6: Leads Created But Not Visible in Portal
+
+**Symptom**: Database shows leads exist, but portal displays empty columns.
+
+**Cause**: Mismatch between `pipeline_stage` values in database and stages displayed in portal frontend.
+
+**Investigation**:
+1. Check database pipeline_stage values:
+```bash
+curl "https://YOUR_SUPABASE_URL/rest/v1/client_leads?workspace_name=eq.CLIENT&select=pipeline_stage&limit=5" \
+  -H "apikey: YOUR_KEY"
+```
+
+2. Check portal code for PIPELINE_STAGES array (src/pages/ClientPortalPage.tsx):
+```typescript
+const PIPELINE_STAGES = [
+  { key: 'new', label: 'New', ... },
+  { key: 'interested', label: 'Interested', ... },
+  // ... other stages
+];
+```
+
+**Common Issues**:
+- Database has `pipeline_stage = 'new'` but portal doesn't show 'new' column
+- Webhook creates leads with `pipeline_stage = 'new'` but should use 'interested' for LEAD_INTERESTED events
+- Sync scripts set wrong pipeline stage
+
+**Fix**:
+1. **Add missing stage to portal** (if stage is valid):
+```typescript
+// In src/pages/ClientPortalPage.tsx
+const PIPELINE_STAGES = [
+  { key: 'new', label: 'New', color: 'bg-blue-500/20 border-blue-500/40' },
+  // ... other stages
+];
+
+// Also update grid columns
+<div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+```
+
+2. **Fix webhook stage** (supabase/functions/bison-interested-webhook/index.ts):
+```typescript
+const leadData = {
+  // ...
+  pipeline_stage: 'interested', // Not 'new' for interested leads
+  interested: true,
+};
+```
+
+3. **Fix sync script stage**:
+```bash
+# Ensure sync scripts set correct stage
+PAYLOAD=$(jq -n \
+  --arg stage "interested" \
+  '{
+    pipeline_stage: $stage,
+    interested: true,
+    # ... other fields
+  }')
+```
+
+**Related Fix**: See commit 2025-10-06 - Added 'new' stage to portal and updated webhook to use 'interested' stage for LEAD_INTERESTED events.
+
 ## Script Template
 
 Complete working template based on Devin Hodo fix:

@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ClientKPIStats } from "@/components/dashboard/ClientKPIStats";
 import { LeadDetailModal } from "@/components/client-portal/LeadDetailModal";
+import { ClientROICalculator } from "@/components/client-portal/ClientROICalculator";
+import { PremiumInputDialog } from "@/components/client-portal/PremiumInputDialog";
 import {
   Select,
   SelectContent,
@@ -259,6 +261,8 @@ const ClientPortalPage = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<ClientLead | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [premiumDialogLead, setPremiumDialogLead] = useState<ClientLead | null>(null);
+  const [isPremiumDialogOpen, setIsPremiumDialogOpen] = useState(false);
   const { toast} = useToast();
 
   const handleLeadClick = (lead: ClientLead) => {
@@ -273,6 +277,45 @@ const ClientPortalPage = () => {
 
   const handleLeadUpdate = () => {
     fetchLeads(); // Refresh leads after update
+  };
+
+  const handlePremiumSave = async (premiumAmount: number, policyType: string) => {
+    if (!premiumDialogLead) return;
+
+    try {
+      // Update lead with premium, policy type, and move to won
+      const { error } = await supabase
+        .from('client_leads')
+        .update({
+          premium_amount: premiumAmount,
+          policy_type: policyType,
+          pipeline_stage: 'won',
+        })
+        .eq('id', premiumDialogLead.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setLeads(prev => prev.map(l =>
+        l.id === premiumDialogLead.id
+          ? { ...l, premium_amount: premiumAmount, policy_type: policyType, pipeline_stage: 'won' }
+          : l
+      ));
+
+      toast({
+        title: "🎉 Deal won!",
+        description: `${premiumDialogLead.first_name} ${premiumDialogLead.last_name} moved to Won with $${premiumAmount.toLocaleString()} premium`,
+      });
+
+      setPremiumDialogLead(null);
+    } catch (error) {
+      console.error('Error updating lead:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update lead",
+        variant: "destructive",
+      });
+    }
   };
 
   const sensors = useSensors(
@@ -446,15 +489,9 @@ const ClientPortalPage = () => {
     // Check if moving to Won stage - require premium and policy info
     if (newStage === 'won') {
       if (!lead.premium_amount || !lead.policy_type) {
-        // Revert to original stage
-        setLeads(prev => prev.map(l =>
-          l.id === leadId ? { ...l, pipeline_stage: draggedLead.originalStage } : l
-        ));
-        toast({
-          title: "Missing information",
-          description: "Please add premium amount and policy type before moving to Won. Click the lead to edit.",
-          variant: "destructive",
-        });
+        // Show premium input dialog
+        setPremiumDialogLead({ ...lead, pipeline_stage: draggedLead.originalStage });
+        setIsPremiumDialogOpen(true);
         setDraggedLead(null);
         return;
       }
@@ -637,6 +674,16 @@ const ClientPortalPage = () => {
         />
       )}
 
+      {/* ROI Calculator */}
+      {workspace && leads.length > 0 && (
+        <div className="mb-8">
+          <ClientROICalculator
+            workspaceName={workspace}
+            leads={leads}
+          />
+        </div>
+      )}
+
       {/* Kanban Board */}
       <DndContext
         sensors={sensors}
@@ -665,6 +712,19 @@ const ClientPortalPage = () => {
         isOpen={isModalOpen}
         onClose={handleModalClose}
         onUpdate={handleLeadUpdate}
+      />
+
+      {/* Premium Input Dialog */}
+      <PremiumInputDialog
+        isOpen={isPremiumDialogOpen}
+        onClose={() => {
+          setIsPremiumDialogOpen(false);
+          setPremiumDialogLead(null);
+        }}
+        onSave={handlePremiumSave}
+        leadName={premiumDialogLead ? `${premiumDialogLead.first_name} ${premiumDialogLead.last_name}` : ''}
+        currentPremium={premiumDialogLead?.premium_amount}
+        currentPolicyType={premiumDialogLead?.policy_type}
       />
     </div>
   );

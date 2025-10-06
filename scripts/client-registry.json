@@ -26,10 +26,10 @@
       "has_api_key": true,
       "has_workspace": true,
       "status": "deployed",
-      "webhook_id": 92,
+      "webhook_id": 93,
       "webhook_verified": true,
       "portal_url": "http://localhost:8082/client-portal/Kim%20Wallace",
-      "notes": "Webhook recreated 2025-10-06 - old ID 72 didn't exist. Synced 590 interested leads."
+      "notes": "Webhook ID updated to 93 on 2025-10-06. User confirmed working. Synced 590 interested leads."
     },
     {
       "id": 3,
@@ -127,7 +127,7 @@
       "webhook_id": 78,
       "webhook_verified": true,
       "portal_url": "http://localhost:8082/client-portal/John%20Roberts",
-      "notes": ""
+      "notes": "Webhook 78 verified 2025-10-06. JWT issue fixed - function redeployed with --no-verify-jwt. Also has AgencyZoom (57), Reply to All (47), Slack (41) webhooks."
     },
     {
       "id": 10,
@@ -165,11 +165,11 @@
       "api_key": "61|9ae8f6dc1c0a5b3e19fd08cb4ee",
       "has_api_key": true,
       "has_workspace": true,
-      "status": "ready",
-      "webhook_id": null,
+      "status": "deployed",
+      "webhook_id": 94,
       "webhook_verified": false,
       "portal_url": "http://localhost:8082/client-portal/Rick%20Huemmer",
-      "notes": ""
+      "notes": "Webhook 94 created 2025-10-06 but shows inactive status - needs verification"
     },
     {
       "id": 13,
@@ -222,10 +222,10 @@
       "has_api_key": true,
       "has_workspace": true,
       "status": "deployed",
-      "webhook_id": 84,
+      "webhook_id": 83,
       "webhook_verified": true,
       "portal_url": "http://localhost:8082/client-portal/StreetSmart%20Commercial",
-      "notes": ""
+      "notes": "Webhook ID corrected from 84 to 83 on 2025-10-06"
     },
     {
       "id": 17,
@@ -236,10 +236,10 @@
       "has_api_key": true,
       "has_workspace": true,
       "status": "deployed",
-      "webhook_id": 85,
+      "webhook_id": 82,
       "webhook_verified": true,
       "portal_url": "http://localhost:8082/client-portal/StreetSmart%20P%26C",
-      "notes": ""
+      "notes": "Webhook ID corrected from 85 to 82 on 2025-10-06"
     },
     {
       "id": 18,
@@ -250,10 +250,10 @@
       "has_api_key": true,
       "has_workspace": true,
       "status": "deployed",
-      "webhook_id": 90,
+      "webhook_id": 84,
       "webhook_verified": true,
       "portal_url": "http://localhost:8082/client-portal/StreetSmart%20Trucking",
-      "notes": ""
+      "notes": "Webhook ID corrected from 90 to 84 on 2025-10-06"
     },
     {
       "id": 19,

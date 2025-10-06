@@ -1,0 +1,87 @@
+{
+  "fix_date": "2025-10-06T17:28:17Z",
+  "summary": {
+    "total_clients": 11,
+    "webhooks_fixed": 0,
+    "webhooks_failed": 11
+  },
+  "results": [
+    {
+      "company_name": "Kim Wallace",
+      "workspace_id": 4,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    },
+    {
+      "company_name": "Gregg Blanchard",
+      "workspace_id": 44,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    },
+    {
+      "company_name": "John Roberts",
+      "workspace_id": 28,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    },
+    {
+      "company_name": "Kirk Hodgson",
+      "workspace_id": 23,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    },
+    {
+      "company_name": "Rick Huemmer",
+      "workspace_id": 27,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    },
+    {
+      "company_name": "StreetSmart Commercial",
+      "workspace_id": 29,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    },
+    {
+      "company_name": "Tony Schmitz",
+      "workspace_id": 41,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    },
+    {
+      "company_name": "Boring Book Keeping",
+      "workspace_id": 11,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    },
+    {
+      "company_name": "Koppa Analytics",
+      "workspace_id": 11,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    },
+    {
+      "company_name": "Ozment media",
+      "workspace_id": 11,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    },
+    {
+      "company_name": "Radiant Energy Partners",
+      "workspace_id": 11,
+      "status": "failed",
+      "reason": "No webhook ID in response",
+      "webhook_id": null
+    }
+  ]
+}

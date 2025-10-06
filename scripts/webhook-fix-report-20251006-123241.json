@@ -1,0 +1,76 @@
+{
+  "fix_date": "2025-10-06T17:32:41Z",
+  "summary": {
+    "total_clients": 11,
+    "webhooks_fixed": 11,
+    "webhooks_failed": 0
+  },
+  "results": [
+    {
+      "company_name": "Kim Wallace",
+      "workspace_id": 4,
+      "status": "already_exists",
+      "webhook_id": 86
+    },
+    {
+      "company_name": "Gregg Blanchard",
+      "workspace_id": 44,
+      "status": "already_exists",
+      "webhook_id": 81
+    },
+    {
+      "company_name": "John Roberts",
+      "workspace_id": 28,
+      "status": "already_exists",
+      "webhook_id": 82
+    },
+    {
+      "company_name": "Kirk Hodgson",
+      "workspace_id": 23,
+      "status": "already_exists",
+      "webhook_id": 83
+    },
+    {
+      "company_name": "Rick Huemmer",
+      "workspace_id": 27,
+      "status": "already_exists",
+      "webhook_id": 84
+    },
+    {
+      "company_name": "StreetSmart Commercial",
+      "workspace_id": 29,
+      "status": "already_exists",
+      "webhook_id": 85
+    },
+    {
+      "company_name": "Tony Schmitz",
+      "workspace_id": 41,
+      "status": "already_exists",
+      "webhook_id": 86
+    },
+    {
+      "company_name": "Boring Book Keeping",
+      "workspace_id": 11,
+      "status": "already_exists",
+      "webhook_id": 86
+    },
+    {
+      "company_name": "Koppa Analytics",
+      "workspace_id": 11,
+      "status": "already_exists",
+      "webhook_id": 92
+    },
+    {
+      "company_name": "Ozment media",
+      "workspace_id": 11,
+      "status": "already_exists",
+      "webhook_id": 91
+    },
+    {
+      "company_name": "Radiant Energy Partners",
+      "workspace_id": 11,
+      "status": "already_exists",
+      "webhook_id": 89
+    }
+  ]
+}

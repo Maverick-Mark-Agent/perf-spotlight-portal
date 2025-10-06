@@ -7,16 +7,19 @@ type ZipChoroplethMapProps = {
   loading?: boolean;
 };
 
-// State to GeoJSON file mapping
+// State to GeoJSON file mapping - using jsDelivr CDN to serve files from GitHub
+// Lovable can't handle 297 MB of GeoJSON files in deployment
+const CDN_BASE = "https://cdn.jsdelivr.net/gh/Maverick-Mark-Agent/perf-spotlight-portal@main/public/geojson";
+
 const STATE_GEOJSON_FILES: Record<string, string> = {
-  CA: "/geojson/ca_california_zip_codes_geo.min.json",
-  NV: "/geojson/nv_nevada_zip_codes_geo.min.json",
-  TX: "/geojson/tx_texas_zip_codes_geo.min.json",
-  MI: "/geojson/mi_michigan_zip_codes_geo.min.json",
-  IL: "/geojson/il_illinois_zip_codes_geo.min.json",
-  OR: "/geojson/or_oregon_zip_codes_geo.min.json",
-  MO: "/geojson/mo_missouri_zip_codes_geo.min.json",
-  OK: "/geojson/ok_oklahoma_zip_codes_geo.min.json",
+  CA: `${CDN_BASE}/ca_california_zip_codes_geo.min.json`,
+  NV: `${CDN_BASE}/nv_nevada_zip_codes_geo.min.json`,
+  TX: `${CDN_BASE}/tx_texas_zip_codes_geo.min.json`,
+  MI: `${CDN_BASE}/mi_michigan_zip_codes_geo.min.json`,
+  IL: `${CDN_BASE}/il_illinois_zip_codes_geo.min.json`,
+  OR: `${CDN_BASE}/or_oregon_zip_codes_geo.min.json`,
+  MO: `${CDN_BASE}/mo_missouri_zip_codes_geo.min.json`,
+  OK: `${CDN_BASE}/ok_oklahoma_zip_codes_geo.min.json`,
 };
 
 export default function ZipChoroplethMap({ zipData, loading }: ZipChoroplethMapProps) {

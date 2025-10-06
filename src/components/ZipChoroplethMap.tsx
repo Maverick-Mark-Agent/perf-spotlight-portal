@@ -44,11 +44,30 @@ export default function ZipChoroplethMap({ zipData, loading }: ZipChoroplethMapP
             console.warn(`No GeoJSON file for state: ${state}`);
             return null;
           }
+
+          console.log(`[ZipMap] Fetching GeoJSON for ${state} from: ${filePath}`);
           const response = await fetch(filePath);
+
+          console.log(`[ZipMap] ${state} response status: ${response.status}, content-type: ${response.headers.get('content-type')}`);
+
           if (!response.ok) {
-            throw new Error(`Failed to load ${state} GeoJSON`);
+            throw new Error(`Failed to load ${state} GeoJSON: ${response.status} ${response.statusText}`);
           }
-          return response.json();
+
+          // Get response as text first to check if it's an LFS pointer
+          const text = await response.text();
+
+          // Check if response is a Git LFS pointer file
+          if (text.includes('version https://git-lfs.github.com')) {
+            console.error(`[ZipMap] ERROR: Received Git LFS pointer file instead of actual JSON for ${state}`);
+            console.log(`[ZipMap] LFS Pointer content:`, text.substring(0, 200));
+            throw new Error(`Git LFS files not supported on this platform. Please contact support.`);
+          }
+
+          // Parse the JSON
+          const data = JSON.parse(text);
+          console.log(`[ZipMap] Successfully loaded ${state} with ${data.features?.length || 0} features`);
+          return data;
         });
 
         const allStateGeoJsons = await Promise.all(promises);
@@ -58,6 +77,8 @@ export default function ZipChoroplethMap({ zipData, loading }: ZipChoroplethMapP
           .filter(Boolean)
           .flatMap((geoJson) => geoJson.features || []);
 
+        console.log(`[ZipMap] Total merged features: ${mergedFeatures.length}`);
+
         const merged = {
           type: "FeatureCollection",
           features: mergedFeatures,
@@ -65,7 +86,7 @@ export default function ZipChoroplethMap({ zipData, loading }: ZipChoroplethMapP
 
         setGeoJsonData(merged);
       } catch (err: any) {
-        console.error("Error loading GeoJSON:", err);
+        console.error("[ZipMap] Error loading GeoJSON:", err);
         setError(err.message || "Failed to load map data");
       } finally {
         setLoadingGeo(false);

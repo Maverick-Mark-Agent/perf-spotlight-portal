@@ -245,13 +245,16 @@ serve(async (req) => {
         // If no Airtable record or no target, check if this is a known workspace
         // For workspaces without Airtable data, use default targets
         if (monthlySendingTarget === 0) {
-          // Default targets for specific clients
+          // Default targets for clients missing from Airtable
           const defaultTargets: { [key: string]: number } = {
             'Danny Schwartz': 50000,
-            'Devin Hodo': 50000,
             'David Amiri': 50000,
+            'Gregg Blanchard': 50000,
+            'John Roberts': 50000,
             'Kim Wallace': 50000,
             'Rob Russell': 50000,
+            'StreetSmart Commercial': 50000,
+            'Tony Schmitz': 50000,
           };
 
           monthlySendingTarget = defaultTargets[workspace.name] || 0;

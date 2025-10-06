@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search, Users, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Search, Users, TrendingUp, MapPin } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Workspace {
@@ -159,13 +160,21 @@ export default function ClientPortalHub() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            Client Portal Hub
-          </h1>
-          <p className="text-gray-400">
-            Select a workspace to view their lead pipeline and performance metrics
-          </p>
+        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              Client Portal Hub
+            </h1>
+            <p className="text-gray-400">
+              Select a workspace to view their lead pipeline and performance metrics
+            </p>
+          </div>
+          <Button asChild variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+            <Link to="/zip-dashboard">
+              <MapPin className="h-4 w-4 mr-2" />
+              ZIP Dashboard
+            </Link>
+          </Button>
         </div>
 
         {/* Search */}

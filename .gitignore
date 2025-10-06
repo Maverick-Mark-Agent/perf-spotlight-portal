@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+docs/cole-xdates-credentials.md
+
+# GeoJSON files (large map data)
+public/geojson/*.json

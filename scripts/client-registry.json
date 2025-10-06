@@ -26,10 +26,10 @@
       "has_api_key": true,
       "has_workspace": true,
       "status": "deployed",
-      "webhook_id": 72,
+      "webhook_id": 92,
       "webhook_verified": true,
       "portal_url": "http://localhost:8082/client-portal/Kim%20Wallace",
-      "notes": "392 leads in database - ready for pilot"
+      "notes": "Webhook recreated 2025-10-06 - old ID 72 didn't exist. Synced 590 interested leads."
     },
     {
       "id": 3,

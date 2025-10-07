@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,14 +46,17 @@ serve(async (req) => {
 
   try {
     const emailBisonApiKey = Deno.env.get('EMAIL_BISON_API_KEY');
-    const airtableApiKey = Deno.env.get('AIRTABLE_API_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!emailBisonApiKey) {
       throw new Error('EMAIL_BISON_API_KEY not found');
     }
-    if (!airtableApiKey) {
-      throw new Error('AIRTABLE_API_KEY not found');
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase credentials not found');
     }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     console.log('Fetching volume dashboard data...');
 
@@ -84,40 +88,27 @@ serve(async (req) => {
       });
     });
 
-    // Fetch client data from Airtable "Positive Replies" view
-    const airtableBaseId = 'appONMVSIf5czukkf';
-    const clientsTable = '👨‍💻 Clients';
-    const viewName = 'Positive Replies';
+    // Fetch client settings from Supabase client_registry
+    const { data: clientRegistry, error: registryError } = await supabase
+      .from('client_registry')
+      .select('workspace_name, display_name, monthly_sending_target, is_active')
+      .eq('is_active', true);
 
-    let allClientRecords: any[] = [];
-    let offset = null;
+    if (registryError) {
+      console.error('Error fetching client registry:', registryError);
+      throw registryError;
+    }
 
-    do {
-      const url = new URL(`https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(clientsTable)}`);
-      url.searchParams.append('view', viewName);
-      if (offset) {
-        url.searchParams.append('offset', offset);
-      }
-
-      const airtableResponse = await fetch(url.toString(), {
-        headers: {
-          'Authorization': `Bearer ${airtableApiKey}`,
-          'Content-Type': 'application/json',
-        },
+    // Create a map of client settings by workspace name
+    const clientSettingsMap = new Map();
+    (clientRegistry || []).forEach((client: any) => {
+      clientSettingsMap.set(client.workspace_name, {
+        displayName: client.display_name || client.workspace_name,
+        sendingTarget: client.monthly_sending_target || 0,
       });
+    });
 
-      if (!airtableResponse.ok) {
-        console.error(`Airtable API error: ${airtableResponse.status}`);
-        break;
-      }
-
-      const airtableData = await airtableResponse.json();
-      allClientRecords = allClientRecords.concat(airtableData.records || []);
-      offset = airtableData.offset;
-
-    } while (offset);
-
-    console.log(`Fetched ${allClientRecords.length} client records from Airtable`);
+    console.log(`Fetched ${clientRegistry.length} client records from Supabase client_registry`);
 
     // Fetch Email Bison stats using SEQUENTIAL workspace switching
     console.log('Fetching Email Bison stats via sequential workspace switching...');
@@ -127,18 +118,16 @@ serve(async (req) => {
     // Loop through workspaces SEQUENTIALLY (not in parallel to avoid conflicts)
     for (const workspace of workspaces) {
       try {
-        // Find matching Airtable client record
-        const airtableRecord = allClientRecords.find(
-          (record: any) => record.fields['Workspace Name'] === workspace.name
-        );
+        const settings = clientSettingsMap.get(workspace.name);
 
-        if (!airtableRecord) {
-          console.log(`Skipping workspace "${workspace.name}" - no matching client in Airtable`);
+        // Skip if no settings or no sending target
+        if (!settings || settings.sendingTarget === 0) {
+          console.log(`Skipping workspace "${workspace.name}" - no sending target in client_registry`);
           continue;
         }
 
-        const fields = airtableRecord.fields;
-        const clientName = fields['Client Company Name'] || 'Unknown Client';
+        const clientName = settings.displayName;
+        const monthlySendingTarget = settings.sendingTarget;
 
         // Switch to workspace
         console.log(`Switching to workspace: ${workspace.name} (ID: ${workspace.id})`);
@@ -208,9 +197,6 @@ serve(async (req) => {
 
         console.log(`${clientName}: MTD=${emailsMTD}, Today=${emailsToday}, Last7=${emailsLast7Days}, Last30=${emailsLast30Days}`);
 
-        // Get target from Airtable (ONLY static goal)
-        const monthlySendingTarget = fields['Monthly Sending Target'] || 0;
-
         // Calculate daily quota and status
         const dailyQuota = monthlySendingTarget / dateRanges.daysInMonth;
         const daysElapsed = dateRanges.currentDay;
@@ -239,7 +225,7 @@ serve(async (req) => {
         const emailsLast14Days = emailsLast7Days; // Placeholder - can add separate API call if needed
 
         clients.push({
-          id: airtableRecord.id,
+          id: workspace.id,
           name: clientName,
           emails: emailsMTD,
           emailsToday,

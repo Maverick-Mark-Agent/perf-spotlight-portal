@@ -57,15 +57,11 @@ serve(async (req) => {
 
   try {
     const emailBisonApiKey = Deno.env.get('EMAIL_BISON_API_KEY');
-    const airtableApiKey = Deno.env.get('AIRTABLE_API_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!emailBisonApiKey) {
       throw new Error('EMAIL_BISON_API_KEY not found');
-    }
-    if (!airtableApiKey) {
-      throw new Error('AIRTABLE_API_KEY not found');
     }
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not found');
@@ -113,43 +109,8 @@ serve(async (req) => {
     const workspaces = workspacesData.data || [];
     console.log(`Fetched ${workspaces.length} workspaces from Email Bison`);
 
-    // Fetch client data from Airtable (for client list, targets, and workspace mapping)
-    const airtableBaseId = 'appONMVSIf5czukkf';
-    const clientsTable = '👨‍💻 Clients';
-    const viewName = 'Positive Replies';
-
-    let allClientRecords: any[] = [];
-    let offset = null;
-
-    do {
-      const url = new URL(`https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(clientsTable)}`);
-      url.searchParams.append('view', viewName);
-      if (offset) {
-        url.searchParams.append('offset', offset);
-      }
-
-      const airtableResponse = await fetch(url.toString(), {
-        headers: {
-          'Authorization': `Bearer ${airtableApiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!airtableResponse.ok) {
-        console.error(`Airtable API error: ${airtableResponse.status}`);
-        break;
-      }
-
-      const airtableData = await airtableResponse.json();
-      allClientRecords = allClientRecords.concat(airtableData.records || []);
-      offset = airtableData.offset;
-
-    } while (offset);
-
-    console.log(`Fetched ${allClientRecords.length} client records from Airtable`);
-
     // Fetch Email Bison stats using SEQUENTIAL workspace switching
-    console.log('Fetching Email Bison stats via sequential workspace switching...');
+    console.log('Fetching Email Bison stats via sequential workspace switching (Supabase-only mode)...');
 
     const clients: any[] = [];
 
@@ -163,20 +124,12 @@ serve(async (req) => {
           continue;
         }
 
-        // Find matching Airtable client record (for supplemental data)
-        const airtableRecord = allClientRecords.find(
-          (record: any) => record.fields['Workspace Name'] === workspace.name
-        );
-
-        if (!airtableRecord) {
-          console.log(`Warning: No Airtable record for "${workspace.name}" - using registry data only`);
-        }
-
-        const fields = airtableRecord?.fields || {};
-
-        // Use display_name from client_registry, fallback to workspace name
+        // Get all data from client_registry (no Airtable needed!)
         const clientName = registryClient.display_name || workspace.name;
         const monthlyKPI = registryClient.monthly_kpi_target || 0;
+        const monthlySendingTarget = registryClient.monthly_sending_target || 0;
+        const payout = registryClient.payout || 0;
+        const pricePerLead = registryClient.price_per_lead || 0;
 
         // Switch to workspace
         console.log(`Switching to workspace: ${workspace.name} (ID: ${workspace.id})`);
@@ -274,18 +227,22 @@ serve(async (req) => {
           ? ((positiveRepliesMTD - positiveRepliesLastMonth) / positiveRepliesLastMonth) * 100
           : 0;
 
+        // Calculate email projection (same formula as Airtable)
+        const emailsDailyAvg = daysElapsed > 0 ? emailsSent / daysElapsed : 0;
+        const projectionEmailsEOM = Math.round(emailsDailyAvg * daysInMonth);
+
         clients.push({
-          id: airtableRecord.id,
+          id: registryClient.workspace_id.toString(),
           name: clientName,
 
-          // PRIMARY KPI METRICS (from Email Bison)
+          // PRIMARY KPI METRICS (from Supabase client_leads)
           leadsGenerated: positiveRepliesMTD,
           projectedReplies: projectedReplies,
           monthlyKPI: monthlyKPI,
           currentProgress: currentProgress,
           repliesProgress: projectionProgress,
 
-          // Time period comparisons (from Email Bison)
+          // Time period comparisons (from Supabase client_leads)
           positiveRepliesLast30Days: positiveRepliesLast30Days,
           positiveRepliesLast7Days: positiveRepliesLast7Days,
           positiveRepliesLast14Days: positiveRepliesLast14To7Days,
@@ -301,21 +258,21 @@ serve(async (req) => {
           leadsTarget: 0,
           repliesTarget: monthlyKPI,
 
-          // For billing/volume pages
+          // For billing/volume pages (from client_registry)
           emails: emailsSent,
-          target: fields['Monthly Sending Target'] || 0,
-          projection: fields['Projection: Emails Sent by EOM'] || 0,
-          targetPercentage: fields['Monthly Sending Target'] > 0
-            ? (emailsSent / fields['Monthly Sending Target']) * 100
+          target: monthlySendingTarget,
+          projection: projectionEmailsEOM,
+          targetPercentage: monthlySendingTarget > 0
+            ? (emailsSent / monthlySendingTarget) * 100
             : 0,
-          projectedPercentage: fields['Monthly Sending Target'] > 0
-            ? ((fields['Projection: Emails Sent by EOM'] || 0) / fields['Monthly Sending Target']) * 100
+          projectedPercentage: monthlySendingTarget > 0
+            ? (projectionEmailsEOM / monthlySendingTarget) * 100
             : 0,
-          variance: emailsSent - (fields['Monthly Sending Target'] || 0),
-          projectedVariance: (fields['Projection: Emails Sent by EOM'] || 0) - (fields['Monthly Sending Target'] || 0),
-          isAboveTarget: emailsSent >= (fields['Monthly Sending Target'] || 0),
-          isProjectedAboveTarget: (fields['Projection: Emails Sent by EOM'] || 0) >= (fields['Monthly Sending Target'] || 0),
-          payout: fields['Payout'] || 0,
+          variance: emailsSent - monthlySendingTarget,
+          projectedVariance: projectionEmailsEOM - monthlySendingTarget,
+          isAboveTarget: emailsSent >= monthlySendingTarget,
+          isProjectedAboveTarget: projectionEmailsEOM >= monthlySendingTarget,
+          payout: payout,
         });
 
       } catch (error) {

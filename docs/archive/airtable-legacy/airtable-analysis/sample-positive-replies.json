@@ -1,0 +1,47 @@
+{
+  "id": "rec03iOUw8CpjiRiO",
+  "createdTime": "2025-09-18T19:35:17.000Z",
+  "fields": {
+    "Lead Email": "joe.krause@comcast.net",
+    "First Name": "Joseph",
+    "Last Name": "Krause",
+    "Address": "1109 60Th Pl",
+    "City": "Downers Grove",
+    "ZIP": "60516",
+    "Renewal Date": "October 1st",
+    "Phone": "(630) 373-1547",
+    "Date Received": "2025-09-11",
+    "Reply Received": "I’ll look up the renewal date.",
+    "Email Sent": "Wanted to check if you were open to seeing another quote before your renewal on October 1st. No strings, just making sure people like you aren’t overpaying. Plus, anyone who gets a quote this month is entered into our monthly drawing. What's your availability for a short call this week to go over a few options?",
+    "Client": [
+      "rec0mb89XIEXAcbzk"
+    ],
+    "Client Name (from Client)": [
+      "Danny Schwartz"
+    ],
+    "link": "https://send.maverickmarketingllc.com/inbox?reply_uuid=9fe6fa9d-b0da-47fe-9f5c-0ef258dde08d",
+    "Lead Value": 500,
+    "Workspace Name": "Danny Schwartz",
+    "Email Subject": "Re: Home renewal, Joseph",
+    "Sender Email": "j.schwartz@agentfarmersnetworks.com",
+    "ICP": "B2C",
+    "Campaign Linked": [
+      "recxURiVAgtOe0J14"
+    ],
+    "Campaign Name (from Campaign Linked)": [
+      "Evergreen Campaign Last upload: October 11/01 – 11/07"
+    ],
+    "State": "IL",
+    "Lead ID": 532327,
+    "Airtable ID of Lead": "rec03iOUw8CpjiRiO",
+    "Created At": "2025-09-18T19:35:17.000Z",
+    "Client Linked (from Campaign Linked)": [
+      "rec0mb89XIEXAcbzk"
+    ],
+    "Last Modified": "2025-09-18T19:35:17.000Z",
+    "Received - MTD": "❌ NO",
+    "Received - Last 7 Days": "❌ NO",
+    "Last VS This Month": "Previous Month",
+    "Previous 14-7 Days": "Older"
+  }
+}

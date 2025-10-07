@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,15 +39,15 @@ const generateSlackMessage = (clients: any[], dateRanges: any) => {
   const overallPercentage = totalTargets > 0 ? ((totalEmails / totalTargets) * 100).toFixed(1) : '0.0';
 
   const onTrackCount = clients.filter(c => c.isProjectedAboveTarget).length;
-  const criticalClients = clients.filter(c => c.emails > 0 && c.projectedPercentage < 80).slice(0, 5);
-  const topPerformers = clients.filter(c => c.isProjectedAboveTarget).slice(0, 5);
+  const criticalClients = clients.filter(c => !c.isProjectedAboveTarget);
+  const topPerformers = clients.filter(c => c.isProjectedAboveTarget);
 
   const blocks: any[] = [
     {
       type: "header",
       text: {
         type: "plain_text",
-        text: "📊 Sending Volume Report - Month to Date",
+        text: "📊 Daily Sending Volume Report",
         emoji: true
       }
     },
@@ -54,7 +55,7 @@ const generateSlackMessage = (clients: any[], dateRanges: any) => {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Overall Progress:* ${overallPercentage}% (${formatNumber(totalEmails)} / ${formatNumber(totalTargets)})\n*On Track to Meet Target:* ${onTrackCount} / ${clients.length} clients\n*Day ${dateRanges.currentDay} of ${dateRanges.daysInMonth}*`
+        text: `*Day ${dateRanges.currentDay} of ${dateRanges.daysInMonth}* | ${onTrackCount} of ${clients.length} clients on track to meet target`
       }
     },
     {
@@ -62,23 +63,35 @@ const generateSlackMessage = (clients: any[], dateRanges: any) => {
     }
   ];
 
-  // Critical clients section
+  // Critical clients section - ALL clients behind pace
   if (criticalClients.length > 0) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*🚨 Critical Clients (Behind Pace):*"
+        text: "*🚨 Clients Needing Attention (Behind Pace):*"
       }
     });
 
     criticalClients.forEach((client) => {
-      const emoji = client.projectedPercentage < 50 ? '🔴' : '🟡';
+      let emoji = '🟡';
+      let action = '';
+
+      if (client.emails === 0) {
+        emoji = '🔴';
+        action = '\n⚠️ *URGENT: No emails sent - Add contacts and start campaign*';
+      } else if (client.projectedPercentage < 50) {
+        emoji = '🔴';
+        action = '\n⚠️ *Action: Add contacts or fix campaign*';
+      } else if (client.dailyAverage < client.dailyQuota) {
+        action = '\n⚠️ *Action: Add contacts or fix campaign*';
+      }
+
       blocks.push({
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `${emoji} *${client.name}*\n• Current: ${formatNumber(client.emails)} (${client.targetPercentage.toFixed(1)}%)\n• Projected: ${formatNumber(client.projection)} (${client.projectedPercentage.toFixed(1)}% of target)\n• Need/day: ${formatNumber(client.dailyQuota)}`
+          text: `${emoji} *${client.name}*\n• *Daily Avg:* ${formatNumber(client.dailyAverage)}/day (need ${formatNumber(client.dailyQuota)}/day)\n• *MTD:* ${formatNumber(client.emails)} / ${formatNumber(client.target)} (${client.targetPercentage.toFixed(1)}%)\n• *Projected EOM:* ${formatNumber(client.projection)} (${client.projectedPercentage.toFixed(0)}% of target)${action}`
         }
       });
     });
@@ -88,13 +101,13 @@ const generateSlackMessage = (clients: any[], dateRanges: any) => {
     });
   }
 
-  // Top performers section
+  // Top performers section - ALL clients on track
   if (topPerformers.length > 0) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*✅ Top Performers (On Track):*"
+        text: "*✅ Clients On Track:*"
       }
     });
 
@@ -103,11 +116,23 @@ const generateSlackMessage = (clients: any[], dateRanges: any) => {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `🟢 *${client.name}*\n• Current: ${formatNumber(client.emails)} (${client.targetPercentage.toFixed(1)}%)\n• Projected: ${formatNumber(client.projection)} (${client.projectedPercentage.toFixed(1)}% of target)`
+          text: `🟢 *${client.name}*\n• *Daily Avg:* ${formatNumber(client.dailyAverage)}/day (need ${formatNumber(client.dailyQuota)}/day)\n• *MTD:* ${formatNumber(client.emails)} / ${formatNumber(client.target)} (${client.targetPercentage.toFixed(1)}%)\n• *Projected EOM:* ${formatNumber(client.projection)} (${client.projectedPercentage.toFixed(0)}% of target)`
         }
       });
     });
   }
+
+  blocks.push({
+    type: "divider"
+  });
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `*Overall Progress:* ${formatNumber(totalEmails)} / ${formatNumber(totalTargets)} emails sent (${overallPercentage}% of monthly target)`
+    }
+  });
 
   blocks.push({
     type: "context",
@@ -129,18 +154,21 @@ serve(async (req) => {
 
   try {
     const emailBisonApiKey = Deno.env.get('EMAIL_BISON_API_KEY');
-    const airtableApiKey = Deno.env.get('AIRTABLE_API_KEY');
     const slackWebhookUrl = Deno.env.get('SLACK_VOLUME_WEBHOOK_URL');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!emailBisonApiKey) {
       throw new Error('EMAIL_BISON_API_KEY not found');
     }
-    if (!airtableApiKey) {
-      throw new Error('AIRTABLE_API_KEY not found');
-    }
     if (!slackWebhookUrl) {
       throw new Error('SLACK_VOLUME_WEBHOOK_URL not found in Supabase secrets');
     }
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Supabase credentials not found');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     console.log('Fetching volume dashboard data for Slack...');
 
@@ -161,52 +189,43 @@ serve(async (req) => {
     const workspacesData = await workspacesResponse.json();
     const workspaces = workspacesData.data || [];
 
-    // Fetch client data from Airtable (ALL records, not just "Positive Replies" view)
-    const airtableBaseId = 'appONMVSIf5czukkf';
-    const clientsTable = '👨‍💻 Clients';
+    // Fetch client settings from Supabase client_registry
+    const { data: clientRegistry, error: registryError } = await supabase
+      .from('client_registry')
+      .select('workspace_name, display_name, monthly_sending_target, is_active')
+      .eq('is_active', true);
 
-    let allClientRecords: any[] = [];
-    let offset = null;
+    if (registryError) {
+      console.error('Error fetching client registry:', registryError);
+      throw registryError;
+    }
 
-    do {
-      const url = new URL(`https://api.airtable.com/v0/${airtableBaseId}/${encodeURIComponent(clientsTable)}`);
-      // Remove view filter to get ALL clients
-      if (offset) {
-        url.searchParams.append('offset', offset);
-      }
-
-      const airtableResponse = await fetch(url.toString(), {
-        headers: {
-          'Authorization': `Bearer ${airtableApiKey}`,
-          'Content-Type': 'application/json',
-        },
+    // Create a map of client settings by workspace name
+    const clientSettingsMap = new Map();
+    (clientRegistry || []).forEach((client: any) => {
+      clientSettingsMap.set(client.workspace_name, {
+        displayName: client.display_name || client.workspace_name,
+        sendingTarget: client.monthly_sending_target || 0,
       });
+    });
 
-      if (!airtableResponse.ok) {
-        console.error(`Airtable API error: ${airtableResponse.status}`);
-        break;
-      }
-
-      const airtableData = await airtableResponse.json();
-      allClientRecords = allClientRecords.concat(airtableData.records || []);
-      offset = airtableData.offset;
-
-    } while (offset);
-
-    console.log(`Fetched ${allClientRecords.length} client records from Airtable`);
+    console.log(`Fetched ${clientRegistry.length} client records from Supabase client_registry`);
 
     // Fetch Email Bison stats using SEQUENTIAL workspace switching
     const clients: any[] = [];
 
     for (const workspace of workspaces) {
       try {
-        const airtableRecord = allClientRecords.find(
-          (record: any) => record.fields['Workspace Name'] === workspace.name
-        );
+        const settings = clientSettingsMap.get(workspace.name);
 
-        // Use workspace name as client name if no Airtable record
-        const fields = airtableRecord?.fields || {};
-        const clientName = fields['Client Company Name'] || workspace.name;
+        // Skip if no settings or no sending target
+        if (!settings || settings.sendingTarget === 0) {
+          console.log(`  Skipping ${workspace.name} - no sending target in client_registry`);
+          continue;
+        }
+
+        const clientName = settings.displayName;
+        const monthlySendingTarget = settings.sendingTarget;
 
         // Switch to workspace
         const switchResponse = await fetch(
@@ -223,6 +242,7 @@ serve(async (req) => {
         );
 
         if (!switchResponse.ok) {
+          console.error(`Failed to switch to workspace ${workspace.name}`);
           continue;
         }
 
@@ -239,34 +259,6 @@ serve(async (req) => {
 
         const mtdStats = await mtdStatsResponse.json();
         const emailsMTD = mtdStats.data?.emails_sent || 0;
-
-        let monthlySendingTarget = fields['Monthly Sending Target'] || 0;
-
-        // If no Airtable record or no target, check if this is a known workspace
-        // For workspaces without Airtable data, use default targets
-        if (monthlySendingTarget === 0) {
-          // Default targets for clients missing from Airtable
-          const defaultTargets: { [key: string]: number } = {
-            'Danny Schwartz': 50000,
-            'David Amiri': 50000,
-            'Gregg Blanchard': 50000,
-            'John Roberts': 50000,
-            'Kim Wallace': 50000,
-            'Rob Russell': 50000,
-            'StreetSmart Commercial': 50000,
-            'Tony Schmitz': 50000,
-          };
-
-          monthlySendingTarget = defaultTargets[workspace.name] || 0;
-
-          // Skip if still no target
-          if (monthlySendingTarget === 0) {
-            console.log(`  Skipping ${workspace.name} - no sending target`);
-            continue;
-          }
-
-          console.log(`  Using default target for ${workspace.name}: ${monthlySendingTarget}`);
-        }
 
         // Calculate daily quota and status
         const dailyQuota = monthlySendingTarget / dateRanges.daysInMonth;
@@ -295,6 +287,7 @@ serve(async (req) => {
           projectedPercentage,
           isProjectedAboveTarget,
           dailyQuota: Math.round(dailyQuota),
+          dailyAverage: Math.round(dailyAverage),
         });
 
       } catch (error) {
@@ -348,7 +341,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Slack message sent successfully',
+        message: 'Slack message sent successfully (using Supabase client_registry)',
         clientsProcessed: clients.length
       }),
       {

@@ -4,7 +4,14 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@agents/*": ["./src/agents/*"],
+      "@connectors/*": ["./src/connectors/*"],
+      "@pipeline/*": ["./src/pipeline/*"],
+      "@orchestrator/*": ["./src/orchestrator/*"],
+      "@workflows/*": ["./src/workflows/*"],
+      "@lib/*": ["./src/lib/*"],
+      "@types/*": ["./src/types/*"]
     },
     "noImplicitAny": false,
     "noUnusedParameters": false,

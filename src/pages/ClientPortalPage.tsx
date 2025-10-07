@@ -67,7 +67,6 @@ interface ClientLead {
 }
 
 const PIPELINE_STAGES = [
-  { key: 'new', label: 'New', color: 'bg-blue-500/20 border-blue-500/40' },
   { key: 'interested', label: 'Interested', color: 'bg-pink-500/20 border-pink-500/40' },
   { key: 'quoting', label: 'Quoting', color: 'bg-purple-500/20 border-purple-500/40' },
   { key: 'follow-up', label: 'Follow Up', color: 'bg-yellow-500/20 border-yellow-500/40' },
@@ -671,7 +670,7 @@ const ClientPortalPage = () => {
           workspaceName={workspace}
           totalLeads={filteredLeads.length}
           wonLeads={getLeadsByStage('won').length}
-          newLeads={getLeadsByStage('new').length}
+          newLeads={getLeadsByStage('interested').length}
         />
       )}
 
@@ -693,7 +692,7 @@ const ClientPortalPage = () => {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {PIPELINE_STAGES.map(stage => (
             <DroppableColumn
               key={stage.key}

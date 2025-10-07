@@ -1,0 +1,6 @@
+First_Name,Last_Name,Address_1,City,State,Zip,Cell_Phone_Number,Email_Address,Purchase_Date,Home_Value,Head_Household,Income,Date_of_Birth
+John,Doe,123 Main St,Hoboken,NJ,07030,2015551234,john.doe@example.com,08/15/2020,$450000,Y,$85000,01/15/1980
+Jane,Smith,456 Oak Ave,Jersey City,NJ,07302,2015555678,jane.smith@example.com,03/22/2019,$525000,Y,$95000,06/30/1985
+Bob,Johnson,789 Pine Rd,Weehawken,NJ,07086,2015559012,bob.johnson@example.com,11/10/2021,$385000,Y,$72000,12/05/1975
+Alice,Williams,321 Elm St,Hoboken,NJ,07030,2015554321,alice.williams@example.com,05/08/2022,$695000,Y,$110000,08/22/1988
+Charlie,Brown,654 Maple Dr,Jersey City,NJ,07302,2015558765,charlie.brown@example.com,12/01/2018,$515000,Y,$88000,03/14/1982

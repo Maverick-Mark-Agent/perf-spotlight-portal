@@ -17,6 +17,7 @@ import ClientPortalHub from "./pages/ClientPortalHub";
 import NotFoundPage from "./pages/NotFoundPage";
 import ZipDashboard from "./pages/ZipDashboard";
 import ROIDashboard from "./pages/ROIDashboard";
+import RolloutProgress from "./pages/RolloutProgress";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,7 @@ const App = () => (
               <Route path="/client-portal/:workspace" element={<ClientPortalPage />} />
               <Route path="/zip-dashboard" element={<ZipDashboard />} />
               <Route path="/roi-dashboard" element={<ROIDashboard />} />
+              <Route path="/rollout-progress" element={<RolloutProgress />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFoundPage />} />
             </Routes>

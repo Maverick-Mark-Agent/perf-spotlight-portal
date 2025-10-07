@@ -1,23 +1,28 @@
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import { createClient } from '@supabase/supabase-js';
+import { getStateFromZip } from './zip-to-state.mjs';
 
-// Args: <csvPath> <YYYY-MM> [--client-col "Client Name"] [--zip-col "Zip"]
+// Args: <csvPath> <YYYY-MM> [--client-col "Client Name"] [--zip-col "Zip"] [--color-col "Color"]
 const args = process.argv.slice(2);
 const csvPath = args[0];
 const monthArg = args[1];
 if (!csvPath || !monthArg) {
-  console.error('Usage: node scripts/import-zip-codes.mjs "<abs_csv_path>" <YYYY-MM> [--client-col "Client"] [--zip-col "ZIP"]');
+  console.error('Usage: node scripts/import-zip-codes.mjs "<abs_csv_path>" <YYYY-MM> [--client-col "Client"] [--zip-col "ZIP"] [--color-col "Color"]');
   process.exit(1);
 }
 let CLIENT_COL = 'Client';
 let ZIP_COL = 'ZIP';
+let COLOR_COL = 'Color';
 for (let i = 2; i < args.length; i++) {
   if (args[i] === '--client-col' && args[i + 1]) {
     CLIENT_COL = args[i + 1];
     i++;
   } else if (args[i] === '--zip-col' && args[i + 1]) {
     ZIP_COL = args[i + 1];
+    i++;
+  } else if (args[i] === '--color-col' && args[i + 1]) {
+    COLOR_COL = args[i + 1];
     i++;
   }
 }
@@ -60,6 +65,7 @@ function parseCSV(text) {
   // Build candidate lists (include user-provided names and common variants)
   const clientCandidates = [norm(CLIENT_COL), 'client', 'clientname', 'name', 'territory', 'agency', 'workspace'];
   const zipCandidates = [norm(ZIP_COL), 'zip', 'zipcode', 'zip_code', 'zipcodes', 'postal', 'postalcode'];
+  const colorCandidates = [norm(COLOR_COL), 'color', 'colour', 'agencycolor', 'agency_color', 'hex'];
 
   const findIdx = (candidates) => {
     for (const c of candidates) {
@@ -71,6 +77,7 @@ function parseCSV(text) {
 
   const cIdx = findIdx(clientCandidates); // allow -1 → UNKNOWN client
   const zIdx = findIdx(zipCandidates);
+  const colorIdx = findIdx(colorCandidates); // optional
   if (zIdx === -1) throw new Error(`CSV missing required ZIP column. Tried variants: ${zipCandidates.join(', ')}`);
 
   const rows = [];
@@ -81,7 +88,8 @@ function parseCSV(text) {
     const client_name = cIdx !== -1 ? get(cIdx) : 'UNKNOWN';
     const zipRaw = get(zIdx);
     const zip = zipRaw.replace(/[^0-9]/g, '');
-    if (zip) rows.push({ client_name, zip });
+    const agency_color = colorIdx !== -1 ? get(colorIdx) : null;
+    if (zip) rows.push({ client_name, zip, agency_color });
   }
   return rows;
 }
@@ -96,37 +104,54 @@ async function resolveWorkspaceName(clientName) {
 }
 
 (async () => {
-  const text = await fs.readFile(csvPath, 'utf8');
-  const rows = parseCSV(text);
-  const month = monthArg;
+  try {
+    const text = await fs.readFile(csvPath, 'utf8');
+    const rows = parseCSV(text);
+    const month = monthArg;
 
-  const cache = new Map();
-  const payload = [];
-  for (const r of rows) {
-    let ws = cache.get(r.client_name);
-    if (ws === undefined) {
-      ws = await resolveWorkspaceName(r.client_name);
-      cache.set(r.client_name, ws);
+    console.log(`\n🔄 Importing ${rows.length} ZIP codes for month ${month}...\n`);
+
+    const cache = new Map();
+    const payload = [];
+    for (const r of rows) {
+      let ws = cache.get(r.client_name);
+      if (ws === undefined) {
+        ws = await resolveWorkspaceName(r.client_name);
+        cache.set(r.client_name, ws);
+      }
+      payload.push({
+        client_name: r.client_name,
+        workspace_name: ws,
+        month,
+        zip: r.zip,
+        state: getStateFromZip(r.zip),
+        agency_color: r.agency_color,
+        source: 'csv'
+      });
     }
-    payload.push({
-      client_name: r.client_name,
-      workspace_name: ws,
-      month,
-      zip: r.zip,
-      source: 'csv'
-    });
-  }
 
-  const CHUNK = 1000;
-  let inserted = 0;
-  for (let i = 0; i < payload.length; i += CHUNK) {
-    const chunk = payload.slice(i, i + CHUNK);
-    const { error } = await supabase.from('client_zipcodes').insert(chunk);
-    if (error) throw error;
-    inserted += chunk.length;
-  }
+    console.log(`📦 Prepared ${payload.length} records for import`);
+    console.log(`🔗 Resolved ${cache.size} unique agencies\n`);
 
-  console.log(`Imported ${inserted} rows for month ${month}`);
+    const CHUNK = 1000;
+    let inserted = 0;
+    for (let i = 0; i < payload.length; i += CHUNK) {
+      const chunk = payload.slice(i, i + CHUNK);
+      const { error } = await supabase.from('client_zipcodes').insert(chunk);
+      if (error) {
+        console.error(`\n❌ Error inserting chunk ${Math.floor(i / CHUNK) + 1}:`, error);
+        throw error;
+      }
+      inserted += chunk.length;
+      console.log(`   ✓ Inserted ${inserted}/${payload.length} rows...`);
+    }
+
+    console.log(`\n✅ Successfully imported ${inserted} rows for month ${month}\n`);
+  } catch (error) {
+    console.error('\n❌ Import failed:', error.message || error);
+    console.error('Full error:', error);
+    process.exit(1);
+  }
 })();
 
 

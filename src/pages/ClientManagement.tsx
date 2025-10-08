@@ -11,17 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
-import { Settings, Save, RefreshCw, ArrowLeft, Building2, CheckCircle2, XCircle } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { useToast } from '@/hooks/use-toast';
+import { Settings, RefreshCw, ArrowLeft, Building2, CheckCircle2, XCircle, Search, ChevronRight } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 interface ClientData {
   workspace_id: number;
@@ -29,42 +21,32 @@ interface ClientData {
   display_name: string | null;
   is_active: boolean;
   billing_type: string;
-  price_per_lead: number;
-  retainer_amount: number;
   monthly_kpi_target: number;
-  monthly_contact_target: number | null;
-  contact_tier: string | null;
-  payout: number | null;
   monthly_sending_target: number | null;
-  notes: string | null;
+  payout: number | null;
 }
 
 const ClientManagement: React.FC = () => {
   const [clients, setClients] = useState<ClientData[]>([]);
-  const [editedClients, setEditedClients] = useState<Set<number>>(new Set());
+  const [filteredClients, setFilteredClients] = useState<ClientData[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const { toast } = useToast();
+  const navigate = useNavigate();
 
   const fetchClients = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('client_registry')
-        .select('*')
+        .select('workspace_id, workspace_name, display_name, is_active, billing_type, monthly_kpi_target, monthly_sending_target, payout')
         .order('is_active', { ascending: false })
         .order('display_name');
 
       if (error) throw error;
       setClients(data || []);
-      setEditedClients(new Set());
+      setFilteredClients(data || []);
     } catch (error) {
       console.error('Error fetching clients:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load clients',
-        variant: 'destructive',
-      });
     } finally {
       setLoading(false);
     }
@@ -74,104 +56,18 @@ const ClientManagement: React.FC = () => {
     fetchClients();
   }, []);
 
-  const handleFieldChange = (workspaceId: number, field: keyof ClientData, value: any) => {
-    setClients((prev) =>
-      prev.map((client) =>
-        client.workspace_id === workspaceId ? { ...client, [field]: value } : client
-      )
-    );
-    setEditedClients((prev) => new Set(prev).add(workspaceId));
-  };
-
-  const handleSaveClient = async (workspaceId: number) => {
-    setSaving(true);
-    const client = clients.find((c) => c.workspace_id === workspaceId);
-    if (!client) return;
-
-    try {
-      const { error } = await supabase
-        .from('client_registry')
-        .update({
-          display_name: client.display_name,
-          is_active: client.is_active,
-          billing_type: client.billing_type,
-          price_per_lead: client.price_per_lead,
-          retainer_amount: client.retainer_amount,
-          monthly_kpi_target: client.monthly_kpi_target,
-          monthly_contact_target: client.monthly_contact_target,
-          contact_tier: client.contact_tier,
-          payout: client.payout,
-          monthly_sending_target: client.monthly_sending_target,
-          notes: client.notes,
-        })
-        .eq('workspace_id', workspaceId);
-
-      if (error) throw error;
-
-      setEditedClients((prev) => {
-        const next = new Set(prev);
-        next.delete(workspaceId);
-        return next;
-      });
-
-      toast({
-        title: 'Success',
-        description: `${client.display_name || client.workspace_name} updated successfully`,
-      });
-    } catch (error) {
-      console.error('Error saving client:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to save client',
-        variant: 'destructive',
-      });
-    } finally {
-      setSaving(false);
+  useEffect(() => {
+    if (searchTerm) {
+      const filtered = clients.filter((client) =>
+        (client.display_name || client.workspace_name)
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())
+      );
+      setFilteredClients(filtered);
+    } else {
+      setFilteredClients(clients);
     }
-  };
-
-  const handleSaveAll = async () => {
-    setSaving(true);
-    const clientsToUpdate = clients.filter((c) => editedClients.has(c.workspace_id));
-
-    try {
-      for (const client of clientsToUpdate) {
-        const { error } = await supabase
-          .from('client_registry')
-          .update({
-            display_name: client.display_name,
-            is_active: client.is_active,
-            billing_type: client.billing_type,
-            price_per_lead: client.price_per_lead,
-            retainer_amount: client.retainer_amount,
-            monthly_kpi_target: client.monthly_kpi_target,
-            monthly_contact_target: client.monthly_contact_target,
-            contact_tier: client.contact_tier,
-            payout: client.payout,
-            monthly_sending_target: client.monthly_sending_target,
-            notes: client.notes,
-          })
-          .eq('workspace_id', client.workspace_id);
-
-        if (error) throw error;
-      }
-
-      setEditedClients(new Set());
-      toast({
-        title: 'Success',
-        description: `${clientsToUpdate.length} client(s) updated successfully`,
-      });
-    } catch (error) {
-      console.error('Error saving clients:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to save some clients',
-        variant: 'destructive',
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
+  }, [searchTerm, clients]);
 
   if (loading) {
     return (
@@ -202,18 +98,10 @@ const ClientManagement: React.FC = () => {
             Manage client data, billing, targets, and configuration
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchClients} disabled={saving}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-          {editedClients.size > 0 && (
-            <Button onClick={handleSaveAll} disabled={saving}>
-              <Save className="w-4 h-4 mr-2" />
-              Save All ({editedClients.size})
-            </Button>
-          )}
-        </div>
+        <Button variant="outline" onClick={fetchClients}>
+          <RefreshCw className="w-4 w-4 mr-2" />
+          Refresh
+        </Button>
       </div>
 
       {/* Stats Cards */}
@@ -242,216 +130,96 @@ const ClientManagement: React.FC = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Unsaved Changes</CardTitle>
-            <Settings className="h-4 w-4 text-yellow-600" />
+            <CardTitle className="text-sm font-medium">Inactive Clients</CardTitle>
+            <XCircle className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{editedClients.size}</div>
+            <div className="text-2xl font-bold">
+              {clients.filter((c) => !c.is_active).length}
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Client Table */}
+      {/* Search */}
       <Card>
         <CardHeader>
-          <CardTitle>Client Registry</CardTitle>
+          <CardTitle>Client List</CardTitle>
           <CardDescription>
-            Edit client information, billing details, and performance targets
+            Click on a client to view and edit their full profile
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent>
+          <div className="mb-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search clients..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+
+          {/* Client Table */}
           <div className="relative max-h-[600px] overflow-auto border rounded-md">
             <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent" style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'hsl(var(--card))' }}>
-                  <TableHead className="w-[40px]" style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Active</TableHead>
-                  <TableHead style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Client Name</TableHead>
-                  <TableHead style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Billing Type</TableHead>
-                  <TableHead style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Price/Lead</TableHead>
-                  <TableHead style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Retainer</TableHead>
-                  <TableHead style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Payout</TableHead>
-                  <TableHead style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Lead Target</TableHead>
-                  <TableHead style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Contact Target</TableHead>
-                  <TableHead style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Contact Tier</TableHead>
-                  <TableHead style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Sending Target</TableHead>
-                  <TableHead className="w-[100px]" style={{ position: 'sticky', top: 0, backgroundColor: 'hsl(var(--card))' }}>Actions</TableHead>
+              <TableHeader className="sticky top-0 bg-card z-10">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="bg-card">Status</TableHead>
+                  <TableHead className="bg-card">Client Name</TableHead>
+                  <TableHead className="bg-card">Billing Type</TableHead>
+                  <TableHead className="text-right bg-card">Lead Target</TableHead>
+                  <TableHead className="text-right bg-card">Sending Target</TableHead>
+                  <TableHead className="text-right bg-card">Payout</TableHead>
+                  <TableHead className="bg-card"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clients
-                  .sort((a, b) => {
-                    // Sort by active status first (active = true comes first)
-                    if (a.is_active !== b.is_active) {
-                      return a.is_active ? -1 : 1;
-                    }
-                    // Then sort by display_name or workspace_name
-                    const nameA = (a.display_name || a.workspace_name).toLowerCase();
-                    const nameB = (b.display_name || b.workspace_name).toLowerCase();
-                    return nameA.localeCompare(nameB);
-                  })
-                  .map((client) => (
+                {filteredClients.map((client) => (
                   <TableRow
                     key={client.workspace_id}
-                    className={editedClients.has(client.workspace_id) ? 'bg-yellow-50' : ''}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => navigate(`/client-management/${client.workspace_id}`)}
                   >
                     <TableCell>
-                      <button
-                        onClick={() =>
-                          handleFieldChange(client.workspace_id, 'is_active', !client.is_active)
-                        }
-                        className="hover:scale-110 transition-transform"
-                      >
-                        {client.is_active ? (
-                          <CheckCircle2 className="h-5 w-5 text-green-600" />
-                        ) : (
-                          <XCircle className="h-5 w-5 text-gray-400" />
-                        )}
-                      </button>
+                      {client.is_active ? (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Active
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">
+                          <XCircle className="h-3 w-3 mr-1" />
+                          Inactive
+                        </Badge>
+                      )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="font-medium">
                       <div>
-                        <Input
-                          value={client.display_name || ''}
-                          onChange={(e) =>
-                            handleFieldChange(client.workspace_id, 'display_name', e.target.value)
-                          }
-                          placeholder="Display Name"
-                          className="mb-1"
-                        />
-                        <span className="text-xs text-muted-foreground">
-                          {client.workspace_name}
-                        </span>
+                        <div>{client.display_name || client.workspace_name}</div>
+                        {client.display_name && (
+                          <div className="text-xs text-muted-foreground">{client.workspace_name}</div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Select
-                        value={client.billing_type}
-                        onValueChange={(value) =>
-                          handleFieldChange(client.workspace_id, 'billing_type', value)
-                        }
-                      >
-                        <SelectTrigger className="w-[130px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="per_lead">Per Lead</SelectItem>
-                          <SelectItem value="retainer">Retainer</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Badge variant="outline">
+                        {client.billing_type === 'per_lead' ? 'Per Lead' : 'Retainer'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {client.monthly_kpi_target > 0 ? client.monthly_kpi_target.toLocaleString() : '—'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {client.monthly_sending_target ? client.monthly_sending_target.toLocaleString() : '—'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {client.payout ? `$${client.payout.toLocaleString()}` : '—'}
                     </TableCell>
                     <TableCell>
-                      <Input
-                        type="number"
-                        value={client.price_per_lead || 0}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            client.workspace_id,
-                            'price_per_lead',
-                            parseFloat(e.target.value)
-                          )
-                        }
-                        className="w-[100px]"
-                        step="0.01"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        value={client.retainer_amount || 0}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            client.workspace_id,
-                            'retainer_amount',
-                            parseFloat(e.target.value)
-                          )
-                        }
-                        className="w-[100px]"
-                        step="0.01"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        value={client.payout || 0}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            client.workspace_id,
-                            'payout',
-                            parseFloat(e.target.value)
-                          )
-                        }
-                        className="w-[100px]"
-                        step="0.01"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        value={client.monthly_kpi_target || 0}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            client.workspace_id,
-                            'monthly_kpi_target',
-                            parseInt(e.target.value)
-                          )
-                        }
-                        className="w-[100px]"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        value={client.monthly_contact_target || 0}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            client.workspace_id,
-                            'monthly_contact_target',
-                            parseInt(e.target.value)
-                          )
-                        }
-                        className="w-[100px]"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Select
-                        value={client.contact_tier || ''}
-                        onValueChange={(value) =>
-                          handleFieldChange(client.workspace_id, 'contact_tier', value)
-                        }
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue placeholder="Select tier" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="100_leads">100 Leads</SelectItem>
-                          <SelectItem value="200_leads">200 Leads</SelectItem>
-                          <SelectItem value="custom">Custom</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        value={client.monthly_sending_target || 0}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            client.workspace_id,
-                            'monthly_sending_target',
-                            parseInt(e.target.value)
-                          )
-                        }
-                        className="w-[100px]"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        onClick={() => handleSaveClient(client.workspace_id)}
-                        disabled={saving || !editedClients.has(client.workspace_id)}
-                      >
-                        <Save className="w-3 h-3 mr-1" />
-                        Save
-                      </Button>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     </TableCell>
                   </TableRow>
                 ))}

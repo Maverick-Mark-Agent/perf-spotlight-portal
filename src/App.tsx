@@ -20,6 +20,7 @@ import ROIDashboard from "./pages/ROIDashboard";
 import RolloutProgress from "./pages/RolloutProgress";
 import ContactPipelineDashboard from "./pages/ContactPipelineDashboard";
 import ClientManagement from "./pages/ClientManagement";
+import ClientProfile from "./pages/ClientProfile";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,7 @@ const App = () => (
               <Route path="/rollout-progress" element={<RolloutProgress />} />
               <Route path="/contact-pipeline" element={<ContactPipelineDashboard />} />
               <Route path="/client-management" element={<ClientManagement />} />
+              <Route path="/client-management/:workspaceId" element={<ClientProfile />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFoundPage />} />
             </Routes>

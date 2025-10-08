@@ -1,0 +1,11 @@
+First Name,Last Name,Mailing Address,Mailing City,Mailing State,Mailing ZIP,Property Address,Property City,Property State,Property ZIP,Home Value Estimate,Purchase Date,Email
+John,Doe,123 Main St,Austin,TX,78701,123 Main St,Austin,TX,78701,$450000,3/15/2024,john.doe@example.com
+Jane,Smith,456 Oak Ave,Dallas,TX,75201,456 Oak Ave,Dallas,TX,75201,$950000,3/22/2024,jane.smith@example.com
+Bob,Johnson,789 Elm St,Houston,TX,77001,789 Elm St,Houston,TX,77001,$350000,3/8/2024,bob.johnson@example.com
+Alice,Williams,321 Pine Rd,San Antonio,TX,78201,321 Pine Rd,San Antonio,TX,78201,$425000,3/29/2024,alice.williams@example.com
+Mike,Brown,654 Cedar Ln,Los Angeles,CA,90001,654 Cedar Ln,Los Angeles,CA,90001,$750000,3/5/2024,mike.brown@example.com
+Sarah,Davis,987 Birch Dr,San Diego,CA,92101,987 Birch Dr,San Diego,CA,92101,$650000,3/18/2024,sarah.davis@example.com
+Tom,Miller,147 Maple Ave,Phoenix,AZ,85001,147 Maple Ave,Phoenix,AZ,85001,$380000,3/12/2024,tom.miller@example.com
+Lisa,Wilson,258 Spruce St,Las Vegas,NV,89101,258 Spruce St,Las Vegas,NV,89101,$420000,3/25/2024,lisa.wilson@example.com
+David,Martinez,369 Walnut Ct,Chicago,IL,60601,369 Walnut Ct,Chicago,IL,60601,$520000,3/3/2024,david.martinez@example.com
+Emma,Garcia,741 Cherry Way,Detroit,MI,48201,741 Cherry Way,Detroit,MI,48201,$290000,3/14/2024,emma.garcia@example.com

@@ -3,6 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import ZipVisualization, { type ZipData } from "@/components/ZipVisualization";
 import ZipChoroplethMap from "@/components/ZipChoroplethMap";
 import ZipAssignmentModal from "@/components/ZipAssignmentModal";
+import BulkZipAssignmentModal from "@/components/BulkZipAssignmentModal";
+import AddAgencyModal from "@/components/AddAgencyModal";
+import StateLeadsAnalytics from "@/components/StateLeadsAnalytics";
 import AgencyColorPicker from "@/components/AgencyColorPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download, Filter, MapPin, ArrowLeft } from "lucide-react";
+import { Download, Filter, MapPin, ArrowLeft, Plus, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 
 type ZipRow = {
@@ -46,9 +49,11 @@ export default function ZipDashboard() {
   const [agencyFilter, setAgencyFilter] = useState<string>("all");
   const [searchFilter, setSearchFilter] = useState<string>("");
 
-  // Assignment modal
+  // Assignment modals
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [selectedZip, setSelectedZip] = useState<string | null>(null);
+  const [bulkAssignmentOpen, setBulkAssignmentOpen] = useState(false);
+  const [addAgencyOpen, setAddAgencyOpen] = useState(false);
 
   useEffect(() => {
     loadZipData();
@@ -171,6 +176,52 @@ export default function ZipDashboard() {
     }
   }
 
+  // Handle bulk ZIP assignment
+  async function handleBulkAssignZips(zipCodes: string[], clientName: string, color: string) {
+    try {
+      // Update all ZIPs in batch
+      const { error } = await supabase
+        .from("client_zipcodes")
+        .update({ client_name: clientName, agency_color: color })
+        .eq("month", month)
+        .in("zip", zipCodes);
+
+      if (error) throw error;
+
+      // Reload data
+      await loadZipData();
+    } catch (e: any) {
+      console.error("Failed to bulk assign ZIPs:", e);
+      throw e;
+    }
+  }
+
+  // Handle adding new agency
+  async function handleAddAgency(clientName: string, workspaceName: string, color: string) {
+    try {
+      // Create a placeholder ZIP assignment for this agency to make it visible
+      // This ensures the agency appears in the dropdown even if no ZIPs assigned yet
+      const { error } = await supabase
+        .from("client_zipcodes")
+        .insert({
+          zip: "00000", // Placeholder ZIP
+          month: month,
+          client_name: clientName,
+          workspace_name: workspaceName,
+          agency_color: color,
+          state: null,
+        });
+
+      if (error) throw error;
+
+      // Reload data
+      await loadZipData();
+    } catch (e: any) {
+      console.error("Failed to add agency:", e);
+      throw e;
+    }
+  }
+
   // Handle color change for agency
   async function handleColorChange(clientName: string, newColor: string) {
     try {
@@ -240,6 +291,25 @@ export default function ZipDashboard() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAddAgencyOpen(true)}
+                className="bg-green-500/20 border-green-500/50 text-green-300 hover:bg-green-500/30"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Agency
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBulkAssignmentOpen(true)}
+                className="bg-blue-500/20 border-blue-500/50 text-blue-300 hover:bg-blue-500/30"
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Bulk Assign
+              </Button>
+              <div className="h-6 w-px bg-white/20"></div>
               <label className="text-sm font-medium text-gray-300">Month:</label>
               <Input
                 type="text"
@@ -335,10 +405,24 @@ export default function ZipDashboard() {
         {loading && <div className="text-sm text-gray-300">Loading...</div>}
         {error && <div className="text-sm text-red-400">Error: {error}</div>}
 
+        {/* State Leads Analytics */}
+        {!loading && !error && (
+          <div className="mb-6">
+            <StateLeadsAnalytics month={month} />
+          </div>
+        )}
+
         {/* Choropleth Map */}
         {!loading && !error && filteredZipData.length > 0 && (
           <div className="mb-6">
-            <ZipChoroplethMap zipData={filteredZipData} loading={loading} />
+            <ZipChoroplethMap
+              zipData={filteredZipData}
+              loading={loading}
+              onZipClick={(zip) => {
+                setSelectedZip(zip);
+                setAssignmentOpen(true);
+              }}
+            />
           </div>
         )}
 
@@ -425,6 +509,21 @@ export default function ZipDashboard() {
         currentAgency={
           zipData.find((z) => z.zip === selectedZip)?.client_name
         }
+      />
+
+      {/* Bulk Assignment Modal */}
+      <BulkZipAssignmentModal
+        open={bulkAssignmentOpen}
+        onClose={() => setBulkAssignmentOpen(false)}
+        onBulkAssign={handleBulkAssignZips}
+        agencies={stats.agencies}
+      />
+
+      {/* Add Agency Modal */}
+      <AddAgencyModal
+        open={addAgencyOpen}
+        onClose={() => setAddAgencyOpen(false)}
+        onAddAgency={handleAddAgency}
       />
     </div>
   );

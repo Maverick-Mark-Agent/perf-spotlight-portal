@@ -5,11 +5,15 @@ import { ZipData } from "./ZipVisualization";
 type ZipChoroplethMapProps = {
   zipData: ZipData[];
   loading?: boolean;
+  onZipClick?: (zipCode: string) => void;
 };
 
-// State to GeoJSON file mapping - using jsDelivr CDN to serve files from GitHub
-// Lovable can't handle 297 MB of GeoJSON files in deployment
-const CDN_BASE = "https://cdn.jsdelivr.net/gh/Maverick-Mark-Agent/perf-spotlight-portal@main/public/geojson";
+// State to GeoJSON file mapping
+// Use local files for development (localhost), CDN for production
+const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+const CDN_BASE = isLocalhost
+  ? "/geojson" // Local files served from public/geojson
+  : "https://cdn.jsdelivr.net/gh/Maverick-Mark-Agent/perf-spotlight-portal@main/public/geojson";
 
 const STATE_GEOJSON_FILES: Record<string, string> = {
   CA: `${CDN_BASE}/ca_california_zip_codes_geo.min.json`,
@@ -22,7 +26,7 @@ const STATE_GEOJSON_FILES: Record<string, string> = {
   OK: `${CDN_BASE}/ok_oklahoma_zip_codes_geo.min.json`,
 };
 
-export default function ZipChoroplethMap({ zipData, loading }: ZipChoroplethMapProps) {
+export default function ZipChoroplethMap({ zipData, loading, onZipClick }: ZipChoroplethMapProps) {
   const [geoJsonData, setGeoJsonData] = useState<any>(null);
   const [loadingGeo, setLoadingGeo] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -247,6 +251,14 @@ export default function ZipChoroplethMap({ zipData, loading }: ZipChoroplethMapP
             responsive: true,
           }}
           style={{ width: "100%", height: "100%" }}
+          onClick={(event: any) => {
+            if (onZipClick && event.points && event.points[0]) {
+              const zipCode = event.points[0].location;
+              if (zipCode) {
+                onZipClick(zipCode);
+              }
+            }
+          }}
         />
       </div>
 

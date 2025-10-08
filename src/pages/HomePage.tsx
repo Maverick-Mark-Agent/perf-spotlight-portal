@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Users, Target, TrendingUp, Shield, MapPin } from "lucide-react";
+import { BarChart3, Users, Target, TrendingUp, Shield, MapPin, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -39,72 +39,99 @@ const Index = () => {
 
             {/* Feature Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-              <Card className="bg-card border-2 border-border hover:border-success/40 hover:shadow-lg transition-all duration-300 rounded-2xl">
-                <CardHeader>
-                  <div className="flex items-center space-x-3">
-                    <div className="p-3 bg-success/10 rounded-xl">
-                      <Users className="h-6 w-6 text-success" />
+              <Card className="bg-card border-2 border-border hover:border-success/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer" asChild>
+                <Link to="/kpi-dashboard">
+                  <CardHeader>
+                    <div className="flex items-center space-x-3">
+                      <div className="p-3 bg-success/10 rounded-xl group-hover:bg-success/20 transition-colors">
+                        <Users className="h-6 w-6 text-success" />
+                      </div>
+                      <CardTitle className="text-foreground">Lead Generation Tracking</CardTitle>
                     </div>
-                    <CardTitle className="text-foreground">Lead Generation Tracking</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-foreground/70 leading-relaxed">
-                    Monitor monthly lead generation progress across all client campaigns with
-                    real-time updates, visual progress indicators, and conversion analytics.
-                  </p>
-                </CardContent>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-foreground/70 leading-relaxed">
+                      Monitor monthly lead generation progress across all client campaigns with
+                      real-time updates, visual progress indicators, and conversion analytics.
+                    </p>
+                  </CardContent>
+                </Link>
               </Card>
 
-              <Card className="bg-card border-2 border-border hover:border-primary/40 hover:shadow-lg transition-all duration-300 rounded-2xl">
-                <CardHeader>
-                  <div className="flex items-center space-x-3">
-                    <div className="p-3 bg-primary/10 rounded-xl">
-                      <Target className="h-6 w-6 text-primary" />
+              <Card className="bg-card border-2 border-border hover:border-primary/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer" asChild>
+                <Link to="/kpi-dashboard">
+                  <CardHeader>
+                    <div className="flex items-center space-x-3">
+                      <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
+                        <Target className="h-6 w-6 text-primary" />
+                      </div>
+                      <CardTitle className="text-foreground">KPI Management Suite</CardTitle>
                     </div>
-                    <CardTitle className="text-foreground">KPI Management Suite</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-foreground/70 leading-relaxed">
-                    Track key performance indicators and compare against monthly targets
-                    with detailed analytics, trend analysis, and predictive insights.
-                  </p>
-                </CardContent>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-foreground/70 leading-relaxed">
+                      Track key performance indicators and compare against monthly targets
+                      with detailed analytics, trend analysis, and predictive insights.
+                    </p>
+                  </CardContent>
+                </Link>
               </Card>
 
-              <Card className="bg-card border-2 border-border hover:border-warning/40 hover:shadow-lg transition-all duration-300 rounded-2xl">
-                <CardHeader>
-                  <div className="flex items-center space-x-3">
-                    <div className="p-3 bg-warning/10 rounded-xl">
-                      <BarChart3 className="h-6 w-6 text-warning" />
+              <Card className="bg-card border-2 border-border hover:border-warning/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer" asChild>
+                <Link to="/revenue-dashboard">
+                  <CardHeader>
+                    <div className="flex items-center space-x-3">
+                      <div className="p-3 bg-warning/10 rounded-xl group-hover:bg-warning/20 transition-colors">
+                        <BarChart3 className="h-6 w-6 text-warning" />
+                      </div>
+                      <CardTitle className="text-foreground">Advanced Analytics</CardTitle>
                     </div>
-                    <CardTitle className="text-foreground">Advanced Analytics</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-foreground/70 leading-relaxed">
-                    Deep-dive into performance metrics with customizable time periods,
-                    comparative analysis, and actionable insights for strategic decisions.
-                  </p>
-                </CardContent>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-foreground/70 leading-relaxed">
+                      Deep-dive into performance metrics with customizable time periods,
+                      comparative analysis, and actionable insights for strategic decisions.
+                    </p>
+                  </CardContent>
+                </Link>
               </Card>
 
-              <Card className="bg-card border-2 border-border hover:border-info/40 hover:shadow-lg transition-all duration-300 rounded-2xl">
-                <CardHeader>
-                  <div className="flex items-center space-x-3">
-                    <div className="p-3 bg-info/10 rounded-xl">
-                      <MapPin className="h-6 w-6 text-info" />
+              <Card className="bg-card border-2 border-border hover:border-purple-500/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer" asChild>
+                <Link to="/contact-pipeline">
+                  <CardHeader>
+                    <div className="flex items-center space-x-3">
+                      <div className="p-3 bg-purple-500/10 rounded-xl group-hover:bg-purple-500/20 transition-colors">
+                        <Upload className="h-6 w-6 text-purple-500" />
+                      </div>
+                      <CardTitle className="text-foreground">Contact Pipeline</CardTitle>
                     </div>
-                    <CardTitle className="text-foreground">Territory Management</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-foreground/70 leading-relaxed">
-                    Manage ZIP code assignments, visualize territory coverage by state,
-                    and track agency distribution across 3,000+ targeted locations.
-                  </p>
-                </CardContent>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-foreground/70 leading-relaxed">
+                      Automated list cleaning pipeline: upload Cole X Dates CSV, verify emails,
+                      generate weekly batches, and upload to Email Bison campaigns.
+                    </p>
+                  </CardContent>
+                </Link>
+              </Card>
+
+              <Card className="bg-card border-2 border-border hover:border-info/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer" asChild>
+                <Link to="/zip-dashboard">
+                  <CardHeader>
+                    <div className="flex items-center space-x-3">
+                      <div className="p-3 bg-info/10 rounded-xl group-hover:bg-info/20 transition-colors">
+                        <MapPin className="h-6 w-6 text-info" />
+                      </div>
+                      <CardTitle className="text-foreground">Territory Management</CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-foreground/70 leading-relaxed">
+                      Manage ZIP code assignments, visualize territory coverage by state,
+                      and track agency distribution across 3,000+ targeted locations.
+                    </p>
+                  </CardContent>
+                </Link>
               </Card>
             </div>
 

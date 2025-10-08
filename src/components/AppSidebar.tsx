@@ -8,6 +8,8 @@ import {
   Server,
   Home,
   ChevronRight,
+  Upload,
+  Settings,
 } from "lucide-react";
 import {
   Sidebar,
@@ -51,6 +53,16 @@ const navigationItems = {
     },
   ],
   management: [
+    {
+      title: "Client Management",
+      icon: Settings,
+      url: "/client-management",
+    },
+    {
+      title: "Contact Pipeline",
+      icon: Upload,
+      url: "/contact-pipeline",
+    },
     {
       title: "Client Portal",
       icon: Users,

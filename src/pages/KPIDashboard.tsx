@@ -9,6 +9,7 @@ import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw, ArrowLeft } from 
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 import { useDashboardContext } from "@/contexts/DashboardContext";
+import { DataFreshnessIndicator } from "@/components/DataFreshnessIndicator";
 
 const MonthlyKPIProgress = () => {
   const { toast } = useToast();
@@ -20,7 +21,18 @@ const MonthlyKPIProgress = () => {
   } = useDashboardContext();
 
   // Destructure dashboard state
-  const { clients, selectedClient, viewMode, loading, lastUpdated, isUsingCache } = kpiDashboard;
+  const {
+    clients,
+    selectedClient,
+    viewMode,
+    loading,
+    lastUpdated,
+    isUsingCache,
+    isFresh,
+    error,
+    warnings,
+    fetchDurationMs
+  } = kpiDashboard;
 
   const handleRefresh = async () => {
     await refreshKPIDashboard(true);
@@ -105,6 +117,14 @@ const MonthlyKPIProgress = () => {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <DataFreshnessIndicator
+                lastUpdated={lastUpdated}
+                loading={loading}
+                error={error || undefined}
+                cached={isUsingCache}
+                fresh={isFresh}
+                warnings={warnings}
+              />
               <Button
                 onClick={handleRefresh}
                 disabled={loading}

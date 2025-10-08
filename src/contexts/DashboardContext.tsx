@@ -1,5 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  fetchKPIData,
+  fetchVolumeData,
+  fetchRevenueData,
+  fetchInfrastructureData,
+  clearAllCache,
+  clearDashboardCache,
+  type DataFetchResult,
+} from '@/services/dataService';
 
 // ============= TypeScript Interfaces =============
 
@@ -88,6 +97,10 @@ interface RevenueDashboardState {
   lastUpdated: Date | null;
   loading: boolean;
   isUsingCache: boolean;
+  isFresh: boolean;
+  error: string | null;
+  warnings: string[];
+  fetchDurationMs?: number;
 }
 
 interface KPIDashboardState {
@@ -97,6 +110,10 @@ interface KPIDashboardState {
   lastUpdated: Date | null;
   loading: boolean;
   isUsingCache: boolean;
+  isFresh: boolean;
+  error: string | null;
+  warnings: string[];
+  fetchDurationMs?: number;
 }
 
 interface VolumeDashboardState {
@@ -104,6 +121,10 @@ interface VolumeDashboardState {
   lastUpdated: Date | null;
   loading: boolean;
   isUsingCache: boolean;
+  isFresh: boolean;
+  error: string | null;
+  warnings: string[];
+  fetchDurationMs?: number;
 }
 
 interface InfrastructureDashboardState {
@@ -116,6 +137,10 @@ interface InfrastructureDashboardState {
   lastUpdated: Date | null;
   loading: boolean;
   isUsingCache: boolean;
+  isFresh: boolean;
+  error: string | null;
+  warnings: string[];
+  fetchDurationMs?: number;
 }
 
 interface DashboardContextType {
@@ -185,6 +210,9 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     lastUpdated: null,
     loading: true,
     isUsingCache: false,
+    isFresh: false,
+    error: null,
+    warnings: [],
   });
 
   // ============= Volume Dashboard State =============
@@ -193,6 +221,9 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     lastUpdated: null,
     loading: true,
     isUsingCache: false,
+    isFresh: false,
+    error: null,
+    warnings: [],
   });
 
   // ============= Infrastructure Dashboard State =============
@@ -211,6 +242,9 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     lastUpdated: null,
     loading: true,
     isUsingCache: false,
+    isFresh: false,
+    error: null,
+    warnings: [],
   });
 
   // ============= Revenue Dashboard State =============
@@ -227,6 +261,9 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     lastUpdated: null,
     loading: true,
     isUsingCache: false,
+    isFresh: false,
+    error: null,
+    warnings: [],
   });
 
   // ============= Helper Functions =============
@@ -266,38 +303,50 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   // ============= KPI Dashboard Functions =============
 
-  const fetchKPIData = useCallback(async (force: boolean = false) => {
+  const fetchKPIDataInternal = useCallback(async (force: boolean = false) => {
     try {
       // Don't show loading if we have cached data and not forcing refresh
       if (!force && kpiDashboard.clients.length > 0) {
         // Silent background refresh
       } else {
-        setKPIDashboard(prev => ({ ...prev, loading: true }));
+        setKPIDashboard(prev => ({ ...prev, loading: true, error: null }));
       }
 
-      const { data, error } = await supabase.functions.invoke('hybrid-workspace-analytics', {
-        body: { timestamp: Date.now() }
-      });
+      // Use new dataService with validation
+      const result = await fetchKPIData(force);
 
-      if (error) throw error;
-
-      if (data?.clients) {
-        const timestamp = new Date();
-
+      if (result.success && result.data) {
         setKPIDashboard(prev => ({
           ...prev,
-          clients: data.clients,
-          lastUpdated: timestamp,
+          clients: result.data!,
+          lastUpdated: result.timestamp,
           loading: false,
-          isUsingCache: false,
+          isUsingCache: result.cached,
+          isFresh: result.fresh,
+          error: null,
+          warnings: result.warnings || [],
+          fetchDurationMs: result.fetchDurationMs,
         }));
-
-        // Cache the data
-        saveToCache(CACHE_KEYS.KPI_DATA, CACHE_KEYS.KPI_TIMESTAMP, data.clients, timestamp);
+      } else {
+        // Handle error case - may still have stale data
+        setKPIDashboard(prev => ({
+          ...prev,
+          clients: result.data || prev.clients, // Keep old data if fetch failed
+          lastUpdated: result.timestamp,
+          loading: false,
+          isUsingCache: result.cached,
+          isFresh: result.fresh,
+          error: result.error || 'Failed to fetch KPI data',
+          warnings: result.warnings || [],
+        }));
       }
     } catch (error) {
       console.error('Error fetching KPI data:', error);
-      setKPIDashboard(prev => ({ ...prev, loading: false }));
+      setKPIDashboard(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));
     }
   }, [kpiDashboard.clients.length]);
 
@@ -316,74 +365,103 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, []);
 
   const refreshKPIDashboard = useCallback(async (force: boolean = true) => {
-    await fetchKPIData(force);
-  }, [fetchKPIData]);
+    await fetchKPIDataInternal(force);
+  }, [fetchKPIDataInternal]);
 
   // ============= Volume Dashboard Functions =============
 
-  const fetchVolumeData = useCallback(async (force: boolean = false) => {
+  const fetchVolumeDataInternal = useCallback(async (force: boolean = false) => {
     try {
       if (!force && volumeDashboard.clients.length > 0) {
         // Silent background refresh
       } else {
-        setVolumeDashboard(prev => ({ ...prev, loading: true }));
+        setVolumeDashboard(prev => ({ ...prev, loading: true, error: null }));
       }
 
-      const { data, error } = await supabase.functions.invoke('volume-dashboard-data');
+      // Use new dataService with validation
+      const result = await fetchVolumeData(force);
 
-      if (error) throw error;
-
-      const clients = data?.clients || [];
-      const timestamp = new Date();
-
-      setVolumeDashboard({
-        clients,
-        lastUpdated: timestamp,
-        loading: false,
-        isUsingCache: false,
-      });
-
-      // Cache the data
-      saveToCache(CACHE_KEYS.VOLUME_DATA, CACHE_KEYS.VOLUME_TIMESTAMP, clients, timestamp);
+      if (result.success && result.data) {
+        setVolumeDashboard({
+          clients: result.data,
+          lastUpdated: result.timestamp,
+          loading: false,
+          isUsingCache: result.cached,
+          isFresh: result.fresh,
+          error: null,
+          warnings: result.warnings || [],
+          fetchDurationMs: result.fetchDurationMs,
+        });
+      } else {
+        setVolumeDashboard(prev => ({
+          ...prev,
+          clients: result.data || prev.clients,
+          lastUpdated: result.timestamp,
+          loading: false,
+          isUsingCache: result.cached,
+          isFresh: result.fresh,
+          error: result.error || 'Failed to fetch volume data',
+          warnings: result.warnings || [],
+        }));
+      }
     } catch (error) {
       console.error('Error fetching Volume data:', error);
-      setVolumeDashboard(prev => ({ ...prev, loading: false }));
+      setVolumeDashboard(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));
     }
   }, [volumeDashboard.clients.length]);
 
   const refreshVolumeDashboard = useCallback(async (force: boolean = true) => {
-    await fetchVolumeData(force);
-  }, [fetchVolumeData]);
+    await fetchVolumeDataInternal(force);
+  }, [fetchVolumeDataInternal]);
 
   // ============= Infrastructure Dashboard Functions =============
 
-  const fetchInfrastructureData = useCallback(async (force: boolean = false) => {
+  const fetchInfrastructureDataInternal = useCallback(async (force: boolean = false) => {
     try {
       if (!force && infrastructureDashboard.emailAccounts.length > 0) {
         // Silent background refresh
       } else {
-        setInfrastructureDashboard(prev => ({ ...prev, loading: true }));
+        setInfrastructureDashboard(prev => ({ ...prev, loading: true, error: null }));
       }
 
-      const { data, error } = await supabase.functions.invoke('hybrid-email-accounts-v2');
+      // Use new dataService with validation
+      const result = await fetchInfrastructureData(force);
 
-      if (error) throw error;
-
-      const accounts = data?.records || [];
-      const timestamp = new Date();
-
-      setInfrastructureDashboard(prev => ({
-        ...prev,
-        emailAccounts: accounts,
-        lastUpdated: timestamp,
-        loading: false,
-        isUsingCache: false,
-      }));
-
-      // Note: Infrastructure doesn't use localStorage cache due to quota limits
+      if (result.success && result.data) {
+        setInfrastructureDashboard(prev => ({
+          ...prev,
+          emailAccounts: result.data!,
+          lastUpdated: result.timestamp,
+          loading: false,
+          isUsingCache: result.cached,
+          isFresh: result.fresh,
+          error: null,
+          warnings: result.warnings || [],
+          fetchDurationMs: result.fetchDurationMs,
+        }));
+      } else {
+        setInfrastructureDashboard(prev => ({
+          ...prev,
+          emailAccounts: result.data || prev.emailAccounts,
+          lastUpdated: result.timestamp,
+          loading: false,
+          isUsingCache: result.cached,
+          isFresh: result.fresh,
+          error: result.error || 'Failed to fetch infrastructure data',
+          warnings: result.warnings || [],
+        }));
+      }
     } catch (error) {
       console.error('Error fetching Infrastructure data:', error);
-      setInfrastructureDashboard(prev => ({ ...prev, loading: false }));
+      setInfrastructureDashboard(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));
     }
   }, [infrastructureDashboard.emailAccounts.length]);
 
@@ -414,64 +492,71 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, []);
 
   const refreshInfrastructure = useCallback(async (force: boolean = true) => {
-    await fetchInfrastructureData(force);
-  }, [fetchInfrastructureData]);
+    await fetchInfrastructureDataInternal(force);
+  }, [fetchInfrastructureDataInternal]);
 
   // ============= Revenue Dashboard Functions =============
 
-  const fetchRevenueData = useCallback(async (force: boolean = false) => {
+  const fetchRevenueDataInternal = useCallback(async (force: boolean = false) => {
     try {
       if (!force && revenueDashboard.clients.length > 0) {
         // Silent background refresh
       } else {
-        setRevenueDashboard(prev => ({ ...prev, loading: true }));
+        setRevenueDashboard(prev => ({ ...prev, loading: true, error: null }));
       }
 
-      const { data, error } = await supabase.functions.invoke('revenue-analytics');
+      // Use new dataService with validation
+      const result = await fetchRevenueData(force);
 
-      if (error) throw error;
-
-      const clients = data?.clients || [];
-      const totals = data?.totals || {
-        total_mtd_revenue: 0,
-        total_mtd_costs: 0,
-        total_mtd_profit: 0,
-        total_projected_revenue: 0,
-        total_per_lead_revenue: 0,
-        total_retainer_revenue: 0,
-      };
-      const timestamp = new Date();
-
-      setRevenueDashboard({
-        clients,
-        totals,
-        lastUpdated: timestamp,
-        loading: false,
-        isUsingCache: false,
-      });
-
-      // Cache the data
-      saveToCache(CACHE_KEYS.REVENUE_DATA, CACHE_KEYS.REVENUE_TIMESTAMP, { clients, totals }, timestamp);
+      if (result.success && result.data) {
+        setRevenueDashboard({
+          clients: result.data.clients,
+          totals: result.data.totals,
+          lastUpdated: result.timestamp,
+          loading: false,
+          isUsingCache: result.cached,
+          isFresh: result.fresh,
+          error: null,
+          warnings: result.warnings || [],
+          fetchDurationMs: result.fetchDurationMs,
+        });
+      } else {
+        setRevenueDashboard(prev => ({
+          ...prev,
+          clients: result.data?.clients || prev.clients,
+          totals: result.data?.totals || prev.totals,
+          lastUpdated: result.timestamp,
+          loading: false,
+          isUsingCache: result.cached,
+          isFresh: result.fresh,
+          error: result.error || 'Failed to fetch revenue data',
+          warnings: result.warnings || [],
+        }));
+      }
     } catch (error) {
       console.error('Error fetching Revenue data:', error);
-      setRevenueDashboard(prev => ({ ...prev, loading: false }));
+      setRevenueDashboard(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));
     }
   }, [revenueDashboard.clients.length]);
 
   const refreshRevenueDashboard = useCallback(async (force: boolean = true) => {
-    await fetchRevenueData(force);
-  }, [fetchRevenueData]);
+    await fetchRevenueDataInternal(force);
+  }, [fetchRevenueDataInternal]);
 
   // ============= Global Functions =============
 
   const refreshAll = useCallback(async () => {
     await Promise.all([
-      fetchKPIData(true),
-      fetchVolumeData(true),
-      fetchInfrastructureData(true),
-      fetchRevenueData(true),
+      fetchKPIDataInternal(true),
+      fetchVolumeDataInternal(true),
+      fetchInfrastructureDataInternal(true),
+      fetchRevenueDataInternal(true),
     ]);
-  }, [fetchKPIData, fetchVolumeData, fetchInfrastructureData, fetchRevenueData]);
+  }, [fetchKPIDataInternal, fetchVolumeDataInternal, fetchInfrastructureDataInternal, fetchRevenueDataInternal]);
 
   // ============= Initial Load & Hydration =============
 
@@ -519,10 +604,10 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
 
     // Fetch fresh data in background
-    fetchKPIData(false);
-    fetchVolumeData(false);
-    fetchInfrastructureData(false);
-    fetchRevenueData(false);
+    fetchKPIDataInternal(false);
+    fetchVolumeDataInternal(false);
+    fetchInfrastructureDataInternal(false);
+    fetchRevenueDataInternal(false);
 
     // Set up auto-refresh interval (1 hour)
     const intervalId = setInterval(() => {

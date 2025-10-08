@@ -109,20 +109,28 @@ serve(async (req) => {
     const workspaces = workspacesData.data || [];
     console.log(`Fetched ${workspaces.length} workspaces from Email Bison`);
 
-    // Fetch Email Bison stats using SEQUENTIAL workspace switching
-    console.log('Fetching Email Bison stats via sequential workspace switching (Supabase-only mode)...');
+    // Fetch Email Bison stats using PARALLEL workspace fetching with batching
+    console.log('Fetching Email Bison stats via parallel workspace fetching (batched, Supabase-backed)...');
 
     const clients: any[] = [];
 
-    // Loop through workspaces SEQUENTIALLY
-    for (const workspace of workspaces) {
+    // Filter eligible workspaces
+    const eligibleWorkspaces = workspaces.filter((workspace: any) => {
+      const registryClient = registryLookup[workspace.name];
+      if (!registryClient) {
+        console.log(`Skipping workspace "${workspace.name}" - not in active client registry`);
+        return false;
+      }
+      return true;
+    });
+
+    console.log(`Processing ${eligibleWorkspaces.length} eligible workspaces in parallel batches of 5...`);
+
+    // Helper function to fetch single workspace data
+    const fetchWorkspaceData = async (workspace: any) => {
       try {
-        // Check if workspace is active in client_registry
         const registryClient = registryLookup[workspace.name];
-        if (!registryClient) {
-          console.log(`Skipping workspace "${workspace.name}" - not in active client registry`);
-          continue;
-        }
+        if (!registryClient) return null;
 
         // Get all data from client_registry (no Airtable needed!)
         const clientName = registryClient.display_name || workspace.name;
@@ -132,7 +140,6 @@ serve(async (req) => {
         const pricePerLead = registryClient.price_per_lead || 0;
 
         // Switch to workspace
-        console.log(`Switching to workspace: ${workspace.name} (ID: ${workspace.id})`);
         const switchResponse = await fetch(
           `${EMAIL_BISON_BASE_URL}/workspaces/v1.1/switch-workspace`,
           {
@@ -147,23 +154,34 @@ serve(async (req) => {
         );
 
         if (!switchResponse.ok) {
-          console.error(`Failed to switch to workspace ${workspace.name}`);
-          continue;
+          console.error(`Failed to switch to workspace ${workspace.name}: ${switchResponse.status}`);
+          return null;
         }
 
-        // Fetch interested leads from Supabase client_leads table
-        const { data: leads, error: leadsError } = await supabase
-          .from('client_leads')
-          .select('date_received, interested')
-          .eq('workspace_name', workspace.name)
-          .eq('interested', true);
+        // Fetch interested leads from Supabase client_leads table (parallel with Email Bison fetch)
+        const [leadsData, mtdStats] = await Promise.all([
+          supabase
+            .from('client_leads')
+            .select('date_received, interested')
+            .eq('workspace_name', workspace.name)
+            .eq('interested', true),
+          fetch(
+            `${EMAIL_BISON_BASE_URL}/workspaces/v1.1/stats?start_date=${dateRanges.currentMonthStart}&end_date=${dateRanges.today}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${emailBisonApiKey}`,
+                'Accept': 'application/json',
+              },
+            }
+          ).then(r => r.json())
+        ]);
 
-        if (leadsError) {
-          console.error(`Error fetching leads for ${workspace.name}:`, leadsError);
+        if (leadsData.error) {
+          console.error(`Error fetching leads for ${workspace.name}:`, leadsData.error);
         }
 
         // Calculate metrics from Supabase leads using date_received
-        const allLeads = leads || [];
+        const allLeads = leadsData.data || [];
 
         const positiveRepliesMTD = allLeads.filter(l =>
           new Date(l.date_received) >= new Date(dateRanges.currentMonthStart)
@@ -193,20 +211,9 @@ serve(async (req) => {
           return dateReceived >= new Date(dateRanges.lastMonthStart) && dateReceived <= new Date(dateRanges.lastMonthEnd);
         }).length;
 
-        // Get email stats from Email Bison (still needed for volume metrics)
-        const mtdStats = await fetch(
-          `${EMAIL_BISON_BASE_URL}/workspaces/v1.1/stats?start_date=${dateRanges.currentMonthStart}&end_date=${dateRanges.today}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${emailBisonApiKey}`,
-              'Accept': 'application/json',
-            },
-          }
-        ).then(r => r.json());
-
         const emailsSent = mtdStats.data?.emails_sent || 0;
 
-        console.log(`${clientName}: MTD=${positiveRepliesMTD}, Last7=${positiveRepliesLast7Days}, Last30=${positiveRepliesLast30Days}, MonthlyKPI=${monthlyKPI}`);
+        console.log(`✓ ${clientName}: MTD=${positiveRepliesMTD}, KPI=${monthlyKPI}`);
 
         // Calculate projections and comparisons
         const daysElapsed = dateRanges.currentDay;
@@ -231,7 +238,7 @@ serve(async (req) => {
         const emailsDailyAvg = daysElapsed > 0 ? emailsSent / daysElapsed : 0;
         const projectionEmailsEOM = Math.round(emailsDailyAvg * daysInMonth);
 
-        clients.push({
+        return {
           id: registryClient.workspace_id.toString(),
           name: clientName,
 
@@ -273,11 +280,28 @@ serve(async (req) => {
           isAboveTarget: emailsSent >= monthlySendingTarget,
           isProjectedAboveTarget: projectionEmailsEOM >= monthlySendingTarget,
           payout: payout,
-        });
+        };
 
       } catch (error) {
-        console.error(`Error fetching stats for workspace ${workspace.name}:`, error);
+        console.error(`✗ Error fetching stats for workspace ${workspace.name}:`, error);
+        return null;
       }
+    };
+
+    // Process workspaces in parallel batches of 5 to avoid overwhelming the API
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < eligibleWorkspaces.length; i += BATCH_SIZE) {
+      const batch = eligibleWorkspaces.slice(i, i + BATCH_SIZE);
+      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(eligibleWorkspaces.length / BATCH_SIZE)} (${batch.length} workspaces)...`);
+
+      const batchResults = await Promise.all(
+        batch.map(workspace => fetchWorkspaceData(workspace))
+      );
+
+      // Add successful results to clients array
+      batchResults.forEach(result => {
+        if (result) clients.push(result);
+      });
     }
 
     console.log(`Processed ${clients.length} clients with Email Bison data`);

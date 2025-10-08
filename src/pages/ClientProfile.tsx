@@ -517,10 +517,10 @@ const ClientProfile: React.FC = () => {
                         <SelectValue placeholder="Select tier" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="low">Low (< 15k/mo)</SelectItem>
+                        <SelectItem value="low">Low (&lt; 15k/mo)</SelectItem>
                         <SelectItem value="medium">Medium (15-30k/mo)</SelectItem>
                         <SelectItem value="high">High (30-60k/mo)</SelectItem>
-                        <SelectItem value="enterprise">Enterprise (> 60k/mo)</SelectItem>
+                        <SelectItem value="enterprise">Enterprise (&gt; 60k/mo)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

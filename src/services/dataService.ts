@@ -16,7 +16,7 @@ import {
 
 const CACHE_TTL = {
   KPI: 2 * 60 * 1000,           // 2 minutes for high-priority KPI data
-  VOLUME: 2 * 60 * 1000,         // 2 minutes for volume data
+  VOLUME: 30 * 1000,            // 30 seconds for volume data (reduced for debugging)
   REVENUE: 5 * 60 * 1000,        // 5 minutes for revenue data
   INFRASTRUCTURE: 10 * 60 * 1000, // 10 minutes for infrastructure data
 } as const;

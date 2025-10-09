@@ -7,7 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const EMAIL_BISON_BASE_URL = 'https://send.maverickmarketingllc.com/api';
+const MAVERICK_BISON_BASE_URL = 'https://send.maverickmarketingllc.com/api';
+const LONGRUN_BISON_BASE_URL = 'https://send.longrun.agency/api';
 
 // Helper function to format date as YYYY-MM-DD
 const formatDate = (date: Date): string => {
@@ -45,11 +46,12 @@ serve(async (req) => {
   }
 
   try {
-    const emailBisonApiKey = Deno.env.get('EMAIL_BISON_API_KEY');
+    const maverickBisonApiKey = Deno.env.get('EMAIL_BISON_API_KEY');
+    const longrunBisonApiKey = Deno.env.get('LONG_RUN_BISON_API_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!emailBisonApiKey) {
+    if (!maverickBisonApiKey) {
       throw new Error('EMAIL_BISON_API_KEY not found');
     }
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -63,35 +65,10 @@ serve(async (req) => {
     const dateRanges = getDateRanges();
     console.log('Date ranges:', dateRanges);
 
-    // Fetch ALL workspaces from Email Bison (single call, no switching)
-    const workspacesResponse = await fetch(`${EMAIL_BISON_BASE_URL}/workspaces/v1.1`, {
-      headers: {
-        'Authorization': `Bearer ${emailBisonApiKey}`,
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!workspacesResponse.ok) {
-      throw new Error(`Email Bison API error: ${workspacesResponse.status}`);
-    }
-
-    const workspacesData = await workspacesResponse.json();
-    const workspaces = workspacesData.data || [];
-    console.log(`Fetched ${workspaces.length} workspaces from Email Bison`);
-
-    // Create a map of workspace names for quick lookup
-    const workspaceMap = new Map();
-    workspaces.forEach((ws: any) => {
-      workspaceMap.set(ws.name, {
-        id: ws.id,
-        name: ws.name,
-      });
-    });
-
-    // Fetch client settings from Supabase client_registry
+    // Fetch client settings from Supabase client_registry (with workspace-specific API keys)
     const { data: clientRegistry, error: registryError } = await supabase
       .from('client_registry')
-      .select('workspace_name, display_name, monthly_sending_target, is_active')
+      .select('workspace_name, display_name, monthly_sending_target, is_active, bison_workspace_id, bison_instance, bison_api_key')
       .eq('is_active', true);
 
     if (registryError) {
@@ -99,107 +76,154 @@ serve(async (req) => {
       throw registryError;
     }
 
-    // Create a map of client settings by workspace name
-    const clientSettingsMap = new Map();
+    // Create list of clients with their API keys and settings
+    // Using workspace-specific API keys is MORE RELIABLE than switching workspaces with master key
+    const clientsToFetch: any[] = [];
+
     (clientRegistry || []).forEach((client: any) => {
-      clientSettingsMap.set(client.workspace_name, {
+      // Skip clients without API keys or sending targets
+      if (!client.bison_api_key || !client.monthly_sending_target || client.monthly_sending_target === 0) {
+        console.log(`Skipping ${client.workspace_name} - missing API key or no sending target`);
+        return;
+      }
+
+      // Determine base URL from instance
+      const baseUrl = client.bison_instance === 'Long Run'
+        ? LONGRUN_BISON_BASE_URL
+        : MAVERICK_BISON_BASE_URL;
+
+      clientsToFetch.push({
+        workspaceName: client.workspace_name,
         displayName: client.display_name || client.workspace_name,
-        sendingTarget: client.monthly_sending_target || 0,
+        sendingTarget: client.monthly_sending_target,
+        apiKey: client.bison_api_key,
+        baseUrl: baseUrl,
+        workspaceId: client.bison_workspace_id,
+        instance: client.bison_instance,
       });
     });
 
     console.log(`Fetched ${clientRegistry.length} client records from Supabase client_registry`);
+    console.log(`Found ${clientsToFetch.length} clients with API keys and sending targets`);
 
-    // Fetch Email Bison stats using PARALLEL workspace fetching with batching
-    console.log('Fetching Email Bison stats via parallel workspace fetching (batched)...');
+    // Fetch Email Bison stats using workspace-specific API keys (NO workspace switching needed!)
+    console.log('Fetching Email Bison stats using workspace-specific API keys...');
 
     const clients: any[] = [];
 
-    // Filter workspaces that have settings and sending targets
-    const eligibleWorkspaces = workspaces.filter((workspace: any) => {
-      const settings = clientSettingsMap.get(workspace.name);
-      if (!settings || settings.sendingTarget === 0) {
-        console.log(`Skipping workspace "${workspace.name}" - no sending target in client_registry`);
-        return false;
-      }
-      return true;
-    });
-
-    console.log(`Processing ${eligibleWorkspaces.length} eligible workspaces in parallel batches of 5...`);
-
-    // Helper function to fetch single workspace data
-    const fetchWorkspaceData = async (workspace: any) => {
+    // Helper function to fetch data for a single client using their workspace-specific API key
+    const fetchClientData = async (client: any) => {
       try {
-        const settings = clientSettingsMap.get(workspace.name);
-        if (!settings) return null;
+        const { workspaceName, displayName, sendingTarget, apiKey, baseUrl } = client;
 
-        const clientName = settings.displayName;
-        const monthlySendingTarget = settings.sendingTarget;
+        console.log(`Fetching data for ${displayName}...`);
 
-        // Switch to workspace
-        const switchResponse = await fetch(
-          `${EMAIL_BISON_BASE_URL}/workspaces/v1.1/switch-workspace`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${emailBisonApiKey}`,
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ team_id: workspace.id }),
-          }
-        );
-
-        if (!switchResponse.ok) {
-          console.error(`Failed to switch to workspace ${workspace.name}: ${switchResponse.status}`);
-          return null;
-        }
-
-        // Fetch stats for different time periods from Email Bison (parallel within workspace)
-        const [mtdStats, todayStats, last7DaysStats, last30DaysStats] = await Promise.all([
+        // Fetch scheduled emails for today AND MTD stats in parallel
+        const [sendingScheduleResponse, mtdStats, last7DaysStats, last30DaysStats] = await Promise.all([
+          // Get today's scheduled emails using sending-schedules endpoint
           fetch(
-            `${EMAIL_BISON_BASE_URL}/workspaces/v1.1/stats?start_date=${dateRanges.mtdStart}&end_date=${dateRanges.today}`,
+            `${baseUrl}/campaigns/sending-schedules?day=today`,
             {
               headers: {
-                'Authorization': `Bearer ${emailBisonApiKey}`,
+                'Authorization': `Bearer ${apiKey}`,
                 'Accept': 'application/json',
               },
             }
           ).then(r => r.json()),
+          // Get MTD stats
           fetch(
-            `${EMAIL_BISON_BASE_URL}/workspaces/v1.1/stats?start_date=${dateRanges.today}&end_date=${dateRanges.today}`,
+            `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.mtdStart}&end_date=${dateRanges.today}`,
             {
               headers: {
-                'Authorization': `Bearer ${emailBisonApiKey}`,
+                'Authorization': `Bearer ${apiKey}`,
                 'Accept': 'application/json',
               },
             }
           ).then(r => r.json()),
+          // Get last 7 days stats
           fetch(
-            `${EMAIL_BISON_BASE_URL}/workspaces/v1.1/stats?start_date=${dateRanges.last7DaysStart}&end_date=${dateRanges.today}`,
+            `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.last7DaysStart}&end_date=${dateRanges.today}`,
             {
               headers: {
-                'Authorization': `Bearer ${emailBisonApiKey}`,
+                'Authorization': `Bearer ${apiKey}`,
                 'Accept': 'application/json',
               },
             }
           ).then(r => r.json()),
+          // Get last 30 days stats
           fetch(
-            `${EMAIL_BISON_BASE_URL}/workspaces/v1.1/stats?start_date=${dateRanges.last30DaysStart}&end_date=${dateRanges.today}`,
+            `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.last30DaysStart}&end_date=${dateRanges.today}`,
             {
               headers: {
-                'Authorization': `Bearer ${emailBisonApiKey}`,
+                'Authorization': `Bearer ${apiKey}`,
                 'Accept': 'application/json',
               },
             }
           ).then(r => r.json()),
         ]);
 
-        // Extract email volumes from Email Bison API
+        // Extract email volumes
         const emailsMTD = mtdStats.data?.emails_sent || 0;
-        const emailsToday = todayStats.data?.emails_sent || 0;
         const emailsLast7Days = last7DaysStats.data?.emails_sent || 0;
         const emailsLast30Days = last30DaysStats.data?.emails_sent || 0;
+
+        // Calculate scheduled emails for TODAY from sending-schedules endpoint
+        let emailsScheduledToday = 0;
+        try {
+          if (sendingScheduleResponse?.data && Array.isArray(sendingScheduleResponse.data)) {
+            // Sum up emails_being_sent across all campaigns
+            emailsScheduledToday = sendingScheduleResponse.data.reduce((total: number, item: any) => {
+              const scheduled = item?.emails_being_sent || 0;
+              return total + scheduled;
+            }, 0);
+            console.log(`✓ ${displayName}: ${emailsScheduledToday} emails scheduled for today across ${sendingScheduleResponse.data.length} campaigns`);
+          } else {
+            console.warn(`⚠ ${displayName}: Unexpected sending schedule response:`, sendingScheduleResponse);
+          }
+        } catch (scheduleError) {
+          console.error(`✗ Error parsing sending schedule for ${displayName}:`, scheduleError);
+        }
+
+        const emailsToday = emailsScheduledToday;
+        const monthlySendingTarget = sendingTarget;
+
+        // Data consistency validation checks
+        const validationIssues: string[] = [];
+
+        // Check for negative values (impossible)
+        if (emailsMTD < 0 || emailsToday < 0 || emailsLast7Days < 0 || emailsLast30Days < 0) {
+          validationIssues.push('Negative email counts detected');
+        }
+
+        // Check for logical consistency: MTD should not exceed last 30 days
+        if (emailsMTD > emailsLast30Days) {
+          validationIssues.push(`MTD (${emailsMTD}) exceeds Last 30 Days (${emailsLast30Days})`);
+        }
+
+        // NOTE: We no longer validate emailsToday > emailsMTD because emailsToday is now SCHEDULED (future)
+        // while emailsMTD is SENT (past). Scheduled can be higher than sent.
+        // Previously: emailsToday was sent count (subset of MTD), now it's scheduled count (independent metric)
+
+        // Check for logical consistency: Last 7 days should not exceed last 30 days
+        if (emailsLast7Days > emailsLast30Days) {
+          validationIssues.push(`Last 7 Days (${emailsLast7Days}) exceeds Last 30 Days (${emailsLast30Days})`);
+        }
+
+        // Check for absurdly high values (> 1 million per month is suspicious)
+        if (emailsMTD > 1000000) {
+          validationIssues.push(`Suspiciously high MTD value: ${emailsMTD}`);
+        }
+
+        // Check for absurdly high scheduled count (> 100k in one day is suspicious)
+        if (emailsToday > 100000) {
+          validationIssues.push(`Suspiciously high scheduled count for today: ${emailsToday}`);
+        }
+
+        // Log validation issues if any
+        if (validationIssues.length > 0) {
+          console.error(`⚠ Data validation issues for ${workspace.name}:`, validationIssues);
+          // Don't return null - just log the issues for monitoring
+        }
 
         // Calculate daily quota and status
         const dailyQuota = monthlySendingTarget / dateRanges.daysInMonth;
@@ -228,11 +252,11 @@ serve(async (req) => {
         // Calculate last 14 days (for week-before comparison)
         const emailsLast14Days = emailsLast7Days; // Placeholder - can add separate API call if needed
 
-        console.log(`✓ ${clientName}: MTD=${emailsMTD}, Projected=${projectedEOM}`);
+        console.log(`✓ ${displayName}: MTD=${emailsMTD}, Projected=${projectedEOM}, Scheduled Today=${emailsToday}`);
 
         return {
-          id: workspace.id,
-          name: clientName,
+          id: client.workspaceId,
+          name: displayName,
           emails: emailsMTD,
           emailsToday,
           emailsLast7Days,
@@ -255,25 +279,28 @@ serve(async (req) => {
         };
 
       } catch (error) {
-        console.error(`✗ Error fetching stats for workspace ${workspace.name}:`, error);
+        console.error(`✗ Error fetching stats for client ${client.displayName}:`, error);
         return null;
       }
     };
 
-    // Process workspaces in parallel batches of 5 to avoid overwhelming the API
-    const BATCH_SIZE = 5;
-    for (let i = 0; i < eligibleWorkspaces.length; i += BATCH_SIZE) {
-      const batch = eligibleWorkspaces.slice(i, i + BATCH_SIZE);
-      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(eligibleWorkspaces.length / BATCH_SIZE)} (${batch.length} workspaces)...`);
+    // Process all clients using their workspace-specific API keys
+    // No workspace switching needed! Much faster and more reliable.
+    console.log(`Processing ${clientsToFetch.length} clients with workspace-specific API keys...`);
 
-      const batchResults = await Promise.all(
-        batch.map(workspace => fetchWorkspaceData(workspace))
-      );
+    for (let i = 0; i < clientsToFetch.length; i++) {
+      const client = clientsToFetch[i];
+      console.log(`[${i + 1}/${clientsToFetch.length}] Processing ${client.displayName}...`);
 
-      // Add successful results to clients array
-      batchResults.forEach(result => {
-        if (result) clients.push(result);
-      });
+      const result = await fetchClientData(client);
+      if (result) {
+        clients.push(result);
+      }
+
+      // Small delay between requests to be respectful to the API
+      if (i < clientsToFetch.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
 
     // Sort clients: On Pace → Near Target → Behind Pace, then 0 emails at bottom

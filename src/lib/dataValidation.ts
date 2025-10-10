@@ -53,24 +53,18 @@ export const VolumeClientSchema = z.object({
 });
 
 /**
- * Revenue Client Data Schema
+ * Revenue Client Data Schema (MTD-focused)
  * Validates data from revenue-analytics Edge Function
  */
 export const RevenueClientSchema = z.object({
   workspace_name: z.string().min(1, "Workspace name is required"),
   billing_type: z.enum(['per_lead', 'retainer']),
+  // MTD Metrics
   current_month_leads: z.number().int().nonnegative(),
   current_month_revenue: z.number().nonnegative(),
   current_month_costs: z.number().nonnegative(),
   current_month_profit: z.number(),
-  projected_leads: z.number().int().nonnegative(),
-  projected_revenue: z.number().nonnegative(),
-  projected_profit: z.number(),
-  last_month_leads: z.number().int().nonnegative(),
-  last_month_revenue: z.number().nonnegative(),
-  last_month_profit: z.number(),
-  mom_revenue_change: z.number(),
-  mom_profit_change: z.number(),
+  // Profitability
   profit_margin: z.number(),
   price_per_lead: z.number().nonnegative(),
   retainer_amount: z.number().nonnegative(),

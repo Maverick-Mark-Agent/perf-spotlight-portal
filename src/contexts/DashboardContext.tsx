@@ -64,18 +64,12 @@ interface InfrastructureFilters {
 interface RevenueClientData {
   workspace_name: string;
   billing_type: 'per_lead' | 'retainer';
+  // MTD Metrics
   current_month_leads: number;
   current_month_revenue: number;
   current_month_costs: number;
   current_month_profit: number;
-  projected_leads: number;
-  projected_revenue: number;
-  projected_profit: number;
-  last_month_leads: number;
-  last_month_revenue: number;
-  last_month_profit: number;
-  mom_revenue_change: number;
-  mom_profit_change: number;
+  // Profitability
   profit_margin: number;
   price_per_lead: number;
   retainer_amount: number;
@@ -86,9 +80,12 @@ interface RevenueTotals {
   total_mtd_revenue: number;
   total_mtd_costs: number;
   total_mtd_profit: number;
-  total_projected_revenue: number;
+  total_mtd_leads: number;
   total_per_lead_revenue: number;
   total_retainer_revenue: number;
+  per_lead_count: number;
+  retainer_count: number;
+  overall_profit_margin: number;
 }
 
 interface RevenueDashboardState {
@@ -254,9 +251,12 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       total_mtd_revenue: 0,
       total_mtd_costs: 0,
       total_mtd_profit: 0,
-      total_projected_revenue: 0,
+      total_mtd_leads: 0,
       total_per_lead_revenue: 0,
       total_retainer_revenue: 0,
+      per_lead_count: 0,
+      retainer_count: 0,
+      overall_profit_margin: 0,
     },
     lastUpdated: null,
     loading: true,

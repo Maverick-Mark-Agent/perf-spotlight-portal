@@ -36,7 +36,7 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log('Fetching revenue analytics...');
+    console.log('Fetching MTD revenue analytics...');
 
     // Step 1: Get client pricing from client_registry
     console.log('📥 Fetching client pricing from client_registry...');
@@ -59,118 +59,92 @@ serve(async (req) => {
         price_per_lead: parseFloat(client.price_per_lead) || 0,
         retainer_amount: parseFloat(client.retainer_amount) || 0,
         workspace_id: client.workspace_id,
-        display_name: client.display_name, // Add display_name from registry
+        display_name: client.display_name,
       };
     });
 
-    // Step 2: Get KPI data from hybrid-workspace-analytics using HTTP fetch (forward auth)
-    console.log('📥 Fetching KPI data from hybrid-workspace-analytics...');
-    const kpiResponse = await fetch(`${supabaseUrl}/functions/v1/hybrid-workspace-analytics`, {
-      headers: {
-        'Authorization': authHeader || '',
-        'Content-Type': 'application/json',
-      },
-    });
+    // Step 2: Get MTD KPI data from client_metrics (real-time database query)
+    console.log('📥 Fetching MTD KPI data from client_metrics...');
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-    if (!kpiResponse.ok) {
-      throw new Error(`Error fetching KPI data: ${kpiResponse.status} ${kpiResponse.statusText}`);
+    const { data: metricsData, error: metricsError } = await supabase
+      .from('client_metrics')
+      .select('*')
+      .eq('metric_date', today)
+      .eq('metric_type', 'mtd');
+
+    if (metricsError) {
+      throw new Error(`Error fetching client_metrics: ${metricsError.message}`);
     }
 
-    const kpiData = await kpiResponse.json();
-    const kpiClients = kpiData?.clients || [];
-    console.log(`  Found ${kpiClients.length} clients from KPI dashboard`);
+    console.log(`  Found ${metricsData?.length || 0} client metric records for today`);
 
-    // Calculate days remaining in month for projections
-    const now = new Date();
-    const currentDay = now.getDate();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const daysRemaining = daysInMonth - currentDay;
-    const monthProgress = currentDay / daysInMonth;
+    // Step 3: Get current month costs from client_costs table
+    const currentMonthYear = new Date().toISOString().slice(0, 7); // YYYY-MM
+    console.log(`📥 Fetching costs for ${currentMonthYear}...`);
 
-    // Process each client with revenue calculations
-    const revenueClients = kpiClients.map(client => {
-      // Look up pricing from registry (exact workspace name match)
-      const pricing = pricingLookup[client.name];
+    const { data: costsData, error: costsError } = await supabase
+      .from('client_costs')
+      .select('*')
+      .eq('month_year', currentMonthYear);
+
+    if (costsError && costsError.code !== 'PGRST116') { // Ignore "not found" errors
+      console.warn(`⚠️ Error fetching costs (table may not exist yet): ${costsError.message}`);
+    }
+
+    // Build costs lookup
+    const costsLookup: Record<string, number> = {};
+    (costsData || []).forEach(cost => {
+      costsLookup[cost.workspace_name] = parseFloat(cost.total_costs) || 0;
+    });
+
+    // Process each client with MTD revenue calculations
+    const revenueClients = (metricsData || []).map(metric => {
+      const workspaceName = metric.workspace_name;
+
+      // Look up pricing from registry
+      const pricing = pricingLookup[workspaceName];
 
       if (!pricing) {
-        console.log(`⚠️ No pricing found in client_registry for "${client.name}"`);
+        console.log(`⚠️ No pricing found in client_registry for "${workspaceName}"`);
         return null;
       }
 
-      console.log(`✅ Matched "${client.name}" → ${pricing.billing_type} → $${pricing.price_per_lead || pricing.retainer_amount}`);
+      console.log(`✅ Processing "${workspaceName}" → ${pricing.billing_type} → $${pricing.price_per_lead || pricing.retainer_amount}`);
 
-      // Current month billable leads (from KPI dashboard - these are interested leads)
-      const currentMonthLeads = client.leadsGenerated || 0;
+      // MTD billable leads (interested leads)
+      const currentMonthLeads = metric.interested_replies_mtd || 0;
 
-      // Calculate revenue based on billing type
+      // Calculate MTD revenue based on billing type
       let currentMonthRevenue = 0;
       if (pricing.billing_type === 'retainer') {
+        // Retainer: fixed monthly amount
         currentMonthRevenue = pricing.retainer_amount;
       } else {
-        // Per-lead billing
+        // Per-lead: price per lead * MTD interested leads
         currentMonthRevenue = currentMonthLeads * pricing.price_per_lead;
       }
 
-      // Project end-of-month values
-      let projectedLeads = currentMonthLeads;
-      let projectedRevenue = currentMonthRevenue;
+      // Get MTD costs (default to 0 if not found)
+      const currentMonthCosts = costsLookup[workspaceName] || 0;
 
-      if (pricing.billing_type === 'per_lead' && monthProgress > 0) {
-        // Project based on current pace
-        projectedLeads = Math.round(currentMonthLeads / monthProgress);
-        projectedRevenue = projectedLeads * pricing.price_per_lead;
-      }
-
-      // TODO: Fetch costs from client_costs table (placeholder for now)
-      const currentMonthCosts = 0; // Will be from database
-      const projectedCosts = 0;
-
-      // Calculate profit
+      // Calculate MTD profit
       const currentMonthProfit = currentMonthRevenue - currentMonthCosts;
-      const projectedProfit = projectedRevenue - projectedCosts;
 
       // Profit margin (avoid division by zero)
       const profitMargin = currentMonthRevenue > 0
         ? (currentMonthProfit / currentMonthRevenue) * 100
         : 0;
 
-      // TODO: Fetch last month data from monthly_revenue_snapshots (placeholder)
-      const lastMonthRevenue = 0;
-      const lastMonthProfit = 0;
-      const lastMonthLeads = 0;
-
-      // MoM comparisons
-      const momRevenueChange = lastMonthRevenue > 0
-        ? ((currentMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
-        : 0;
-
-      const momProfitChange = lastMonthProfit > 0
-        ? ((currentMonthProfit - lastMonthProfit) / lastMonthProfit) * 100
-        : 0;
-
       return {
-        workspace_name: pricing.display_name || client.name, // Use display_name if available
+        workspace_name: pricing.display_name || workspaceName,
         billing_type: pricing.billing_type,
 
-        // Current Month (MTD)
+        // MTD Metrics
         current_month_leads: currentMonthLeads,
         current_month_revenue: currentMonthRevenue,
         current_month_costs: currentMonthCosts,
         current_month_profit: currentMonthProfit,
-
-        // Projections (EOM)
-        projected_leads: projectedLeads,
-        projected_revenue: projectedRevenue,
-        projected_profit: projectedProfit,
-
-        // Last Month
-        last_month_leads: lastMonthLeads,
-        last_month_revenue: lastMonthRevenue,
-        last_month_profit: lastMonthProfit,
-
-        // Comparisons
-        mom_revenue_change: momRevenueChange,
-        mom_profit_change: momProfitChange,
 
         // Profitability
         profit_margin: profitMargin,
@@ -179,8 +153,8 @@ serve(async (req) => {
       };
     }).filter(client => client !== null);
 
-    // Sort by profitability (descending)
-    revenueClients.sort((a, b) => b.current_month_profit - a.current_month_profit);
+    // Sort by revenue (descending) - highest revenue first
+    revenueClients.sort((a, b) => b.current_month_revenue - a.current_month_revenue);
 
     // Add rank
     revenueClients.forEach((client, index) => {
@@ -192,30 +166,40 @@ serve(async (req) => {
       total_mtd_revenue: acc.total_mtd_revenue + client.current_month_revenue,
       total_mtd_costs: acc.total_mtd_costs + client.current_month_costs,
       total_mtd_profit: acc.total_mtd_profit + client.current_month_profit,
-      total_projected_revenue: acc.total_projected_revenue + client.projected_revenue,
+      total_mtd_leads: acc.total_mtd_leads + client.current_month_leads,
       total_per_lead_revenue: acc.total_per_lead_revenue + (client.billing_type === 'per_lead' ? client.current_month_revenue : 0),
       total_retainer_revenue: acc.total_retainer_revenue + (client.billing_type === 'retainer' ? client.current_month_revenue : 0),
+      per_lead_count: acc.per_lead_count + (client.billing_type === 'per_lead' ? 1 : 0),
+      retainer_count: acc.retainer_count + (client.billing_type === 'retainer' ? 1 : 0),
     }), {
       total_mtd_revenue: 0,
       total_mtd_costs: 0,
       total_mtd_profit: 0,
-      total_projected_revenue: 0,
+      total_mtd_leads: 0,
       total_per_lead_revenue: 0,
       total_retainer_revenue: 0,
+      per_lead_count: 0,
+      retainer_count: 0,
     });
 
-    console.log(`✅ Processed ${revenueClients.length} clients with revenue data`);
+    // Calculate overall profit margin
+    totals.overall_profit_margin = totals.total_mtd_revenue > 0
+      ? (totals.total_mtd_profit / totals.total_mtd_revenue) * 100
+      : 0;
+
+    console.log(`✅ Processed ${revenueClients.length} clients with MTD revenue data`);
     console.log(`💰 Total MTD Revenue: $${totals.total_mtd_revenue.toFixed(2)}`);
+    console.log(`💵 Per-Lead Revenue: $${totals.total_per_lead_revenue.toFixed(2)} (${totals.per_lead_count} clients)`);
+    console.log(`💵 Retainer Revenue: $${totals.total_retainer_revenue.toFixed(2)} (${totals.retainer_count} clients)`);
+    console.log(`📈 Total MTD Profit: $${totals.total_mtd_profit.toFixed(2)} (${totals.overall_profit_margin.toFixed(1)}% margin)`);
 
     return new Response(
       JSON.stringify({
         clients: revenueClients,
         totals,
         meta: {
-          current_day: currentDay,
-          days_in_month: daysInMonth,
-          days_remaining: daysRemaining,
-          month_progress: Math.round(monthProgress * 100),
+          month_year: currentMonthYear,
+          snapshot_date: today,
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -106,6 +106,9 @@ const RevenueDashboard = () => {
                 <div>
                   <p className="text-sm text-muted-foreground font-medium">MTD Revenue</p>
                   <p className="text-3xl font-bold text-foreground">${totals.total_mtd_revenue.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {totals.total_mtd_leads || 0} billable leads
+                  </p>
                 </div>
                 <DollarSign className="h-8 w-8 text-primary" />
               </div>
@@ -116,10 +119,13 @@ const RevenueDashboard = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground font-medium">MTD Profit</p>
-                  <p className="text-3xl font-bold text-success">${totals.total_mtd_profit.toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground font-medium">Per-Lead Revenue</p>
+                  <p className="text-3xl font-bold text-success">${totals.total_per_lead_revenue.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {totals.per_lead_count || 0} clients
+                  </p>
                 </div>
-                <TrendingUp className="h-8 w-8 text-success" />
+                <Users className="h-8 w-8 text-success" />
               </div>
             </CardContent>
           </Card>
@@ -128,8 +134,11 @@ const RevenueDashboard = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground font-medium">Projected Revenue</p>
-                  <p className="text-3xl font-bold text-info">${totals.total_projected_revenue.toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground font-medium">Retainer Revenue</p>
+                  <p className="text-3xl font-bold text-info">${totals.total_retainer_revenue.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {totals.retainer_count || 0} clients
+                  </p>
                 </div>
                 <Target className="h-8 w-8 text-info" />
               </div>
@@ -140,10 +149,13 @@ const RevenueDashboard = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground font-medium">Avg Profit Margin</p>
-                  <p className="text-3xl font-bold text-foreground">{avgProfitMargin.toFixed(1)}%</p>
+                  <p className="text-sm text-muted-foreground font-medium">MTD Profit</p>
+                  <p className="text-3xl font-bold text-foreground">${totals.total_mtd_profit.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {totals.overall_profit_margin?.toFixed(1) || '0.0'}% margin
+                  </p>
                 </div>
-                <Percent className="h-8 w-8 text-primary" />
+                <TrendingUp className="h-8 w-8 text-primary" />
               </div>
             </CardContent>
           </Card>
@@ -251,7 +263,7 @@ const RevenueDashboard = () => {
           <TabsContent value="breakdown" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Detailed Client Breakdown</CardTitle>
+                <CardTitle>MTD Client Revenue Breakdown</CardTitle>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -261,8 +273,9 @@ const RevenueDashboard = () => {
                       <TableHead>Type</TableHead>
                       <TableHead className="text-right">MTD Leads</TableHead>
                       <TableHead className="text-right">MTD Revenue</TableHead>
-                      <TableHead className="text-right">Projected</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">MTD Costs</TableHead>
+                      <TableHead className="text-right">MTD Profit</TableHead>
+                      <TableHead>Margin</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -276,10 +289,11 @@ const RevenueDashboard = () => {
                         </TableCell>
                         <TableCell className="text-right">{client.current_month_leads}</TableCell>
                         <TableCell className="text-right">${client.current_month_revenue.toLocaleString()}</TableCell>
-                        <TableCell className="text-right">${client.projected_revenue.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">${client.current_month_costs.toLocaleString()}</TableCell>
+                        <TableCell className="text-right text-success">${client.current_month_profit.toLocaleString()}</TableCell>
                         <TableCell>
                           <Badge variant={client.profit_margin > 50 ? 'default' : 'secondary'}>
-                            {client.profit_margin.toFixed(1)}% margin
+                            {client.profit_margin.toFixed(1)}%
                           </Badge>
                         </TableCell>
                       </TableRow>

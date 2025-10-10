@@ -228,7 +228,7 @@ export default function ZipChoroplethMap({ zipData, loading, onZipClick }: ZipCh
           data={plotData}
           layout={{
             mapbox: {
-              style: "open-street-map",
+              style: "carto-positron",
               center: { lat: 37.0902, lon: -95.7129 }, // Center of USA
               zoom: 3.5,
             },
@@ -241,6 +241,7 @@ export default function ZipChoroplethMap({ zipData, loading, onZipClick }: ZipCh
               color: "#ffffff",
             },
             hovermode: "closest",
+            showlegend: false,
           }}
           config={{
             displayModeBar: true,
@@ -249,8 +250,15 @@ export default function ZipChoroplethMap({ zipData, loading, onZipClick }: ZipCh
             doubleClick: "reset",
             modeBarButtonsToRemove: ["lasso2d", "select2d"],
             responsive: true,
+            toImageButtonOptions: {
+              format: 'png',
+              filename: 'zip_code_map',
+              height: 700,
+              width: 1200,
+            },
           }}
           style={{ width: "100%", height: "100%" }}
+          useResizeHandler={true}
           onClick={(event: any) => {
             if (onZipClick && event.points && event.points[0]) {
               const zipCode = event.points[0].location;

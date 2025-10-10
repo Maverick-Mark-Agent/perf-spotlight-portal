@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import ZipVisualization, { type ZipData } from "@/components/ZipVisualization";
-import ZipChoroplethMap from "@/components/ZipChoroplethMap";
+import ZipChoroplethLeaflet from "@/components/ZipChoroplethLeaflet";
 import ZipAssignmentModal from "@/components/ZipAssignmentModal";
 import BulkZipAssignmentModal from "@/components/BulkZipAssignmentModal";
 import AddAgencyModal from "@/components/AddAgencyModal";
@@ -415,7 +415,7 @@ export default function ZipDashboard() {
         {/* Choropleth Map */}
         {!loading && !error && filteredZipData.length > 0 && (
           <div className="mb-6">
-            <ZipChoroplethMap
+            <ZipChoroplethLeaflet
               zipData={filteredZipData}
               loading={loading}
               onZipClick={(zip) => {

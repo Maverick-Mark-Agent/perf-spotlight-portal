@@ -7,24 +7,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const EMAIL_BISON_BASE_URL = 'https://send.maverickmarketingllc.com/api';
-
-// Helper function to format date as YYYY-MM-DD
-const formatDate = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
-
-// Get date ranges for different periods
-const getDateRanges = () => {
+// Get current date info
+const getCurrentDateInfo = () => {
   const today = new Date();
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const year = today.getFullYear();
+  const month = today.getMonth();
 
-  return {
-    today: formatDate(today),
-    mtdStart: formatDate(firstOfMonth),
-    daysInMonth: new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate(),
-    currentDay: today.getDate(),
-  };
+  const todayStr = today.toISOString().split('T')[0];
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysElapsed = today.getDate();
+
+  return { todayStr, daysInMonth, daysElapsed };
 };
 
 // Format number with commas
@@ -33,29 +26,16 @@ const formatNumber = (num: number): string => {
 };
 
 // Generate Slack message blocks
-const generateSlackMessage = (clients: any[], dateRanges: any) => {
+const generateSlackMessage = (clients: any[]) => {
   const totalEmails = clients.reduce((sum, c) => sum + c.emails, 0);
-  const totalTargets = clients.reduce((sum, c) => sum + c.target, 0);
-  const overallPercentage = totalTargets > 0 ? ((totalEmails / totalTargets) * 100).toFixed(1) : '0.0';
-
-  const onTrackCount = clients.filter(c => c.isProjectedAboveTarget).length;
-  const criticalClients = clients.filter(c => c.emails > 0 && c.projectedPercentage < 80).slice(0, 5);
-  const topPerformers = clients.filter(c => c.isProjectedAboveTarget).slice(0, 5);
+  const totalDailyGoal = clients.reduce((sum, c) => sum + c.dailyQuota, 0);
 
   const blocks: any[] = [
-    {
-      type: "header",
-      text: {
-        type: "plain_text",
-        text: "📊 Sending Volume Report - Month to Date",
-        emoji: true
-      }
-    },
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Overall Progress:* ${overallPercentage}% (${formatNumber(totalEmails)} / ${formatNumber(totalTargets)})\n*On Track to Meet Target:* ${onTrackCount} / ${clients.length} clients\n*Day ${dateRanges.currentDay} of ${dateRanges.daysInMonth}*`
+        text: `📧 *${formatNumber(totalEmails)}* emails going out today\n🎯 *Total Daily Goal:* ${formatNumber(Math.round(totalDailyGoal))} emails`
       }
     },
     {
@@ -63,61 +43,16 @@ const generateSlackMessage = (clients: any[], dateRanges: any) => {
     }
   ];
 
-  // Critical clients section
-  if (criticalClients.length > 0) {
+  // Add each client's status
+  clients.forEach((client) => {
+    const status = client.dailyAverage >= client.dailyQuota ? '✅' : '⚠️';
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*🚨 Critical Clients (Behind Pace):*"
+        text: `${status} *${client.name}*: ${formatNumber(client.dailyAverage)} emails going out vs ${formatNumber(client.dailyQuota)} needed`
       }
     });
-
-    criticalClients.forEach((client) => {
-      const emoji = client.projectedPercentage < 50 ? '🔴' : '🟡';
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `${emoji} *${client.name}*\n• Current: ${formatNumber(client.emails)} (${client.targetPercentage.toFixed(1)}%)\n• Projected: ${formatNumber(client.projection)} (${client.projectedPercentage.toFixed(1)}% of target)\n• Need/day: ${formatNumber(client.dailyQuota)}`
-        }
-      });
-    });
-
-    blocks.push({
-      type: "divider"
-    });
-  }
-
-  // Top performers section
-  if (topPerformers.length > 0) {
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*✅ Top Performers (On Track):*"
-      }
-    });
-
-    topPerformers.forEach((client) => {
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `🟢 *${client.name}*\n• Current: ${formatNumber(client.emails)} (${client.targetPercentage.toFixed(1)}%)\n• Projected: ${formatNumber(client.projection)} (${client.projectedPercentage.toFixed(1)}% of target)`
-        }
-      });
-    });
-  }
-
-  blocks.push({
-    type: "context",
-    elements: [
-      {
-        type: "mrkdwn",
-        text: `_Report generated: ${new Date().toLocaleString()}_`
-      }
-    ]
   });
 
   return { blocks };
@@ -129,14 +64,10 @@ serve(async (req) => {
   }
 
   try {
-    const emailBisonApiKey = Deno.env.get('EMAIL_BISON_API_KEY');
     const slackWebhookUrl = Deno.env.get('SLACK_VOLUME_WEBHOOK_URL');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    if (!emailBisonApiKey) {
-      throw new Error('EMAIL_BISON_API_KEY not found');
-    }
     if (!slackWebhookUrl) {
       throw new Error('SLACK_VOLUME_WEBHOOK_URL not found in Supabase secrets');
     }
@@ -146,153 +77,57 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log('Fetching volume dashboard data for Slack...');
+    console.log('Fetching volume data from database for Slack...');
 
-    const dateRanges = getDateRanges();
+    const { todayStr, daysInMonth, daysElapsed } = getCurrentDateInfo();
 
-    // Fetch ALL workspaces from Email Bison
-    const workspacesResponse = await fetch(`${EMAIL_BISON_BASE_URL}/workspaces/v1.1`, {
-      headers: {
-        'Authorization': `Bearer ${emailBisonApiKey}`,
-        'Accept': 'application/json',
-      },
-    });
+    // Query client_metrics with client_registry JOIN - same as Volume Dashboard
+    const { data: metrics, error } = await supabase
+      .from('client_metrics')
+      .select(`
+        *,
+        client_registry!inner(
+          workspace_name,
+          display_name,
+          monthly_sending_target,
+          daily_sending_target,
+          is_active
+        )
+      `)
+      .eq('metric_type', 'mtd')
+      .eq('metric_date', todayStr)
+      .eq('client_registry.is_active', true)
+      .order('emails_sent_mtd', { ascending: false });
 
-    if (!workspacesResponse.ok) {
-      throw new Error(`Email Bison API error: ${workspacesResponse.status}`);
+    if (error) {
+      console.error('Database error:', error);
+      throw error;
     }
 
-    const workspacesData = await workspacesResponse.json();
-    const workspaces = workspacesData.data || [];
-
-    // Fetch client settings from Supabase client_registry
-    const { data: clientRegistry, error: registryError } = await supabase
-      .from('client_registry')
-      .select('workspace_name, display_name, monthly_sending_target, is_active')
-      .eq('is_active', true);
-
-    if (registryError) {
-      console.error('Error fetching client registry:', registryError);
-      throw registryError;
+    if (!metrics || metrics.length === 0) {
+      console.warn('No MTD data found for today:', todayStr);
+      throw new Error('No data available - metrics may need to be synced');
     }
 
-    // Create a map of client settings by workspace name
-    const clientSettingsMap = new Map();
-    (clientRegistry || []).forEach((client: any) => {
-      clientSettingsMap.set(client.workspace_name, {
-        displayName: client.display_name || client.workspace_name,
-        sendingTarget: client.monthly_sending_target || 0,
-      });
-    });
+    console.log(`Found ${metrics.length} clients with MTD data`);
 
-    // Fetch Email Bison stats using SEQUENTIAL workspace switching
-    const clients: any[] = [];
+    // Transform database rows to match the format expected by Slack message
+    const clients = metrics.map((row: any) => {
+      const registry = row.client_registry;
+      const emailsToday = row.emails_scheduled_today || 0; // SAME as Volume Dashboard
+      const emailsMTD = row.emails_sent_mtd || 0;
+      const dailyTarget = registry.daily_sending_target || 0;
 
-    for (const workspace of workspaces) {
-      try {
-        const settings = clientSettingsMap.get(workspace.name);
-
-        // Skip if no settings or no sending target
-        if (!settings || settings.sendingTarget === 0) {
-          continue;
-        }
-
-        const clientName = settings.displayName;
-        const monthlySendingTarget = settings.sendingTarget;
-
-        // Switch to workspace
-        const switchResponse = await fetch(
-          `${EMAIL_BISON_BASE_URL}/workspaces/v1.1/switch-workspace`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${emailBisonApiKey}`,
-              'Accept': 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ team_id: workspace.id }),
-          }
-        );
-
-        if (!switchResponse.ok) {
-          console.error(`Failed to switch to workspace ${workspace.name}`);
-          continue;
-        }
-
-        // Fetch MTD stats
-        const mtdStatsResponse = await fetch(
-          `${EMAIL_BISON_BASE_URL}/workspaces/v1.1/stats?start_date=${dateRanges.mtdStart}&end_date=${dateRanges.today}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${emailBisonApiKey}`,
-              'Accept': 'application/json',
-            },
-          }
-        );
-
-        const mtdStats = await mtdStatsResponse.json();
-        const emailsMTD = mtdStats.data?.emails_sent || 0;
-
-        // Calculate daily quota and status
-        const dailyQuota = monthlySendingTarget / dateRanges.daysInMonth;
-        const daysElapsed = dateRanges.currentDay;
-
-        // Calculate projection
-        const dailyAverage = daysElapsed > 0 ? emailsMTD / daysElapsed : 0;
-        const projectedEOM = Math.round(dailyAverage * dateRanges.daysInMonth);
-
-        const targetPercentage = monthlySendingTarget > 0
-          ? (emailsMTD / monthlySendingTarget) * 100
-          : 0;
-
-        const projectedPercentage = monthlySendingTarget > 0
-          ? (projectedEOM / monthlySendingTarget) * 100
-          : 0;
-
-        const isProjectedAboveTarget = projectedEOM >= monthlySendingTarget;
-
-        clients.push({
-          name: clientName,
-          emails: emailsMTD,
-          target: monthlySendingTarget,
-          projection: projectedEOM,
-          targetPercentage,
-          projectedPercentage,
-          isProjectedAboveTarget,
-          dailyQuota: Math.round(dailyQuota),
-        });
-
-      } catch (error) {
-        console.error(`Error fetching stats for workspace ${workspace.name}:`, error);
-      }
-    }
-
-    // Sort clients by projection status
-    clients.sort((a: any, b: any) => {
-      if (a.emails === 0 && b.emails !== 0) return 1;
-      if (a.emails !== 0 && b.emails === 0) return -1;
-
-      const getCategory = (client: any) => {
-        if (client.projectedPercentage >= 100) return 1;
-        if (client.projectedPercentage >= 80) return 2;
-        return 3;
+      return {
+        name: registry.display_name || registry.workspace_name,
+        emails: emailsMTD,
+        dailyQuota: dailyTarget,
+        dailyAverage: emailsToday,
       };
-
-      const categoryA = getCategory(a);
-      const categoryB = getCategory(b);
-
-      if (categoryA !== categoryB) {
-        return categoryA - categoryB;
-      }
-
-      if (categoryA === 1) {
-        return b.targetPercentage - a.targetPercentage;
-      }
-      return a.targetPercentage - b.targetPercentage;
     });
 
     // Generate and send Slack message
-    const slackMessage = generateSlackMessage(clients, dateRanges);
+    const slackMessage = generateSlackMessage(clients);
 
     console.log('Sending message to Slack...');
     const slackResponse = await fetch(slackWebhookUrl, {
@@ -313,7 +148,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Slack message sent successfully (using Supabase client_registry)',
+        message: 'Slack message sent successfully (using database metrics)',
         clientsProcessed: clients.length
       }),
       {

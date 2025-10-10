@@ -112,8 +112,8 @@ serve(async (req) => {
 
       console.log(`✅ Processing "${workspaceName}" → ${pricing.billing_type} → $${pricing.price_per_lead || pricing.retainer_amount}`);
 
-      // MTD billable leads (interested leads)
-      const currentMonthLeads = metric.interested_replies_mtd || 0;
+      // MTD billable leads (positive/interested replies)
+      const currentMonthLeads = metric.positive_replies_mtd || 0;
 
       // Calculate MTD revenue based on billing type
       let currentMonthRevenue = 0;

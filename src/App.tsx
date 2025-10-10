@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { DashboardProvider } from "@/contexts/DashboardContext";
+import { MainLayout } from "@/components/layout/MainLayout";
 import HomePage from "./pages/HomePage";
 import KPIDashboard from "./pages/KPIDashboard";
 import KPITestPage from "./pages/KPITestPage";
@@ -32,25 +33,27 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/kpi-dashboard" element={<KPIDashboard />} />
-              <Route path="/kpi-test" element={<KPITestPage />} />
-              <Route path="/email-accounts" element={<EmailAccountsPage />} />
-              <Route path="/volume-dashboard" element={<VolumeDashboard />} />
-              <Route path="/billing" element={<BillingPage />} />
-              <Route path="/revenue-dashboard" element={<RevenueDashboard />} />
-              <Route path="/client-portal" element={<ClientPortalHub />} />
-              <Route path="/client-portal/:workspace" element={<ClientPortalPage />} />
-              <Route path="/zip-dashboard" element={<ZipDashboard />} />
-              <Route path="/roi-dashboard" element={<ROIDashboard />} />
-              <Route path="/rollout-progress" element={<RolloutProgress />} />
-              <Route path="/contact-pipeline" element={<ContactPipelineDashboard />} />
-              <Route path="/client-management" element={<ClientManagement />} />
-              <Route path="/client-management/:workspaceId" element={<ClientProfile />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
+            <MainLayout>
+              <Routes>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/kpi-dashboard" element={<KPIDashboard />} />
+                <Route path="/kpi-test" element={<KPITestPage />} />
+                <Route path="/email-accounts" element={<EmailAccountsPage />} />
+                <Route path="/volume-dashboard" element={<VolumeDashboard />} />
+                <Route path="/billing" element={<BillingPage />} />
+                <Route path="/revenue-dashboard" element={<RevenueDashboard />} />
+                <Route path="/client-portal" element={<ClientPortalHub />} />
+                <Route path="/client-portal/:workspace" element={<ClientPortalPage />} />
+                <Route path="/zip-dashboard" element={<ZipDashboard />} />
+                <Route path="/roi-dashboard" element={<ROIDashboard />} />
+                <Route path="/rollout-progress" element={<RolloutProgress />} />
+                <Route path="/contact-pipeline" element={<ContactPipelineDashboard />} />
+                <Route path="/client-management" element={<ClientManagement />} />
+                <Route path="/client-management/:workspaceId" element={<ClientProfile />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </MainLayout>
           </BrowserRouter>
         </TooltipProvider>
       </DashboardProvider>

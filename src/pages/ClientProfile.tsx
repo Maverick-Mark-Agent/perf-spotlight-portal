@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, Save, RefreshCw, Building2, CheckCircle2, XCircle } from 'lucide-react';
+import { ArrowLeft, Save, RefreshCw, Building2, CheckCircle2, XCircle, Activity, AlertCircle, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface ClientFullData {
@@ -20,6 +20,10 @@ interface ClientFullData {
   display_name: string | null;
   is_active: boolean;
   is_agency: boolean;
+
+  // Email Bison Integration
+  bison_workspace_id: number | null;
+  bison_workspace_name: string | null;
 
   // Billing
   billing_type: string;
@@ -73,6 +77,26 @@ interface ClientFullData {
   notes: string | null;
   created_at: string;
   updated_at: string;
+
+  // API & Webhook Management
+  bison_api_key: string | null;
+  bison_api_key_name: string | null;
+  bison_api_key_created_at: string | null;
+  bison_api_key_last_used_at: string | null;
+  bison_api_key_status: string | null;
+  bison_webhook_url: string | null;
+  bison_webhook_secret: string | null;
+  bison_webhook_enabled: boolean;
+  bison_webhook_events: string[] | null;
+  bison_webhook_last_received_at: string | null;
+  bison_webhook_health: string | null;
+  api_last_successful_call_at: string | null;
+  api_last_failed_call_at: string | null;
+  api_consecutive_failures: number;
+  api_calls_today: number;
+  api_errors_today: number;
+  api_health_status: string | null;
+  bison_instance: string | null;
 }
 
 const ClientProfile: React.FC = () => {
@@ -83,6 +107,8 @@ const ClientProfile: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [apiLogs, setApiLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   const fetchClient = async () => {
     if (!workspaceId) return;
@@ -114,6 +140,33 @@ const ClientProfile: React.FC = () => {
     fetchClient();
   }, [workspaceId]);
 
+  useEffect(() => {
+    if (client?.workspace_name) {
+      fetchApiLogs();
+    }
+  }, [client?.workspace_name]);
+
+  const fetchApiLogs = async () => {
+    if (!client?.workspace_name) return;
+
+    setLoadingLogs(true);
+    try {
+      const { data, error } = await supabase
+        .from('workspace_api_logs')
+        .select('*')
+        .eq('workspace_name', client.workspace_name)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setApiLogs(data || []);
+    } catch (error) {
+      console.error('Error fetching API logs:', error);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
   const handleFieldChange = (field: keyof ClientFullData, value: any) => {
     if (!client) return;
     setClient({ ...client, [field]: value });
@@ -131,6 +184,8 @@ const ClientProfile: React.FC = () => {
           display_name: client.display_name,
           is_active: client.is_active,
           is_agency: client.is_agency,
+          bison_workspace_id: client.bison_workspace_id,
+          bison_workspace_name: client.bison_workspace_name,
           billing_type: client.billing_type,
           price_per_lead: client.price_per_lead,
           retainer_amount: client.retainer_amount,
@@ -261,13 +316,14 @@ const ClientProfile: React.FC = () => {
 
       {/* Tabs */}
       <Tabs defaultValue="general" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="targets">Targets</TabsTrigger>
           <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
           <TabsTrigger value="territory">Territory</TabsTrigger>
           <TabsTrigger value="costs">Costs</TabsTrigger>
+          <TabsTrigger value="api">API & Webhooks</TabsTrigger>
           <TabsTrigger value="advanced">Advanced</TabsTrigger>
         </TabsList>
 
@@ -329,6 +385,58 @@ const ClientProfile: React.FC = () => {
                   rows={4}
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Email Bison Integration</CardTitle>
+              <CardDescription>Workspace mapping for Volume Dashboard and sending metrics</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bison_workspace_id">Email Bison Workspace ID</Label>
+                  <Input
+                    id="bison_workspace_id"
+                    type="number"
+                    value={client.bison_workspace_id || ''}
+                    onChange={(e) => handleFieldChange('bison_workspace_id', e.target.value ? parseInt(e.target.value) : null)}
+                    placeholder="22"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The workspace ID from Email Bison API (used for accurate data matching)
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bison_workspace_name">Email Bison Workspace Name</Label>
+                  <Input
+                    id="bison_workspace_name"
+                    value={client.bison_workspace_name || ''}
+                    onChange={(e) => handleFieldChange('bison_workspace_name', e.target.value)}
+                    placeholder="STREETSMART P&C"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The exact workspace name in Email Bison (for verification)
+                  </p>
+                </div>
+              </div>
+              {!client.bison_workspace_id && (
+                <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                  <XCircle className="h-4 w-4 text-amber-600" />
+                  <p className="text-sm text-amber-800">
+                    Warning: No Email Bison workspace mapped. Volume Dashboard data may be incorrect.
+                  </p>
+                </div>
+              )}
+              {client.bison_workspace_id && (
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <p className="text-sm text-green-800">
+                    Workspace ID {client.bison_workspace_id} mapped successfully
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -721,6 +829,273 @@ const ClientProfile: React.FC = () => {
                     value={client.email_account_costs || 0}
                     onChange={(e) => handleFieldChange('email_account_costs', parseFloat(e.target.value))}
                   />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* API & Webhooks Tab */}
+        <TabsContent value="api" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>API Health & Status</CardTitle>
+              <CardDescription>Workspace-specific API key health and monitoring</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Health Status */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">API Health Status</Label>
+                  <div className="flex items-center gap-2">
+                    {client.api_health_status === 'healthy' && (
+                      <Badge className="bg-green-50 text-green-700 border-green-200">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Healthy
+                      </Badge>
+                    )}
+                    {client.api_health_status === 'degraded' && (
+                      <Badge className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        Degraded
+                      </Badge>
+                    )}
+                    {client.api_health_status === 'failing' && (
+                      <Badge className="bg-red-50 text-red-700 border-red-200">
+                        <XCircle className="h-3 w-3 mr-1" />
+                        Failing
+                      </Badge>
+                    )}
+                    {client.api_health_status === 'no_key' && (
+                      <Badge className="bg-gray-50 text-gray-600 border-gray-200">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        No API Key
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Email Bison Instance</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {client.bison_instance === 'maverick' ? 'Maverick' : client.bison_instance === 'longrun' ? 'Long Run' : 'Not configured'}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Workspace ID</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {client.bison_workspace_id || 'Not configured'}
+                  </p>
+                </div>
+              </div>
+
+              {/* API Key Info */}
+              <div>
+                <h3 className="font-semibold mb-3">API Key Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">API Key Suffix</Label>
+                    <p className="text-sm font-mono text-muted-foreground">
+                      {client.bison_api_key ? `...${client.bison_api_key.slice(-8)}` : 'No API key configured'}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Key Status</Label>
+                    <Badge variant="outline" className={
+                      client.bison_api_key_status === 'active' ? 'bg-green-50 text-green-700 border-green-200' :
+                      'bg-gray-50 text-gray-600 border-gray-200'
+                    }>
+                      {client.bison_api_key_status || 'N/A'}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Last Used</Label>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      {client.bison_api_key_last_used_at
+                        ? new Date(client.bison_api_key_last_used_at).toLocaleString()
+                        : 'Never'}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Consecutive Failures</Label>
+                    <p className={`text-sm font-medium ${
+                      client.api_consecutive_failures === 0 ? 'text-green-600' :
+                      client.api_consecutive_failures < 3 ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`}>
+                      {client.api_consecutive_failures || 0}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Today's Stats */}
+              <div>
+                <h3 className="font-semibold mb-3">Today's Activity</h3>
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">API Calls</Label>
+                    <p className="text-2xl font-bold">{client.api_calls_today || 0}</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Errors</Label>
+                    <p className={`text-2xl font-bold ${
+                      (client.api_errors_today || 0) === 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {client.api_errors_today || 0}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Last Success</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {client.api_last_successful_call_at
+                        ? new Date(client.api_last_successful_call_at).toLocaleTimeString()
+                        : 'Never'}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Last Failure</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {client.api_last_failed_call_at
+                        ? new Date(client.api_last_failed_call_at).toLocaleTimeString()
+                        : 'Never'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* API Call Logs */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Recent API Calls</CardTitle>
+                <CardDescription>Last 50 API calls for this workspace</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={fetchApiLogs}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh Logs
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {loadingLogs ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                </div>
+              ) : apiLogs.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Activity className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No API calls recorded yet</p>
+                </div>
+              ) : (
+                <div className="relative max-h-[400px] overflow-auto border rounded-md">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-card z-10">
+                      <TableRow>
+                        <TableHead className="bg-card">Timestamp</TableHead>
+                        <TableHead className="bg-card">Endpoint</TableHead>
+                        <TableHead className="bg-card">Method</TableHead>
+                        <TableHead className="bg-card">Status</TableHead>
+                        <TableHead className="text-right bg-card">Response Time</TableHead>
+                        <TableHead className="bg-card">Function</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {apiLogs.map((log) => (
+                        <TableRow key={log.id}>
+                          <TableCell className="text-xs">
+                            {new Date(log.created_at).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono max-w-[200px] truncate">
+                            {log.endpoint}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {log.method}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {log.success ? (
+                              <Badge className="bg-green-50 text-green-700 border-green-200 text-xs">
+                                {log.status_code}
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-red-50 text-red-700 border-red-200 text-xs">
+                                {log.status_code || 'Error'}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right text-xs">
+                            {log.response_time_ms}ms
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {log.edge_function || 'N/A'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Webhook Configuration */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Webhook Configuration</CardTitle>
+              <CardDescription>Email Bison webhook settings and health</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Webhook Status</Label>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={client.bison_webhook_enabled}
+                      disabled
+                    />
+                    <Label className="text-sm">
+                      {client.bison_webhook_enabled ? 'Enabled' : 'Disabled'}
+                    </Label>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Webhook Health</Label>
+                  <Badge variant="outline" className={
+                    client.bison_webhook_health === 'healthy' ? 'bg-green-50 text-green-700 border-green-200' :
+                    client.bison_webhook_health === 'degraded' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                    client.bison_webhook_health === 'failing' ? 'bg-red-50 text-red-700 border-red-200' :
+                    'bg-gray-50 text-gray-600 border-gray-200'
+                  }>
+                    {client.bison_webhook_health || 'disabled'}
+                  </Badge>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Webhook URL</Label>
+                  <p className="text-xs font-mono text-muted-foreground break-all">
+                    {client.bison_webhook_url || 'Not configured'}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Last Event Received</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {client.bison_webhook_last_received_at
+                      ? new Date(client.bison_webhook_last_received_at).toLocaleString()
+                      : 'Never'}
+                  </p>
                 </div>
               </div>
             </CardContent>

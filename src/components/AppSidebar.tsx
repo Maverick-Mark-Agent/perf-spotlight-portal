@@ -10,6 +10,9 @@ import {
   ChevronRight,
   Upload,
   Settings,
+  PieChart,
+  CreditCard,
+  Activity,
 } from "lucide-react";
 import {
   Sidebar,
@@ -51,6 +54,11 @@ const navigationItems = {
       icon: DollarSign,
       url: "/revenue-dashboard",
     },
+    {
+      title: "ROI Dashboard",
+      icon: PieChart,
+      url: "/roi-dashboard",
+    },
   ],
   management: [
     {
@@ -74,26 +82,25 @@ const navigationItems = {
       url: "/zip-dashboard",
     },
   ],
+  finance: [
+    {
+      title: "Billing",
+      icon: CreditCard,
+      url: "/billing",
+    },
+  ],
   infrastructure: [
     {
       title: "Email Accounts",
       icon: Server,
       url: "/email-accounts",
     },
+    {
+      title: "Rollout Progress",
+      icon: Activity,
+      url: "/rollout-progress",
+    },
   ],
-  // Placeholder for future features
-  // future: [
-  //   {
-  //     title: "Reports",
-  //     icon: FileText,
-  //     url: "/reports",
-  //   },
-  //   {
-  //     title: "Settings",
-  //     icon: Settings,
-  //     url: "/settings",
-  //   },
-  // ],
 };
 
 export function AppSidebar() {
@@ -169,6 +176,25 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navigationItems.management.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                    <Link to={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Finance */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Finance</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {navigationItems.finance.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <Link to={item.url}>

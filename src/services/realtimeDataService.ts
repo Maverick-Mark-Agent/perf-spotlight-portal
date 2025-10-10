@@ -1,0 +1,443 @@
+/**
+ * Real-Time Data Service
+ *
+ * Queries Supabase database tables directly instead of Edge Functions.
+ * Data is kept fresh by webhooks (<5s latency) and polling (<5min for email accounts).
+ *
+ * @file src/services/realtimeDataService.ts
+ * @created 2025-10-09
+ */
+
+import { supabase } from '@/integrations/supabase/client';
+import {
+  transformToKPIClient,
+  transformToVolumeClient,
+  transformToEmailAccount,
+  getCurrentDateInfo,
+  getMTDDateRange,
+} from '@/lib/fieldMappings';
+import {
+  validateKPIClients,
+  validateVolumeClients,
+  validateEmailAccounts,
+  type KPIClient,
+  type VolumeClient,
+  type EmailAccount,
+} from '@/lib/dataValidation';
+import type { DataFetchResult } from './dataService';
+
+// ============= KPI Dashboard (Real-Time) =============
+
+/**
+ * Fetch KPI data from database (client_metrics + client_registry)
+ *
+ * Performance: <500ms (vs 5-10s with Edge Functions)
+ * Freshness: <5s (updated by webhooks)
+ */
+export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[]>> {
+  const startTime = Date.now();
+
+  try {
+    console.log('[KPI Realtime] Fetching from database...');
+
+    // Get today's date for MTD query
+    const { todayStr } = getCurrentDateInfo();
+
+    // Query client_metrics with client_registry JOIN
+    const { data: metrics, error } = await supabase
+      .from('client_metrics')
+      .select(`
+        *,
+        client_registry!inner(
+          workspace_name,
+          display_name,
+          monthly_kpi_target,
+          monthly_sending_target,
+          price_per_lead,
+          is_active
+        )
+      `)
+      .eq('metric_type', 'mtd')
+      .eq('metric_date', todayStr)
+      .eq('client_registry.is_active', true)
+      .order('positive_replies_mtd', { ascending: false });
+
+    if (error) {
+      console.error('[KPI Realtime] Database error:', error);
+      throw error;
+    }
+
+    if (!metrics || metrics.length === 0) {
+      console.warn('[KPI Realtime] No MTD data found for today:', todayStr);
+      return {
+        data: [],
+        success: true,
+        cached: false,
+        fresh: true,
+        timestamp: new Date(),
+        fetchDurationMs: Date.now() - startTime,
+        warnings: ['No MTD data found - may need to sync metrics'],
+      };
+    }
+
+    // Transform database rows to KPIClient interface
+    const transformedData = metrics.map(row => transformToKPIClient(row));
+
+    // Validate transformed data
+    const validation = validateKPIClients(transformedData);
+
+    if (!validation.success) {
+      console.error('[KPI Realtime] Validation failed:', validation.errors);
+      console.error('[KPI Realtime] Sample transformed data:', transformedData[0]);
+      console.error('[KPI Realtime] Sample raw data:', metrics[0]);
+      return {
+        data: null,
+        success: false,
+        cached: false,
+        fresh: false,
+        timestamp: new Date(),
+        error: 'Data validation failed',
+        fetchDurationMs: Date.now() - startTime,
+      };
+    }
+
+    const fetchDuration = Date.now() - startTime;
+    console.log(`[KPI Realtime] ✅ Fetched ${validation.data!.length} clients in ${fetchDuration}ms`);
+
+    return {
+      data: validation.data!,
+      success: true,
+      cached: false,
+      fresh: true,
+      timestamp: new Date(),
+      warnings: validation.warnings,
+      fetchDurationMs: fetchDuration,
+    };
+  } catch (error: any) {
+    console.error('[KPI Realtime] Error:', error);
+    return {
+      data: null,
+      success: false,
+      cached: false,
+      fresh: false,
+      timestamp: new Date(),
+      error: error.message || 'Unknown error',
+      fetchDurationMs: Date.now() - startTime,
+    };
+  }
+}
+
+// ============= Volume Dashboard (Real-Time) =============
+
+/**
+ * Fetch volume data from database (client_metrics + client_registry)
+ *
+ * Performance: <300ms (vs 3-5s with Edge Functions)
+ * Freshness: <5s (updated by webhooks)
+ */
+export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeClient[]>> {
+  const startTime = Date.now();
+
+  try {
+    console.log('[Volume Realtime] Fetching from database...');
+
+    const { todayStr, daysInMonth, daysElapsed } = getCurrentDateInfo();
+
+    // Query client_metrics with client_registry JOIN
+    const { data: metrics, error } = await supabase
+      .from('client_metrics')
+      .select(`
+        *,
+        client_registry!inner(
+          workspace_name,
+          display_name,
+          monthly_sending_target,
+          is_active
+        )
+      `)
+      .eq('metric_type', 'mtd')
+      .eq('metric_date', todayStr)
+      .eq('client_registry.is_active', true)
+      .order('emails_sent_mtd', { ascending: false });
+
+    if (error) {
+      console.error('[Volume Realtime] Database error:', error);
+      throw error;
+    }
+
+    if (!metrics || metrics.length === 0) {
+      console.warn('[Volume Realtime] No MTD data found for today:', todayStr);
+      return {
+        data: [],
+        success: true,
+        cached: false,
+        fresh: true,
+        timestamp: new Date(),
+        fetchDurationMs: Date.now() - startTime,
+        warnings: ['No MTD data found - may need to sync metrics'],
+      };
+    }
+
+    // Transform database rows to VolumeClient interface
+    const transformedData = metrics.map((row, index) =>
+      transformToVolumeClient(row, index + 1, daysInMonth, daysElapsed)
+    );
+
+    // Validate transformed data
+    const validation = validateVolumeClients(transformedData);
+
+    if (!validation.success) {
+      console.error('[Volume Realtime] Validation failed:', validation.errors);
+      return {
+        data: null,
+        success: false,
+        cached: false,
+        fresh: false,
+        timestamp: new Date(),
+        error: 'Data validation failed',
+        fetchDurationMs: Date.now() - startTime,
+      };
+    }
+
+    const fetchDuration = Date.now() - startTime;
+    console.log(`[Volume Realtime] ✅ Fetched ${validation.data!.length} clients in ${fetchDuration}ms`);
+
+    return {
+      data: validation.data!,
+      success: true,
+      cached: false,
+      fresh: true,
+      timestamp: new Date(),
+      warnings: validation.warnings,
+      fetchDurationMs: fetchDuration,
+    };
+  } catch (error: any) {
+    console.error('[Volume Realtime] Error:', error);
+    return {
+      data: null,
+      success: false,
+      cached: false,
+      fresh: false,
+      timestamp: new Date(),
+      error: error.message || 'Unknown error',
+      fetchDurationMs: Date.now() - startTime,
+    };
+  }
+}
+
+// ============= Email Infrastructure (Real-Time) =============
+
+/**
+ * Fetch email accounts from database (email_account_metadata)
+ *
+ * Performance: <1s (vs 30-60s with Edge Functions)
+ * Freshness: Synced via hybrid-email-accounts-v2 Edge Function
+ *
+ * NOTE: Uses email_account_metadata (4,249 accounts with pricing),
+ * NOT sender_emails_cache (incomplete polling data)
+ */
+export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult<EmailAccount[]>> {
+  const startTime = Date.now();
+
+  try {
+    console.log('[Infrastructure Realtime] Fetching from email_account_metadata...');
+
+    // Query email_account_metadata directly (CORRECT table with all accounts + pricing)
+    const { data: accounts, error } = await supabase
+      .from('email_account_metadata')
+      .select('*')
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('[Infrastructure Realtime] Database error:', error);
+      throw error;
+    }
+
+    if (!accounts || accounts.length === 0) {
+      console.warn('[Infrastructure Realtime] No email accounts found');
+      return {
+        data: [],
+        success: true,
+        cached: false,
+        fresh: true,
+        timestamp: new Date(),
+        fetchDurationMs: Date.now() - startTime,
+        warnings: ['No email accounts found - polling may not have run yet'],
+      };
+    }
+
+    // Check data freshness
+    const mostRecentUpdate = new Date(accounts[0].updated_at);
+    const ageMinutes = (Date.now() - mostRecentUpdate.getTime()) / 1000 / 60;
+
+    if (ageMinutes > 60) {
+      console.warn(`[Infrastructure Realtime] Data is ${ageMinutes.toFixed(1)} minutes old`);
+    }
+
+    // Transform database rows to EmailAccount interface
+    const transformedData = accounts.map(row => transformToEmailAccount(row));
+
+    // Validate transformed data
+    const validation = validateEmailAccounts(transformedData);
+
+    if (!validation.success) {
+      console.error('[Infrastructure Realtime] Validation failed:', validation.errors);
+      return {
+        data: null,
+        success: false,
+        cached: false,
+        fresh: false,
+        timestamp: new Date(),
+        error: 'Data validation failed',
+        fetchDurationMs: Date.now() - startTime,
+      };
+    }
+
+    const fetchDuration = Date.now() - startTime;
+    console.log(`[Infrastructure Realtime] ✅ Fetched ${validation.data!.length} accounts in ${fetchDuration}ms`);
+
+    return {
+      data: validation.data!,
+      success: true,
+      cached: false,
+      fresh: ageMinutes < 60,
+      timestamp: new Date(),
+      warnings: validation.warnings || (ageMinutes > 60 ? [`Data is ${ageMinutes.toFixed(1)} minutes old`] : undefined),
+      fetchDurationMs: fetchDuration,
+    };
+  } catch (error: any) {
+    console.error('[Infrastructure Realtime] Error:', error);
+    return {
+      data: null,
+      success: false,
+      cached: false,
+      fresh: false,
+      timestamp: new Date(),
+      error: error.message || 'Unknown error',
+      fetchDurationMs: Date.now() - startTime,
+    };
+  }
+}
+
+// ============= Client Portal Leads (Real-Time) =============
+
+/**
+ * Fetch interested leads from database (client_leads)
+ *
+ * Performance: <200ms
+ * Freshness: <5s (updated by webhooks)
+ *
+ * Note: Client Portal already queries this correctly,
+ * but we provide it here for completeness.
+ */
+export async function fetchClientLeadsRealtime(
+  workspaceName?: string
+): Promise<DataFetchResult<any[]>> {
+  const startTime = Date.now();
+
+  try {
+    console.log('[Client Leads Realtime] Fetching from database...');
+
+    // Build query
+    let query = supabase
+      .from('client_leads')
+      .select('*')
+      .eq('interested', true)
+      .order('date_received', { ascending: false });
+
+    // Filter by workspace if provided
+    if (workspaceName) {
+      query = query.eq('workspace_name', workspaceName);
+    }
+
+    const { data: leads, error } = await query;
+
+    if (error) {
+      console.error('[Client Leads Realtime] Database error:', error);
+      throw error;
+    }
+
+    const fetchDuration = Date.now() - startTime;
+    console.log(`[Client Leads Realtime] ✅ Fetched ${leads?.length || 0} leads in ${fetchDuration}ms`);
+
+    return {
+      data: leads || [],
+      success: true,
+      cached: false,
+      fresh: true,
+      timestamp: new Date(),
+      fetchDurationMs: fetchDuration,
+    };
+  } catch (error: any) {
+    console.error('[Client Leads Realtime] Error:', error);
+    return {
+      data: null,
+      success: false,
+      cached: false,
+      fresh: false,
+      timestamp: new Date(),
+      error: error.message || 'Unknown error',
+      fetchDurationMs: Date.now() - startTime,
+    };
+  }
+}
+
+// ============= System Health Check =============
+
+/**
+ * Check system health (polling, webhooks, data freshness)
+ */
+export async function checkSystemHealth(): Promise<{
+  polling: { status: 'healthy' | 'degraded' | 'down'; lastSync: string; ageMinutes: number };
+  webhooks: { status: 'healthy' | 'degraded' | 'down'; lastWebhook: string; ageMinutes: number };
+  database: { status: 'healthy' | 'down' };
+}> {
+  try {
+    // Check email account sync status (email_account_metadata)
+    const { data: latestEmail } = await supabase
+      .from('email_account_metadata')
+      .select('updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    const pollingAge = latestEmail
+      ? (Date.now() - new Date(latestEmail.updated_at).getTime()) / 1000 / 60
+      : 999;
+
+    // Check webhook status (webhook_delivery_log)
+    const { data: latestWebhook } = await supabase
+      .from('webhook_delivery_log')
+      .select('created_at')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    const webhookAge = latestWebhook
+      ? (Date.now() - new Date(latestWebhook.created_at).getTime()) / 1000 / 60
+      : 999;
+
+    return {
+      polling: {
+        status: pollingAge < 60 ? 'healthy' : pollingAge < 180 ? 'degraded' : 'down',
+        lastSync: latestEmail?.updated_at || 'never',
+        ageMinutes: pollingAge,
+      },
+      webhooks: {
+        status: webhookAge < 60 ? 'healthy' : webhookAge < 180 ? 'degraded' : 'down',
+        lastWebhook: latestWebhook?.created_at || 'never',
+        ageMinutes: webhookAge,
+      },
+      database: {
+        status: 'healthy',
+      },
+    };
+  } catch (error) {
+    console.error('[Health Check] Error:', error);
+    return {
+      polling: { status: 'down', lastSync: 'error', ageMinutes: 999 },
+      webhooks: { status: 'down', lastWebhook: 'error', ageMinutes: 999 },
+      database: { status: 'down' },
+    };
+  }
+}

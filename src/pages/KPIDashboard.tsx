@@ -4,6 +4,7 @@ import { ProgressPieChart } from "@/components/dashboard/ProgressPieChart";
 import { RepliesTimelineView } from "@/components/dashboard/RepliesTimelineView";
 import { ComparisonMetrics } from "@/components/dashboard/ComparisonMetrics";
 import { ClientPerformanceLists } from "@/components/dashboard/ClientPerformanceLists";
+import { AggregateMetricsCard } from "@/components/dashboard/AggregateMetricsCard";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +34,39 @@ const MonthlyKPIProgress = () => {
     warnings,
     fetchDurationMs
   } = kpiDashboard;
+
+  // Clients to display on KPI Dashboard (whitelist)
+  const KPI_DASHBOARD_CLIENTS = [
+    'David Amiri',
+    'Danny Schwartz',
+    'Devin Hodo',
+    'StreetSmart Commercial',
+    'Kim Wallace',
+    'Jason Binyon',
+    'Nicholas Sakha',
+    'SMA Insurance Services',
+    'John Roberts',
+    'Rob Russell',
+    'Kirk Hodgson',
+    'Gregg Blanchard',
+    'Jeff Schroder',
+    'Tony Schmitz'
+  ];
+
+  // Filter to only show clients in the whitelist
+  const displayedClients = clients.filter(
+    client => KPI_DASHBOARD_CLIENTS.includes(client.name)
+  );
+
+  // Calculate aggregate metrics for displayed clients only
+  const aggregateMetrics = displayedClients.reduce(
+    (acc, client) => ({
+      totalLeads: acc.totalLeads + client.leadsGenerated,
+      totalTarget: acc.totalTarget + client.monthlyKPI,
+      projectedEOM: acc.projectedEOM + client.projectedReplies,
+    }),
+    { totalLeads: 0, totalTarget: 0, projectedEOM: 0 }
+  );
 
   const handleRefresh = async () => {
     await refreshKPIDashboard(true);
@@ -152,12 +186,19 @@ const MonthlyKPIProgress = () => {
             </div>
           ) : (
             <>
+              {/* Aggregate Metrics Card */}
+              <AggregateMetricsCard
+                totalLeads={aggregateMetrics.totalLeads}
+                totalTarget={aggregateMetrics.totalTarget}
+                projectedEOM={aggregateMetrics.projectedEOM}
+                clientCount={displayedClients.length}
+              />
+
               {/* Client Performance Summary - Compact */}
-              <ClientPerformanceLists clients={clients.filter(client => client.monthlyKPI > 0)} />
+              <ClientPerformanceLists clients={displayedClients} />
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {clients
-                .filter(client => client.monthlyKPI > 0) // Only show clients with a target set
+              {displayedClients
                 .sort((a, b) => {
                   // Sort by current progress descending (best to worst)
                   // Clients meeting target first, then by progress percentage

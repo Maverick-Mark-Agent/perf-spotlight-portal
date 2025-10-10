@@ -195,29 +195,26 @@ const VolumeDashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Top Performers */}
-          <Card className="bg-dashboard-success/15 backdrop-blur-sm border-dashboard-success/50 shadow-2xl">
+          {/* Today's Sending Volume */}
+          <Card className="bg-dashboard-primary/15 backdrop-blur-sm border-dashboard-primary/50 shadow-2xl">
             <CardHeader>
-              <CardTitle className="text-dashboard-success flex items-center gap-2 text-xl font-bold">
-                <TrendingUp className="h-6 w-6" />
-                On Track to Exceed Target
+              <CardTitle className="text-dashboard-primary flex items-center gap-2 text-xl font-bold">
+                <Send className="h-6 w-6" />
+                Today's Sending Volume
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {clientData.filter(client => client.isProjectedAboveTarget).slice(0, 3).map((client, index) => (
-                <div key={client.name} className="flex items-center justify-between p-4 bg-white/10 rounded-lg border border-dashboard-success/40">
+            <CardContent className="max-h-[400px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+              {clientData
+                .sort((a, b) => b.emailsToday - a.emailsToday)
+                .map((client) => (
+                <div key={client.name} className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-primary/40 hover:bg-white/20 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-dashboard-success text-white flex items-center justify-center font-bold text-sm">
-                      #{client.rank}
-                    </div>
-                    <div>
-                      <span className="text-foreground font-semibold block">{client.name}</span>
-                      <span className="text-muted-foreground text-sm">Projected: {client.projectedPercentage.toFixed(1)}%</span>
-                    </div>
+                    <div className="w-2 h-2 rounded-full bg-dashboard-primary"></div>
+                    <span className="text-foreground font-medium">{client.name}</span>
                   </div>
                   <div className="text-right">
-                    <span className="text-dashboard-success font-bold text-lg">{client.projection.toLocaleString()}</span>
-                    <div className="text-muted-foreground text-xs">Target: {client.target.toLocaleString()}</div>
+                    <span className="text-dashboard-primary font-bold text-lg">{client.emailsToday.toLocaleString()}</span>
+                    <div className="text-muted-foreground text-xs">emails sent</div>
                   </div>
                 </div>
               ))}

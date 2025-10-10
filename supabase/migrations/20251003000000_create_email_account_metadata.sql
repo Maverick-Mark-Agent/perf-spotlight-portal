@@ -25,11 +25,20 @@ alter table public.email_account_metadata enable row level security;
 
 -- Create policy to allow all operations (adjust based on your auth requirements)
 -- For now, allowing all since this is an internal admin dashboard
-create policy "Allow all operations on email_account_metadata"
-  on public.email_account_metadata
-  for all
-  using (true)
-  with check (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'email_account_metadata'
+    AND policyname = 'Allow all operations on email_account_metadata'
+  ) THEN
+    create policy "Allow all operations on email_account_metadata"
+      on public.email_account_metadata
+      for all
+      using (true)
+      with check (true);
+  END IF;
+END $$;
 
 -- Create function to automatically update updated_at timestamp
 create or replace function public.handle_updated_at()

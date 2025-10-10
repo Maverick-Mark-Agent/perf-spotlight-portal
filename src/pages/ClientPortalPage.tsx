@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Search, Calendar, ExternalLink, ChevronDown, Star } from "lucide-react";
+import { ArrowLeft, Search, Calendar, ExternalLink, ChevronDown, Star, RefreshCw } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -263,6 +263,7 @@ const ClientPortalPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [premiumDialogLead, setPremiumDialogLead] = useState<ClientLead | null>(null);
   const [isPremiumDialogOpen, setIsPremiumDialogOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast} = useToast();
 
   const handleLeadClick = (lead: ClientLead) => {
@@ -277,6 +278,57 @@ const ClientPortalPage = () => {
 
   const handleLeadUpdate = () => {
     fetchLeads(); // Refresh leads after update
+  };
+
+  const handleRefreshData = async () => {
+    if (!workspace) {
+      toast({
+        title: "No workspace selected",
+        description: "Please select a workspace to refresh",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsRefreshing(true);
+      toast({
+        title: "Refreshing data...",
+        description: "Syncing leads from Email Bison",
+      });
+
+      const { data, error } = await supabase.functions.invoke('sync-client-pipeline', {
+        body: { workspace_name: workspace }
+      });
+
+      if (error) throw error;
+
+      const result = data?.results?.[0];
+      if (result) {
+        toast({
+          title: "Sync complete!",
+          description: `Synced ${result.leads_synced} leads (${result.unique_leads} total unique)`,
+        });
+      } else {
+        toast({
+          title: "Sync complete!",
+          description: "Data refreshed successfully",
+        });
+      }
+
+      // Refresh the leads list
+      await fetchLeads();
+
+    } catch (error) {
+      console.error('Refresh error:', error);
+      toast({
+        title: "Refresh failed",
+        description: "Failed to sync data from Email Bison",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handlePremiumSave = async (premiumAmount: number, policyType: string) => {
@@ -367,7 +419,9 @@ const ClientPortalPage = () => {
       let query = supabase
         .from('client_leads')
         .select('*')
-        .order('date_received', { ascending: false });
+        .eq('interested', true) // Only fetch interested leads
+        .order('date_received', { ascending: false })
+        .range(0, 9999); // Fetch up to 10,000 leads (removes 1000 default limit)
 
       if (workspace) {
         query = query.eq('workspace_name', workspace);
@@ -611,10 +665,10 @@ const ClientPortalPage = () => {
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-4 mb-6">
-          <Link to="/">
+          <Link to="/client-portal-hub">
             <Button variant="ghost" className="text-white hover:bg-white/10">
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Dashboard
+              Back to Client Portal Hub
             </Button>
           </Link>
         </div>
@@ -649,6 +703,17 @@ const ClientPortalPage = () => {
             )}
           </div>
 
+          {/* Refresh Button */}
+          {workspace && (
+            <Button
+              onClick={handleRefreshData}
+              disabled={isRefreshing}
+              className="bg-dashboard-accent hover:bg-dashboard-accent/90 text-white"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
+            </Button>
+          )}
         </div>
 
         {/* Search and Filters */}

@@ -74,9 +74,10 @@ serve(async (req) => {
     });
 
     // Verify this is a "Lead Interested" event
-    if (payload.event?.type !== 'LEAD_INTERESTED') {
+    // FIX: Email Bison sends event types in snake_case, not SCREAMING_SNAKE_CASE
+    if (payload.event?.type !== 'lead_interested') {
       return new Response(
-        JSON.stringify({ error: 'Not a LEAD_INTERESTED event', received: payload.event?.type }),
+        JSON.stringify({ error: 'Not a lead_interested event', received: payload.event?.type }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -94,7 +95,7 @@ serve(async (req) => {
 
     // Build conversation URL
     const conversationUrl = payload.event?.instance_url
-      ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
+      ? `${payload.event.instance_url}/leads/${lead.id}`
       : null;
 
     // Extract phone from custom variables if available
@@ -179,6 +180,24 @@ serve(async (req) => {
         JSON.stringify({ error: result.error.message, details: result.error }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // ✨ NEW: Increment client_metrics for real-time KPI updates
+    // Only increment if this is a NEW lead (not an update)
+    if (!existingLead) {
+      console.log('Incrementing interested_mtd metric for:', leadData.workspace_name);
+      const { error: incrementError } = await supabase.rpc('increment_metric', {
+        p_workspace_name: leadData.workspace_name,
+        p_metric_name: 'interested_mtd',
+        p_increment_by: 1
+      });
+
+      if (incrementError) {
+        console.error('⚠️ Failed to increment metric (non-fatal):', incrementError);
+        // Don't fail the webhook - metric will be corrected in daily sync
+      } else {
+        console.log('✅ Metric incremented successfully');
+      }
     }
 
     const response = {

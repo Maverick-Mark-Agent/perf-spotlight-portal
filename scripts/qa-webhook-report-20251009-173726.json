@@ -1,0 +1,60 @@
+{
+  "report_date": "2025-10-09T22:37:30Z",
+  "summary": {
+    "total_tests": 8,
+    "passed": 6,
+    "failed": 0,
+    "warnings": 2,
+    "success_rate": "75.0"
+  },
+  "test_results": [
+    {
+      "test": "Webhook Endpoint Reachable",
+      "status": "PASS",
+      "message": "HTTP 400 (endpoint responding)",
+      "details": ""
+    },
+    {
+      "test": "Maverick Webhook Configured",
+      "status": "PASS",
+      "message": "Webhook ID: 82",
+      "details": ""
+    },
+    {
+      "test": "Long Run Webhook Configured",
+      "status": "WARN",
+      "message": "Skipped - No Long Run API key provided",
+      "details": ""
+    },
+    {
+      "test": "Recent Webhook Deliveries",
+      "status": "PASS",
+      "message": "31 leads received from 12 workspaces in last 24h",
+      "details": ""
+    },
+    {
+      "test": "Database Integrity",
+      "status": "PASS",
+      "message": "All interested leads have required fields",
+      "details": ""
+    },
+    {
+      "test": "Webhook Payload Processing",
+      "status": "PASS",
+      "message": "Test payload processed successfully",
+      "details": "Lead ID: 57516a3f-82f6-41d9-b332-007e7b9db416"
+    },
+    {
+      "test": "Per-Client Activity",
+      "status": "WARN",
+      "message": "11/24 clients have no leads in last 7 days",
+      "details": "May indicate low activity or webhook issues"
+    },
+    {
+      "test": "Conversation URL Population",
+      "status": "PASS",
+      "message": "All recent leads have conversation URLs",
+      "details": ""
+    }
+  ]
+}

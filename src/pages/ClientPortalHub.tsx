@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Users, TrendingUp, MapPin } from "lucide-react";
+import { Search, Users, TrendingUp, MapPin, ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Workspace {
@@ -159,6 +159,16 @@ export default function ClientPortalHub() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
       <div className="container mx-auto px-4 py-8">
+        {/* Back Button */}
+        <div className="mb-6">
+          <Link to="/">
+            <Button variant="ghost" className="text-white hover:bg-white/10">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Dashboard
+            </Button>
+          </Link>
+        </div>
+
         {/* Header */}
         <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>

@@ -450,7 +450,7 @@ export async function fetchVolumeData(force: boolean = false): Promise<DataFetch
 
 /**
  * Fetch Revenue Dashboard Data
- * Uses revenue-analytics Edge Function
+ * Uses revenue-billing-unified Edge Function (real-time Email Bison data)
  */
 export async function fetchRevenueData(force: boolean = false): Promise<DataFetchResult<{ clients: RevenueClient[], totals: any }>> {
   const cacheKey = 'revenue-dashboard-data';
@@ -479,11 +479,11 @@ export async function fetchRevenueData(force: boolean = false): Promise<DataFetc
 
   const fetchPromise = (async (): Promise<DataFetchResult<{ clients: RevenueClient[], totals: any }>> => {
     try {
-      console.log('[Revenue] Fetching fresh data from Edge Function');
+      console.log('[Revenue] Fetching fresh data from unified Edge Function');
 
       const { data, error } = await fetchWithRetry(
-        () => supabase.functions.invoke('revenue-analytics'),
-        'Revenue Data Fetch'
+        () => supabase.functions.invoke('revenue-billing-unified'),
+        'Revenue & Billing Data Fetch'
       );
 
       if (error) {

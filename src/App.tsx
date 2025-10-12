@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { DashboardProvider } from "@/contexts/DashboardContext";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -40,7 +40,7 @@ const App = () => (
                 <Route path="/kpi-test" element={<KPITestPage />} />
                 <Route path="/email-accounts" element={<EmailAccountsPage />} />
                 <Route path="/volume-dashboard" element={<VolumeDashboard />} />
-                <Route path="/billing" element={<BillingPage />} />
+                <Route path="/billing" element={<Navigate to="/revenue-dashboard" replace />} />
                 <Route path="/revenue-dashboard" element={<RevenueDashboard />} />
                 <Route path="/client-portal" element={<ClientPortalHub />} />
                 <Route path="/client-portal/:workspace" element={<ClientPortalPage />} />

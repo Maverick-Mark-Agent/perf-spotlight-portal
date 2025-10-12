@@ -54,7 +54,7 @@ export const VolumeClientSchema = z.object({
 
 /**
  * Revenue Client Data Schema (MTD-focused)
- * Validates data from revenue-analytics Edge Function
+ * Validates data from revenue-billing-unified Edge Function
  */
 export const RevenueClientSchema = z.object({
   workspace_name: z.string().min(1, "Workspace name is required"),
@@ -66,9 +66,21 @@ export const RevenueClientSchema = z.object({
   current_month_profit: z.number(),
   // Profitability
   profit_margin: z.number(),
-  price_per_lead: z.number().nonnegative(),
-  retainer_amount: z.number().nonnegative(),
-  rank: z.number().int().positive(),
+  price_per_lead: z.number().nonnegative().nullable(),
+  retainer_amount: z.number().nonnegative().nullable(),
+  // KPI Metrics
+  monthly_kpi: z.number().nonnegative(),
+  kpi_progress: z.number(),
+  leads_remaining: z.number().int().nonnegative(),
+  // Email Performance Metrics
+  emails_sent_mtd: z.number().int().nonnegative(),
+  replies_mtd: z.number().int().nonnegative(),
+  interested_mtd: z.number().int().nonnegative(),
+  bounces_mtd: z.number().int().nonnegative(),
+  unsubscribes_mtd: z.number().int().nonnegative(),
+  reply_rate: z.number(),
+  interested_rate: z.number(),
+  rank: z.number().int().positive().optional(),
 });
 
 /**

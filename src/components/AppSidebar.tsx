@@ -50,7 +50,7 @@ const navigationItems = {
       url: "/volume-dashboard",
     },
     {
-      title: "Revenue Dashboard",
+      title: "Revenue & Billing",
       icon: DollarSign,
       url: "/revenue-dashboard",
     },
@@ -82,13 +82,7 @@ const navigationItems = {
       url: "/zip-dashboard",
     },
   ],
-  finance: [
-    {
-      title: "Billing",
-      icon: CreditCard,
-      url: "/billing",
-    },
-  ],
+  finance: [],
   infrastructure: [
     {
       title: "Email Accounts",

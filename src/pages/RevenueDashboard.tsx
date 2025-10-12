@@ -84,8 +84,8 @@ const RevenueDashboard = () => {
                   <DollarSign className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold">Revenue Dashboard</h1>
-                  <p className="text-sm text-muted-foreground">Real-time profitability tracking</p>
+                  <h1 className="text-2xl font-bold">Revenue & Billing Dashboard</h1>
+                  <p className="text-sm text-muted-foreground">Real-time revenue, KPI, and performance tracking</p>
                 </div>
               </div>
             </div>
@@ -163,9 +163,10 @@ const RevenueDashboard = () => {
 
         {/* Tabs */}
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6">
+          <TabsList className="grid w-full grid-cols-4 mb-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="profitability">Profitability</TabsTrigger>
+            <TabsTrigger value="kpi">KPI Performance</TabsTrigger>
             <TabsTrigger value="breakdown">Client Breakdown</TabsTrigger>
           </TabsList>
 
@@ -252,6 +253,109 @@ const RevenueDashboard = () => {
                         <TableCell className="text-right">${client.current_month_revenue.toLocaleString()}</TableCell>
                         <TableCell className="text-right text-success">${client.current_month_profit.toLocaleString()}</TableCell>
                         <TableCell className="text-right">{client.profit_margin.toFixed(1)}%</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="kpi" className="space-y-6">
+            {/* KPI Progress Overview */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>KPI Progress by Client</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={clients.slice(0, 10)}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="workspace_name" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={80} />
+                      <YAxis />
+                      <Tooltip formatter={(value) => `${Number(value).toFixed(1)}%`} />
+                      <Bar dataKey="kpi_progress" fill="#3b82f6" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Email Performance Metrics</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Total Emails Sent</p>
+                        <p className="text-2xl font-bold">{totals.total_emails_sent?.toLocaleString() || 0}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Total Replies</p>
+                        <p className="text-2xl font-bold">{totals.total_replies?.toLocaleString() || 0}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-muted-foreground">Reply Rate</p>
+                        <p className="text-lg font-semibold text-success">{totals.overall_reply_rate?.toFixed(2) || 0}%</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Interested Leads</p>
+                        <p className="text-2xl font-bold">{totals.total_interested?.toLocaleString() || 0}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-muted-foreground">Interested Rate</p>
+                        <p className="text-lg font-semibold text-success">{totals.overall_interested_rate?.toFixed(2) || 0}%</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* KPI Details Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Client KPI Performance Details</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Client</TableHead>
+                      <TableHead className="text-right">Leads MTD</TableHead>
+                      <TableHead className="text-right">Monthly KPI</TableHead>
+                      <TableHead className="text-right">Progress</TableHead>
+                      <TableHead className="text-right">Remaining</TableHead>
+                      <TableHead className="text-right">Reply Rate</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {clients.map((client) => (
+                      <TableRow key={client.workspace_name}>
+                        <TableCell className="font-medium">{client.workspace_name}</TableCell>
+                        <TableCell className="text-right">{client.current_month_leads}</TableCell>
+                        <TableCell className="text-right">{client.monthly_kpi || 0}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant={client.kpi_progress >= 100 ? 'default' : 'secondary'}>
+                            {client.kpi_progress?.toFixed(1) || 0}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">{client.leads_remaining || 0}</TableCell>
+                        <TableCell className="text-right">{client.reply_rate?.toFixed(2) || 0}%</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={client.kpi_progress >= 100 ? 'default' : client.kpi_progress >= 80 ? 'secondary' : 'destructive'}
+                          >
+                            {client.kpi_progress >= 100 ? 'On Track' : client.kpi_progress >= 80 ? 'Warning' : 'Behind'}
+                          </Badge>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

@@ -73,6 +73,18 @@ interface RevenueClientData {
   profit_margin: number;
   price_per_lead: number;
   retainer_amount: number;
+  // KPI Metrics
+  monthly_kpi: number;
+  kpi_progress: number;
+  leads_remaining: number;
+  // Email Performance Metrics
+  emails_sent_mtd: number;
+  replies_mtd: number;
+  interested_mtd: number;
+  bounces_mtd: number;
+  unsubscribes_mtd: number;
+  reply_rate: number;
+  interested_rate: number;
   rank: number;
 }
 
@@ -86,6 +98,14 @@ interface RevenueTotals {
   per_lead_count: number;
   retainer_count: number;
   overall_profit_margin: number;
+  // Email Performance Totals
+  total_emails_sent: number;
+  total_replies: number;
+  total_interested: number;
+  total_bounces: number;
+  total_unsubscribes: number;
+  overall_reply_rate: number;
+  overall_interested_rate: number;
 }
 
 interface RevenueDashboardState {

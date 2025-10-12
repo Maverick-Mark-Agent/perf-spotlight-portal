@@ -6,9 +6,13 @@ import { TrendingUp } from "lucide-react";
 
 type StateLeadStats = {
   client_name: string;
-  state: string;
-  total_leads: number;
   workspace_name: string | null;
+  target: number;
+  zipsPulled: number;
+  qualified: number;
+  deliverable: number;
+  uploaded: number;
+  gap: number;
 };
 
 type StateLeadsAnalyticsProps = {
@@ -28,54 +32,60 @@ export default function StateLeadsAnalytics({ month }: StateLeadsAnalyticsProps)
     setLoading(true);
     setError(null);
     try {
-      // Get all ZIP assignments with leads data
-      const { data: zipData, error: zipErr } = await supabase
-        .from("client_zipcodes")
-        .select("zip, state, client_name, workspace_name")
+      // Get client target from client_registry
+      const { data: registryData, error: registryErr } = await supabase
+        .from("client_registry")
+        .select("workspace_name, monthly_kpi_target");
+
+      if (registryErr) throw registryErr;
+
+      // Get ZIP batch pull data
+      const { data: zipBatchData, error: zipBatchErr } = await supabase
+        .from("zip_batch_pulls")
+        .select("workspace_name, zip, pulled_at, qualified_contacts, deliverable_contacts, uploaded_to_bison")
         .eq("month", month)
-        .not("state", "is", null);
+        .not("pulled_at", "is", null);
 
-      if (zipErr) throw zipErr;
+      if (zipBatchErr) throw zipBatchErr;
 
-      // Get lead counts per ZIP from monthly_cleaned_leads
-      const { data: leadsData, error: leadsErr } = await supabase
-        .from("monthly_cleaned_leads")
-        .select("zip_code")
-        .eq("month", month);
-
-      if (leadsErr) throw leadsErr;
-
-      // Count leads per ZIP
-      const leadCounts: Record<string, number> = {};
-      leadsData?.forEach((lead) => {
-        if (lead.zip_code) {
-          leadCounts[lead.zip_code] = (leadCounts[lead.zip_code] || 0) + 1;
-        }
-      });
-
-      // Aggregate by client and state
+      // Aggregate by workspace
       const aggregated: Record<string, StateLeadStats> = {};
 
-      zipData?.forEach((zip) => {
-        const key = `${zip.client_name}|${zip.state}`;
-        const leadCount = leadCounts[zip.zip] || 0;
-
-        if (!aggregated[key]) {
-          aggregated[key] = {
-            client_name: zip.client_name,
-            state: zip.state!,
-            total_leads: 0,
-            workspace_name: zip.workspace_name,
+      // Initialize with registry data
+      registryData?.forEach((client) => {
+        if (client.workspace_name) {
+          aggregated[client.workspace_name] = {
+            client_name: client.workspace_name,
+            workspace_name: client.workspace_name,
+            target: client.monthly_kpi_target || 0,
+            zipsPulled: 0,
+            qualified: 0,
+            deliverable: 0,
+            uploaded: 0,
+            gap: 0,
           };
         }
-
-        aggregated[key].total_leads += leadCount;
       });
 
-      // Convert to array and sort by total leads desc
+      // Aggregate ZIP batch data
+      zipBatchData?.forEach((batch) => {
+        if (batch.workspace_name && aggregated[batch.workspace_name]) {
+          aggregated[batch.workspace_name].zipsPulled++;
+          aggregated[batch.workspace_name].qualified += batch.qualified_contacts || 0;
+          aggregated[batch.workspace_name].deliverable += batch.deliverable_contacts || 0;
+          aggregated[batch.workspace_name].uploaded += batch.uploaded_to_bison ? 1 : 0;
+        }
+      });
+
+      // Calculate gap (qualified vs target)
+      Object.values(aggregated).forEach((stat) => {
+        stat.gap = stat.target - stat.qualified;
+      });
+
+      // Convert to array and sort by client name
       const sorted = Object.values(aggregated)
-        .filter((stat) => stat.total_leads > 0) // Only show clients with leads
-        .sort((a, b) => b.total_leads - a.total_leads);
+        .filter((stat) => stat.zipsPulled > 0) // Only show clients with pulled ZIPs
+        .sort((a, b) => a.client_name.localeCompare(b.client_name));
 
       setStats(sorted);
     } catch (e: any) {
@@ -120,53 +130,59 @@ export default function StateLeadsAnalytics({ month }: StateLeadsAnalyticsProps)
     );
   }
 
-  const totalLeads = stats.reduce((sum, stat) => sum + stat.total_leads, 0);
-
   return (
     <Card className="bg-white/10 backdrop-blur-md border-white/20">
       <CardHeader>
         <CardTitle className="text-white flex items-center gap-2">
           <TrendingUp className="h-5 w-5" />
-          Leads by Client & State
+          Contact Pipeline Progress
         </CardTitle>
         <CardDescription className="text-gray-400">
-          Total leads: <span className="text-blue-400 font-semibold">{totalLeads.toLocaleString()}</span> across{" "}
-          {stats.length} client-state combinations
+          Track qualified, deliverable, and uploaded contacts by client for {month}
         </CardDescription>
       </CardHeader>
       <CardContent>
         {stats.length === 0 ? (
-          <p className="text-center text-gray-400 py-8">No lead data available for {month}</p>
+          <p className="text-center text-gray-400 py-8">No contact data available for {month}</p>
         ) : (
           <div className="overflow-auto max-h-[500px]">
             <Table>
               <TableHeader className="sticky top-0 bg-white/5">
                 <TableRow className="border-white/20 hover:bg-white/5">
                   <TableHead className="text-gray-300">Client</TableHead>
-                  <TableHead className="text-gray-300">State</TableHead>
-                  <TableHead className="text-gray-300 text-right">Total Leads</TableHead>
-                  <TableHead className="text-gray-300 text-right">% of Total</TableHead>
+                  <TableHead className="text-gray-300 text-right">Target</TableHead>
+                  <TableHead className="text-gray-300 text-right">ZIP Codes Pulled</TableHead>
+                  <TableHead className="text-gray-300 text-right">Qualified Contacts</TableHead>
+                  <TableHead className="text-gray-300 text-right">Deliverable</TableHead>
+                  <TableHead className="text-gray-300 text-right">Uploaded</TableHead>
+                  <TableHead className="text-gray-300 text-right">Gap</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {stats.map((stat, idx) => (
                   <TableRow key={idx} className="border-white/10 hover:bg-white/5">
                     <TableCell>
-                      <div>
-                        <p className="text-white font-medium">{stat.client_name}</p>
-                        {stat.workspace_name && stat.workspace_name !== stat.client_name && (
-                          <p className="text-xs text-gray-400">{stat.workspace_name}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-gray-300">
-                      <span className="px-2 py-1 rounded bg-white/10 font-mono text-sm">{stat.state}</span>
+                      <p className="text-white font-medium">{stat.client_name}</p>
                     </TableCell>
                     <TableCell className="text-right">
-                      <span className="text-blue-400 font-semibold">{stat.total_leads.toLocaleString()}</span>
+                      <span className="text-gray-300 font-semibold">{stat.target.toLocaleString()}</span>
                     </TableCell>
-                    <TableCell className="text-right text-gray-300">
-                      {((stat.total_leads / totalLeads) * 100).toFixed(1)}%
+                    <TableCell className="text-right">
+                      <span className="text-blue-400 font-semibold">{stat.zipsPulled.toLocaleString()}</span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="text-green-400 font-semibold">{stat.qualified.toLocaleString()}</span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="text-purple-400 font-semibold">{stat.deliverable.toLocaleString()}</span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="text-yellow-400 font-semibold">{stat.uploaded.toLocaleString()}</span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className={stat.gap > 0 ? "text-orange-400 font-semibold" : "text-green-400 font-semibold"}>
+                        {stat.gap.toLocaleString()}
+                      </span>
                     </TableCell>
                   </TableRow>
                 ))}

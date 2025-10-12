@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
 
     // Parse webhook payload
     const payload = await req.json()
-    const eventType = payload.event?.type
+    const eventType = payload.event?.type?.toLowerCase() // Normalize to lowercase for consistent handling
     const workspaceName = payload.event?.workspace_name || 'Unknown'
 
     console.log(`📨 Webhook received: ${eventType} for ${workspaceName}`)

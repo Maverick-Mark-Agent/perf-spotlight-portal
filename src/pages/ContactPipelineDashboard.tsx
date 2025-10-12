@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import UploadCSVModal from '@/components/UploadCSVModal';
+import ZipBatchUploadModal from '@/components/ZipBatchUploadModal';
 
 interface PipelineSummary {
   workspace_name: string;
@@ -48,6 +49,12 @@ interface PipelineSummary {
   batches_completed: number;
   contacts_needed: number;
   target_percentage: number;
+
+  // ZIP code progress fields
+  total_zips?: number;
+  zips_pulled?: number;
+  zips_remaining?: number;
+  total_raw_contacts?: number;
 }
 
 interface WeeklyBatch {
@@ -78,18 +85,88 @@ const ContactPipelineDashboard: React.FC = () => {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<any>(null);
+  const [zipBatchModalOpen, setZipBatchModalOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<{workspace_name: string, display_name: string} | null>(null);
 
   // Fetch pipeline summaries
   const fetchPipelineSummaries = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch contact pipeline data
+      const { data: pipelineData, error: pipelineError } = await supabase
         .from('monthly_contact_pipeline_summary')
         .select('*')
         .eq('month', selectedMonth)
         .order('target_percentage', { ascending: false });
 
-      if (error) throw error;
-      setPipelineSummaries(data || []);
+      if (pipelineError) throw pipelineError;
+
+      // Fetch ZIP progress data
+      const { data: zipProgress, error: zipError } = await supabase
+        .from('client_zip_progress')
+        .select('*')
+        .eq('month', selectedMonth);
+
+      if (zipError) {
+        console.error('Error fetching ZIP progress:', zipError);
+      }
+
+      // Merge the data - include clients from both pipeline and ZIP progress
+      const workspaceMap = new Map<string, PipelineSummary>();
+
+      // Add pipeline data
+      (pipelineData || []).forEach((pipeline) => {
+        workspaceMap.set(pipeline.workspace_name, {
+          ...pipeline,
+          total_zips: 0,
+          zips_pulled: 0,
+          zips_remaining: 0,
+          total_raw_contacts: 0,
+        });
+      });
+
+      // Add/merge ZIP progress data
+      (zipProgress || []).forEach((zipData) => {
+        if (workspaceMap.has(zipData.workspace_name)) {
+          // Merge with existing pipeline data
+          const existing = workspaceMap.get(zipData.workspace_name)!;
+          workspaceMap.set(zipData.workspace_name, {
+            ...existing,
+            total_zips: zipData.total_zips || 0,
+            zips_pulled: zipData.zips_pulled || 0,
+            zips_remaining: zipData.zips_remaining || 0,
+            total_raw_contacts: zipData.total_raw_contacts || 0,
+          });
+        } else {
+          // Create new entry for ZIP-only clients
+          workspaceMap.set(zipData.workspace_name, {
+            workspace_name: zipData.workspace_name,
+            month: selectedMonth,
+            client_display_name: zipData.display_name || zipData.workspace_name,
+            monthly_contact_target: 0,
+            contact_tier: '',
+            upload_batch_count: 0,
+            raw_contacts_uploaded: 0,
+            verified_contacts: 0,
+            deliverable_count: 0,
+            undeliverable_count: 0,
+            risky_count: 0,
+            contacts_uploaded: 0,
+            contacts_pending: 0,
+            hnw_contacts: 0,
+            batches_created: 0,
+            batches_completed: 0,
+            contacts_needed: 0,
+            target_percentage: 0,
+            total_zips: zipData.total_zips || 0,
+            zips_pulled: zipData.zips_pulled || 0,
+            zips_remaining: zipData.zips_remaining || 0,
+            total_raw_contacts: zipData.total_raw_contacts || 0,
+          });
+        }
+      });
+
+      const merged = Array.from(workspaceMap.values());
+      setPipelineSummaries(merged);
     } catch (error) {
       console.error('Error fetching pipeline summaries:', error);
     }
@@ -177,7 +254,7 @@ const ContactPipelineDashboard: React.FC = () => {
           >
             {Array.from({ length: 12 }, (_, i) => {
               const date = new Date();
-              date.setMonth(date.getMonth() - i);
+              date.setMonth(date.getMonth() + i);
               const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
               return (
                 <option key={value} value={value}>
@@ -219,6 +296,21 @@ const ContactPipelineDashboard: React.FC = () => {
             fetchPipelineSummaries();
             fetchWeeklyBatches();
           }}
+        />
+      )}
+
+      {/* ZIP Batch Upload Modal */}
+      {zipBatchModalOpen && selectedClient && (
+        <ZipBatchUploadModal
+          open={zipBatchModalOpen}
+          onClose={() => {
+            setZipBatchModalOpen(false);
+            setSelectedClient(null);
+            fetchPipelineSummaries();
+          }}
+          workspaceName={selectedClient.workspace_name}
+          displayName={selectedClient.display_name}
+          month={selectedMonth}
         />
       )}
 
@@ -313,6 +405,7 @@ const ContactPipelineDashboard: React.FC = () => {
                   <TableRow>
                     <TableHead>Client</TableHead>
                     <TableHead className="text-right">Target</TableHead>
+                    <TableHead className="text-right">ZIP Codes Pulled</TableHead>
                     <TableHead className="text-right">Verified</TableHead>
                     <TableHead className="text-right">Deliverable</TableHead>
                     <TableHead className="text-right">Uploaded</TableHead>
@@ -326,7 +419,27 @@ const ContactPipelineDashboard: React.FC = () => {
                   {pipelineSummaries.map((summary) => (
                     <TableRow key={`${summary.workspace_name}-${summary.month}`}>
                       <TableCell className="font-medium">
-                        {summary.client_display_name}
+                        <button
+                          onClick={async () => {
+                            // Initialize batches if not already done
+                            try {
+                              await supabase.functions.invoke('initialize-zip-batches', {
+                                body: { workspace_name: summary.workspace_name, month: selectedMonth }
+                              });
+                            } catch (error) {
+                              console.error('Error initializing batches:', error);
+                            }
+
+                            setSelectedClient({
+                              workspace_name: summary.workspace_name,
+                              display_name: summary.client_display_name,
+                            });
+                            setZipBatchModalOpen(true);
+                          }}
+                          className="text-left hover:underline focus:outline-none focus:underline"
+                        >
+                          {summary.client_display_name}
+                        </button>
                         {summary.contact_tier && (
                           <Badge variant="outline" className="ml-2 text-xs">
                             {summary.contact_tier}
@@ -335,6 +448,22 @@ const ContactPipelineDashboard: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         {summary.monthly_contact_target?.toLocaleString() || '—'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {summary.total_zips ? (
+                          <div className="flex flex-col items-end">
+                            <span className="font-medium">
+                              {summary.zips_pulled} / {summary.total_zips}
+                            </span>
+                            {summary.total_raw_contacts > 0 && (
+                              <span className="text-xs text-muted-foreground">
+                                {summary.total_raw_contacts.toLocaleString()} contacts
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {summary.verified_contacts.toLocaleString()}

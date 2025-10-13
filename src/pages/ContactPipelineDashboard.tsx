@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import UploadCSVModal from '@/components/UploadCSVModal';
-import ZipBatchUploadModal from '@/components/ZipBatchUploadModal';
+import ZipBatchUploadModal from '@/components/ZipBatchUploadModal.tsx';
 
 interface PipelineSummary {
   workspace_name: string;

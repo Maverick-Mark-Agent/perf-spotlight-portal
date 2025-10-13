@@ -47,6 +47,7 @@ interface VolumeClientData {
   variance: number;
   projectedVariance: number;
   dailyQuota: number;
+  dailySendingTarget: number;
   expectedByNow: number;
   isOnTrack: boolean;
   dailyAverage: number;
@@ -186,11 +187,14 @@ interface DashboardContextType {
 
   // Global
   refreshAll: () => Promise<void>;
+  canRefresh: () => boolean;
+  getTimeUntilNextRefresh: () => number;
 }
 
 // ============= Cache Configuration =============
 
 const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes in milliseconds (reduced for fresher data)
+const MIN_REFRESH_INTERVAL = 30 * 1000; // 30 seconds minimum between manual refreshes
 
 const CACHE_KEYS = {
   KPI_DATA: 'kpi-dashboard-data',
@@ -219,6 +223,9 @@ export const useDashboardContext = () => {
 // ============= Provider Component =============
 
 export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // ============= Refresh Rate Limiting =============
+  const [lastRefreshTime, setLastRefreshTime] = useState<number>(0);
+
   // ============= KPI Dashboard State =============
   const [kpiDashboard, setKPIDashboard] = useState<KPIDashboardState>({
     clients: [],
@@ -385,8 +392,15 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, []);
 
   const refreshKPIDashboard = useCallback(async (force: boolean = true) => {
+    // Rate limiting check
+    const now = Date.now();
+    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+      console.log('[Refresh] Rate limited - too soon since last refresh');
+      return;
+    }
+    setLastRefreshTime(now);
     await fetchKPIDataInternal(force);
-  }, [fetchKPIDataInternal]);
+  }, [fetchKPIDataInternal, lastRefreshTime]);
 
   // ============= Volume Dashboard Functions =============
 
@@ -435,8 +449,15 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, [volumeDashboard.clients.length]);
 
   const refreshVolumeDashboard = useCallback(async (force: boolean = true) => {
+    // Rate limiting check
+    const now = Date.now();
+    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+      console.log('[Refresh] Rate limited - too soon since last refresh');
+      return;
+    }
+    setLastRefreshTime(now);
     await fetchVolumeDataInternal(force);
-  }, [fetchVolumeDataInternal]);
+  }, [fetchVolumeDataInternal, lastRefreshTime]);
 
   // ============= Infrastructure Dashboard Functions =============
 
@@ -512,8 +533,15 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, []);
 
   const refreshInfrastructure = useCallback(async (force: boolean = true) => {
+    // Rate limiting check
+    const now = Date.now();
+    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+      console.log('[Refresh] Rate limited - too soon since last refresh');
+      return;
+    }
+    setLastRefreshTime(now);
     await fetchInfrastructureDataInternal(force);
-  }, [fetchInfrastructureDataInternal]);
+  }, [fetchInfrastructureDataInternal, lastRefreshTime]);
 
   // ============= Revenue Dashboard Functions =============
 
@@ -564,19 +592,46 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, [revenueDashboard.clients.length]);
 
   const refreshRevenueDashboard = useCallback(async (force: boolean = true) => {
+    // Rate limiting check
+    const now = Date.now();
+    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+      console.log('[Refresh] Rate limited - too soon since last refresh');
+      return;
+    }
+    setLastRefreshTime(now);
     await fetchRevenueDataInternal(force);
-  }, [fetchRevenueDataInternal]);
+  }, [fetchRevenueDataInternal, lastRefreshTime]);
 
   // ============= Global Functions =============
 
   const refreshAll = useCallback(async () => {
+    // Rate limiting check
+    const now = Date.now();
+    if ((now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+      console.log('[Refresh] Rate limited - too soon since last refresh');
+      return;
+    }
+    setLastRefreshTime(now);
     await Promise.all([
       fetchKPIDataInternal(true),
       fetchVolumeDataInternal(true),
       fetchInfrastructureDataInternal(true),
       fetchRevenueDataInternal(true),
     ]);
-  }, [fetchKPIDataInternal, fetchVolumeDataInternal, fetchInfrastructureDataInternal, fetchRevenueDataInternal]);
+  }, [fetchKPIDataInternal, fetchVolumeDataInternal, fetchInfrastructureDataInternal, fetchRevenueDataInternal, lastRefreshTime]);
+
+  // Helper functions for refresh rate limiting
+  const canRefresh = useCallback(() => {
+    const now = Date.now();
+    return (now - lastRefreshTime) >= MIN_REFRESH_INTERVAL;
+  }, [lastRefreshTime]);
+
+  const getTimeUntilNextRefresh = useCallback(() => {
+    const now = Date.now();
+    const timeElapsed = now - lastRefreshTime;
+    const timeRemaining = MIN_REFRESH_INTERVAL - timeElapsed;
+    return Math.max(0, Math.ceil(timeRemaining / 1000)); // Return seconds
+  }, [lastRefreshTime]);
 
   // ============= Initial Load & Hydration =============
 
@@ -629,13 +684,12 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     fetchInfrastructureDataInternal(false);
     fetchRevenueDataInternal(false);
 
-    // Set up auto-refresh interval (1 hour)
-    const intervalId = setInterval(() => {
-      console.log('Auto-refreshing all dashboards...');
-      refreshAll();
-    }, CACHE_DURATION);
-
-    return () => clearInterval(intervalId);
+    // Auto-refresh disabled - users can manually refresh using the Refresh button
+    // This prevents constant dashboard refreshing that makes analysis difficult
+    // Data is kept fresh via:
+    // 1. Webhooks (real-time KPI updates)
+    // 2. Nightly cron jobs (sync-daily-kpi-metrics runs at midnight)
+    // 3. Manual refresh button on each dashboard
   }, []); // Only run once on mount
 
   // ============= Context Value =============
@@ -657,6 +711,8 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     revenueDashboard,
     refreshRevenueDashboard,
     refreshAll,
+    canRefresh,
+    getTimeUntilNextRefresh,
   };
 
   return (

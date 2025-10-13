@@ -45,6 +45,7 @@ export const VolumeClientSchema = z.object({
   variance: z.number(),
   projectedVariance: z.number(),
   dailyQuota: z.number().nonnegative(),
+  dailySendingTarget: z.number().int().nonnegative(),
   expectedByNow: z.number().nonnegative(),
   isOnTrack: z.boolean(),
   dailyAverage: z.number().nonnegative(),

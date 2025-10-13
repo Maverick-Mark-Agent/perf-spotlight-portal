@@ -101,6 +101,7 @@ export function transformToVolumeClient(dbRow: any, rank: number, daysInMonth: n
   const emails = dbRow.emails_sent_mtd || 0;
   const target = dbRow.client_registry?.monthly_sending_target || 0;
   const projection = dbRow.projection_emails_eom || 0;
+  const dailySendingTarget = dbRow.client_registry?.daily_sending_target || 0;
 
   const dailyQuota = target / daysInMonth;
   const expectedByNow = dailyQuota * daysElapsed;
@@ -122,6 +123,7 @@ export function transformToVolumeClient(dbRow: any, rank: number, daysInMonth: n
     variance: emails - target,
     projectedVariance: projection - target,
     dailyQuota,
+    dailySendingTarget,
     expectedByNow,
     isOnTrack: emails >= expectedByNow,
     dailyAverage,

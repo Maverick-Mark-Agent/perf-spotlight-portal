@@ -44,7 +44,7 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
     const { todayStr } = getCurrentDateInfo();
 
     // Query client_metrics with client_registry JOIN
-    const { data: metrics, error } = await supabase
+    let { data: metrics, error } = await supabase
       .from('client_metrics')
       .select(`
         *,
@@ -67,8 +67,54 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
       throw error;
     }
 
+    // If no data for today, fall back to most recent date
     if (!metrics || metrics.length === 0) {
       console.warn('[KPI Realtime] No MTD data found for today:', todayStr);
+      console.log('[KPI Realtime] Fetching most recent MTD data...');
+
+      // Get the most recent metric_date
+      const { data: recentDate } = await supabase
+        .from('client_metrics')
+        .select('metric_date')
+        .eq('metric_type', 'mtd')
+        .order('metric_date', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (recentDate) {
+        console.log('[KPI Realtime] Using most recent date:', recentDate.metric_date);
+
+        // Query again with the most recent date
+        const fallbackQuery = await supabase
+          .from('client_metrics')
+          .select(`
+            *,
+            client_registry!inner(
+              workspace_name,
+              display_name,
+              monthly_kpi_target,
+              monthly_sending_target,
+              price_per_lead,
+              is_active
+            )
+          `)
+          .eq('metric_type', 'mtd')
+          .eq('metric_date', recentDate.metric_date)
+          .eq('client_registry.is_active', true)
+          .order('positive_replies_mtd', { ascending: false });
+
+        metrics = fallbackQuery.data;
+        error = fallbackQuery.error;
+
+        if (error) {
+          console.error('[KPI Realtime] Fallback query error:', error);
+          throw error;
+        }
+      }
+    }
+
+    if (!metrics || metrics.length === 0) {
+      console.warn('[KPI Realtime] No MTD data found at all');
       return {
         data: [],
         success: true,
@@ -144,7 +190,7 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
     const { todayStr, daysInMonth, daysElapsed } = getCurrentDateInfo();
 
     // Query client_metrics with client_registry JOIN
-    const { data: metrics, error } = await supabase
+    let { data: metrics, error } = await supabase
       .from('client_metrics')
       .select(`
         *,
@@ -165,8 +211,52 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
       throw error;
     }
 
+    // If no data for today, fall back to most recent date
     if (!metrics || metrics.length === 0) {
       console.warn('[Volume Realtime] No MTD data found for today:', todayStr);
+      console.log('[Volume Realtime] Fetching most recent MTD data...');
+
+      // Get the most recent metric_date
+      const { data: recentDate } = await supabase
+        .from('client_metrics')
+        .select('metric_date')
+        .eq('metric_type', 'mtd')
+        .order('metric_date', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (recentDate) {
+        console.log('[Volume Realtime] Using most recent date:', recentDate.metric_date);
+
+        // Query again with the most recent date
+        const fallbackQuery = await supabase
+          .from('client_metrics')
+          .select(`
+            *,
+            client_registry!inner(
+              workspace_name,
+              display_name,
+              monthly_sending_target,
+              is_active
+            )
+          `)
+          .eq('metric_type', 'mtd')
+          .eq('metric_date', recentDate.metric_date)
+          .eq('client_registry.is_active', true)
+          .order('emails_sent_mtd', { ascending: false });
+
+        metrics = fallbackQuery.data;
+        error = fallbackQuery.error;
+
+        if (error) {
+          console.error('[Volume Realtime] Fallback query error:', error);
+          throw error;
+        }
+      }
+    }
+
+    if (!metrics || metrics.length === 0) {
+      console.warn('[Volume Realtime] No MTD data found at all');
       return {
         data: [],
         success: true,
@@ -228,25 +318,25 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
 // ============= Email Infrastructure (Real-Time) =============
 
 /**
- * Fetch email accounts from database (email_account_metadata)
+ * Fetch email accounts from database (sender_emails_cache)
  *
- * Performance: <1s (vs 30-60s with Edge Functions)
- * Freshness: Synced via hybrid-email-accounts-v2 Edge Function
+ * Performance: <1s (vs 30-60s with Email Bison API)
+ * Freshness: Synced daily at midnight via poll-sender-emails cron job
  *
- * NOTE: Uses email_account_metadata (4,249 accounts with pricing),
- * NOT sender_emails_cache (incomplete polling data)
+ * NOTE: Uses sender_emails_cache (synced from Email Bison every night at midnight)
+ * This ensures accurate, complete data without slow API calls during page load
  */
 export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult<EmailAccount[]>> {
   const startTime = Date.now();
 
   try {
-    console.log('[Infrastructure Realtime] Fetching from email_account_metadata...');
+    console.log('[Infrastructure Realtime] Fetching from sender_emails_cache...');
 
-    // Query email_account_metadata directly (CORRECT table with all accounts + pricing)
+    // Query sender_emails_cache (synced by poll-sender-emails cron job)
     const { data: accounts, error } = await supabase
-      .from('email_account_metadata')
+      .from('sender_emails_cache')
       .select('*')
-      .order('updated_at', { ascending: false });
+      .order('last_synced_at', { ascending: false });
 
     if (error) {
       console.error('[Infrastructure Realtime] Database error:', error);

@@ -40,24 +40,9 @@ const navigationItems = {
   ],
   analytics: [
     {
-      title: "KPI Dashboard",
+      title: "KPI's & Volume",
       icon: BarChart3,
       url: "/kpi-dashboard",
-    },
-    {
-      title: "Volume Dashboard",
-      icon: TrendingUp,
-      url: "/volume-dashboard",
-    },
-    {
-      title: "Revenue & Billing",
-      icon: DollarSign,
-      url: "/revenue-dashboard",
-    },
-    {
-      title: "ROI Dashboard",
-      icon: PieChart,
-      url: "/roi-dashboard",
     },
   ],
   management: [
@@ -82,7 +67,13 @@ const navigationItems = {
       url: "/zip-dashboard",
     },
   ],
-  finance: [],
+  finance: [
+    {
+      title: "Revenue & Billing",
+      icon: DollarSign,
+      url: "/revenue-dashboard",
+    },
+  ],
   infrastructure: [
     {
       title: "Email Accounts",

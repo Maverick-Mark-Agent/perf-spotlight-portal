@@ -5,21 +5,30 @@ import { RepliesTimelineView } from "@/components/dashboard/RepliesTimelineView"
 import { ComparisonMetrics } from "@/components/dashboard/ComparisonMetrics";
 import { ClientPerformanceLists } from "@/components/dashboard/ClientPerformanceLists";
 import { AggregateMetricsCard } from "@/components/dashboard/AggregateMetricsCard";
+import { UnifiedTopCards } from "@/components/dashboard/UnifiedTopCards";
+import { UnifiedClientCard } from "@/components/dashboard/UnifiedClientCard";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { DataFreshnessIndicator } from "@/components/DataFreshnessIndicator";
+import { useMemo, useState, useEffect } from "react";
 
 const MonthlyKPIProgress = () => {
   const { toast } = useToast();
   const {
     kpiDashboard,
+    volumeDashboard,
     setKPISelectedClient,
     setKPIViewMode,
     refreshKPIDashboard,
+    refreshVolumeDashboard,
+    canRefresh,
+    getTimeUntilNextRefresh,
   } = useDashboardContext();
+
+  const [refreshCooldown, setRefreshCooldown] = useState(0);
 
   // Destructure dashboard state
   const {
@@ -68,13 +77,92 @@ const MonthlyKPIProgress = () => {
     { totalLeads: 0, totalTarget: 0, projectedEOM: 0 }
   );
 
+  // Update cooldown timer every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!canRefresh()) {
+        setRefreshCooldown(getTimeUntilNextRefresh());
+      } else {
+        setRefreshCooldown(0);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [canRefresh, getTimeUntilNextRefresh]);
+
   const handleRefresh = async () => {
-    await refreshKPIDashboard(true);
+    if (!canRefresh()) {
+      toast({
+        title: "Please wait",
+        description: `You can refresh again in ${refreshCooldown} seconds`,
+        variant: "default",
+      });
+      return;
+    }
+
+    await Promise.all([
+      refreshKPIDashboard(true),
+      refreshVolumeDashboard(true)
+    ]);
     toast({
       title: "Success",
       description: "Data refreshed successfully",
     });
   };
+
+  // Merge KPI and Volume data by client name
+  const unifiedClients = useMemo(() => {
+    const volumeMap = new Map(
+      volumeDashboard.clients.map(c => [c.name, c])
+    );
+
+    return displayedClients.map(kpiClient => {
+      const volumeClient = volumeMap.get(kpiClient.name);
+
+      // Determine status based on KPI performance
+      let status: 'above' | 'ontrack' | 'below' = 'below';
+      if (kpiClient.leadsGenerated >= kpiClient.monthlyKPI) {
+        status = 'above';
+      } else if (kpiClient.projectedReplies >= kpiClient.monthlyKPI) {
+        status = 'ontrack';
+      }
+
+      return {
+        name: kpiClient.name,
+        // KPI data
+        leadsGenerated: kpiClient.leadsGenerated,
+        monthlyKPI: kpiClient.monthlyKPI,
+        projectedReplies: kpiClient.projectedReplies,
+        currentProgress: kpiClient.currentProgress,
+        repliesProgress: kpiClient.repliesProgress,
+        leadsTarget: kpiClient.leadsTarget,
+        repliesTarget: kpiClient.repliesTarget,
+        // KPI Timeline data (for expanded view)
+        positiveRepliesLast7Days: kpiClient.positiveRepliesLast7Days,
+        positiveRepliesLast14Days: kpiClient.positiveRepliesLast14Days,
+        positiveRepliesLast30Days: kpiClient.positiveRepliesLast30Days,
+        positiveRepliesCurrentMonth: kpiClient.positiveRepliesCurrentMonth,
+        positiveRepliesLastMonth: kpiClient.positiveRepliesLastMonth,
+        lastWeekVsWeekBeforeProgress: kpiClient.lastWeekVsWeekBeforeProgress,
+        positiveRepliesLastVsThisMonth: kpiClient.positiveRepliesLastVsThisMonth,
+        // Volume data (with fallbacks)
+        emails: volumeClient?.emails || 0,
+        emailsToday: volumeClient?.emailsToday || 0,
+        target: volumeClient?.target || 0,
+        projection: volumeClient?.projection || 0,
+        projectedPercentage: volumeClient?.projectedPercentage || 0,
+        targetPercentage: volumeClient?.targetPercentage || 0,
+        // Detailed metrics
+        emailsLast7Days: volumeClient?.emailsLast7Days,
+        emailsLast14Days: volumeClient?.emailsLast14Days,
+        emailsLast30Days: volumeClient?.emailsLast30Days,
+        dailyQuota: volumeClient?.dailyQuota,
+        dailySendingTarget: volumeClient?.dailySendingTarget,
+        expectedByNow: volumeClient?.expectedByNow,
+        // Computed
+        status,
+      };
+    });
+  }, [displayedClients, volumeDashboard.clients]);
 
   const selectedClientData = selectedClient
     ? clients.find(client => client.id === selectedClient) || {
@@ -161,13 +249,14 @@ const MonthlyKPIProgress = () => {
               />
               <Button
                 onClick={handleRefresh}
-                disabled={loading}
+                disabled={loading || !canRefresh()}
                 variant="outline"
                 size="default"
                 className="shadow-md hover:shadow-lg transition-all"
+                title={!canRefresh() ? `Wait ${refreshCooldown}s to refresh` : 'Refresh dashboard data'}
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                Refresh Data
+                {refreshCooldown > 0 ? `Wait ${refreshCooldown}s` : 'Refresh Data'}
               </Button>
             </div>
           </div>
@@ -178,7 +267,7 @@ const MonthlyKPIProgress = () => {
 
         {viewMode === 'overview' ? (
           /* Client Overview Cards */
-          loading ? (
+          loading || volumeDashboard.loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="h-64 bg-card rounded-2xl animate-pulse shadow-md" />
@@ -186,19 +275,15 @@ const MonthlyKPIProgress = () => {
             </div>
           ) : (
             <>
-              {/* Aggregate Metrics Card */}
-              <AggregateMetricsCard
-                totalLeads={aggregateMetrics.totalLeads}
-                totalTarget={aggregateMetrics.totalTarget}
-                projectedEOM={aggregateMetrics.projectedEOM}
-                clientCount={displayedClients.length}
+              {/* Unified Top Cards - Combining KPI and Volume metrics */}
+              <UnifiedTopCards
+                kpiClients={displayedClients}
+                volumeClients={volumeDashboard.clients}
               />
 
-              {/* Client Performance Summary - Compact */}
-              <ClientPerformanceLists clients={displayedClients} />
-
+              {/* Unified Client Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {displayedClients
+              {unifiedClients
                 .sort((a, b) => {
                   // Sort by current progress descending (best to worst)
                   // Clients meeting target first, then by progress percentage
@@ -215,13 +300,9 @@ const MonthlyKPIProgress = () => {
                   return bProgress - aProgress;
                 })
                 .map((client) => (
-                  <ClientOverviewCard
-                    key={client.id}
+                  <UnifiedClientCard
+                    key={client.name}
                     client={client}
-                    onClick={() => {
-                      setKPISelectedClient(client.id);
-                      setKPIViewMode('detail');
-                    }}
                   />
                 ))}
               </div>

@@ -1535,7 +1535,7 @@ const SendingAccountsInfrastructure = () => {
                         <div className="space-y-2 mb-3">
                           <div className="flex justify-between text-xs">
                             <span className="text-white/70">Maximum Capacity</span>
-                            <span className="text-white font-semibold">{client.maxSending.toLocaleString()}</span>
+                            <span className="text-white font-semibold">{(client.maxSending || 0).toLocaleString()}</span>
                           </div>
                           <div className="w-full bg-white/10 rounded-full h-2">
                             <div 
@@ -1546,29 +1546,29 @@ const SendingAccountsInfrastructure = () => {
                           
                           <div className="flex justify-between text-xs">
                             <span className="text-white/70">Available Sending</span>
-                            <span className="text-white font-semibold">{client.availableSending.toLocaleString()}</span>
+                            <span className="text-white font-semibold">{(client.availableSending || 0).toLocaleString()}</span>
                           </div>
                           <div className="w-full bg-white/10 rounded-full h-2">
                             <div 
                               className="bg-dashboard-accent h-2 rounded-full" 
-                              style={{ width: `${client.utilizationPercentage}%` }}
+                              style={{ width: `${client.utilizationPercentage || 0}%` }}
                             ></div>
                           </div>
                           
                           <div className="flex justify-between text-xs">
                             <span className="text-white/70">Daily Target</span>
                             <span className={`font-semibold ${
-                              client.medianDailyTarget > client.availableSending 
-                                ? 'text-dashboard-warning' 
+                              (client.medianDailyTarget || 0) > (client.availableSending || 0)
+                                ? 'text-dashboard-warning'
                                 : 'text-dashboard-success'
                             }`}>
-                              {client.medianDailyTarget.toLocaleString()}
+                              {(client.medianDailyTarget || 0).toLocaleString()}
                             </span>
                           </div>
                           <div className="w-full bg-white/10 rounded-full h-2">
-                            <div 
+                            <div
                               className={`h-2 rounded-full ${
-                                client.medianDailyTarget > client.availableSending 
+                                (client.medianDailyTarget || 0) > (client.availableSending || 0) 
                                   ? 'bg-dashboard-warning' 
                                   : 'bg-dashboard-success'
                               }`}

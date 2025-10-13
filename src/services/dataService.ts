@@ -24,7 +24,7 @@ import {
  * Set to false to instantly rollback to Edge Functions
  */
 const FEATURE_FLAGS = {
-  useRealtimeInfrastructure: false, // Keep using Edge Function - email_account_metadata doesn't have full account data
+  useRealtimeInfrastructure: true, // NOW USING sender_emails_cache table (synced by poll-sender-emails cron job)
   useRealtimeKPI: true, // KPI Dashboard (5-10s → <500ms)
   useRealtimeVolume: true, // Volume Dashboard (3-5s → <300ms)
 } as const;
@@ -34,7 +34,7 @@ const FEATURE_FLAGS = {
 const CACHE_TTL = {
   KPI: 2 * 60 * 1000,           // 2 minutes for high-priority KPI data
   VOLUME: 30 * 1000,            // 30 seconds for volume data (reduced for debugging)
-  REVENUE: 10 * 1000,           // 10 seconds for revenue data (reduced for real-time updates)
+  REVENUE: 2 * 60 * 1000,       // 2 minutes for revenue data (user-controlled refresh via button)
   INFRASTRUCTURE: 10 * 60 * 1000, // 10 minutes for infrastructure data
 } as const;
 

@@ -47,9 +47,9 @@ const navigationItems = {
   ],
   management: [
     {
-      title: "Client Management",
-      icon: Settings,
-      url: "/client-management",
+      title: "Client Portal",
+      icon: Users,
+      url: "/client-portal",
     },
     {
       title: "Contact Pipeline",
@@ -57,14 +57,14 @@ const navigationItems = {
       url: "/contact-pipeline",
     },
     {
-      title: "Client Portal",
-      icon: Users,
-      url: "/client-portal",
-    },
-    {
       title: "ZIP Dashboard",
       icon: MapPin,
       url: "/zip-dashboard",
+    },
+    {
+      title: "Client Management",
+      icon: Settings,
+      url: "/client-management",
     },
   ],
   finance: [

@@ -1702,6 +1702,10 @@ const SendingAccountsInfrastructure = () => {
 
 // Separate component for better performance
 const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, toggleAccountType, toggleStatus, filter }) => {
+  // Ensure we have Set objects (convert if needed)
+  const accountTypesSet = expandedAccountTypes instanceof Set ? expandedAccountTypes : new Set(expandedAccountTypes);
+  const statusesSet = expandedStatuses instanceof Set ? expandedStatuses : new Set(expandedStatuses);
+
   const organizedAccounts = useMemo(() => {
     console.log('[ClientAccountsModal] Processing client:', client.clientName);
     console.log('[ClientAccountsModal] Number of accounts:', client.accounts?.length);
@@ -1767,16 +1771,16 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
   return (
     <div className="space-y-3">
       {Object.entries(organizedAccounts).map(([accountType, statusGroups]) => (
-        <Collapsible 
+        <Collapsible
           key={accountType}
-          open={expandedAccountTypes.has(accountType)}
+          open={accountTypesSet.has(accountType)}
           onOpenChange={() => toggleAccountType(accountType)}
         >
           <CollapsibleTrigger asChild>
             <div className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  {expandedAccountTypes.has(accountType) ? (
+                  {accountTypesSet.has(accountType) ? (
                     <ChevronDown className="h-4 w-4 text-white/70" />
                   ) : (
                     <ChevronRight className="h-4 w-4 text-white/70" />
@@ -1792,18 +1796,18 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
           
           <CollapsibleContent>
             <div className="ml-4 mt-2 space-y-2">
-              {Object.entries(statusGroups).map(([status, accounts]) => 
+              {Object.entries(statusGroups).map(([status, accounts]) =>
                 accounts.length > 0 && (
-                  <Collapsible 
+                  <Collapsible
                     key={`${accountType}-${status}`}
-                    open={expandedStatuses.has(`${accountType}-${status}`)}
+                    open={statusesSet.has(`${accountType}-${status}`)}
                     onOpenChange={() => toggleStatus(`${accountType}-${status}`)}
                   >
                     <CollapsibleTrigger asChild>
                       <div className="bg-white/5 rounded-lg p-2 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
-                            {expandedStatuses.has(`${accountType}-${status}`) ? (
+                            {statusesSet.has(`${accountType}-${status}`) ? (
                               <ChevronDown className="h-3 w-3 text-white/70" />
                             ) : (
                               <ChevronRight className="h-3 w-3 text-white/70" />

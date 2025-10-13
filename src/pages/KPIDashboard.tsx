@@ -317,6 +317,8 @@ const MonthlyKPIProgress = () => {
               <UnifiedTopCards
                 kpiClients={displayedClients}
                 volumeClients={volumeDashboard.clients}
+                onRefresh={handleRefresh}
+                isRefreshing={loading}
               />
 
               {/* Unified Client Cards */}

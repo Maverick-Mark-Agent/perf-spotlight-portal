@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Send, BarChart3, Target, TrendingUp, TrendingDown, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Send, BarChart3, Target, TrendingUp, TrendingDown, Users, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface KPIClient {
@@ -24,9 +25,11 @@ interface VolumeClient {
 interface UnifiedTopCardsProps {
   kpiClients: KPIClient[];
   volumeClients: VolumeClient[];
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
-export const UnifiedTopCards = ({ kpiClients, volumeClients }: UnifiedTopCardsProps) => {
+export const UnifiedTopCards = ({ kpiClients, volumeClients, onRefresh, isRefreshing = false }: UnifiedTopCardsProps) => {
   // Calculate KPI aggregates
   const totalLeads = kpiClients.reduce((sum, c) => sum + c.leadsGenerated, 0);
   const totalKPITarget = kpiClients.reduce((sum, c) => sum + c.monthlyKPI, 0);
@@ -58,10 +61,24 @@ export const UnifiedTopCards = ({ kpiClients, volumeClients }: UnifiedTopCardsPr
       {/* Card 1: Today's Sending Volume */}
       <Card className="bg-dashboard-primary/15 backdrop-blur-sm border-dashboard-primary/50 shadow-2xl">
         <CardHeader>
-          <CardTitle className="text-dashboard-primary flex items-center gap-2 text-xl font-bold">
-            <Send className="h-6 w-6" />
-            Today's Sending Volume
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-dashboard-primary flex items-center gap-2 text-xl font-bold">
+              <Send className="h-6 w-6" />
+              Today's Sending Volume
+            </CardTitle>
+            {onRefresh && (
+              <Button
+                onClick={onRefresh}
+                disabled={isRefreshing}
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                title="Refresh daily sending data"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="max-h-[400px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
           {volumeClients

@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign, Download } from "lucide-react";
+import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign, Download, AlertTriangle, Info } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
@@ -59,20 +59,56 @@ const SendingAccountsInfrastructure = () => {
   const [clientAccountsData, setClientAccountsData] = useState([]);
   const [emailProviderData, setEmailProviderData] = useState([]);
   const [clientSendingData, setClientSendingData] = useState([]);
+  const [pollingJobStatus, setPollingJobStatus] = useState<any>(null);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const [refreshCooldown, setRefreshCooldown] = useState(0);
 
   const formatLastUpdated = () => {
     if (!lastUpdated) return '';
     const now = new Date();
     const diffMs = now.getTime() - lastUpdated.getTime();
     const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
 
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
-
-    const diffHours = Math.floor(diffMins / 60);
     if (diffHours < 24) return `${diffHours}h ago`;
 
-    return lastUpdated.toLocaleString();
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
+
+  const getDataFreshnessColor = () => {
+    if (!lastUpdated) return 'text-gray-500';
+    const now = new Date();
+    const diffHours = (now.getTime() - lastUpdated.getTime()) / 3600000;
+
+    if (diffHours < 6) return 'text-green-600'; // Fresh (< 6 hours)
+    if (diffHours < 24) return 'text-yellow-600'; // Stale (6-24 hours)
+    return 'text-red-600'; // Very stale (> 24 hours)
+  };
+
+  const getDataFreshnessMessage = () => {
+    if (!lastUpdated) return 'No sync data available';
+    const now = new Date();
+    const diffHours = (now.getTime() - lastUpdated.getTime()) / 3600000;
+
+    if (diffHours < 6) return 'Data is fresh and reliable';
+    if (diffHours < 24) return 'Data may be slightly outdated';
+    return 'Data is stale - manual refresh recommended';
+  };
+
+  const getNextSyncTime = () => {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+
+    const diffMs = tomorrow.getTime() - now.getTime();
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffMins = Math.floor((diffMs % 3600000) / 60000);
+
+    return `${diffHours}h ${diffMins}m`;
   };
 
   // Function to download accounts with 0% reply rate and 50+ emails sent as CSV
@@ -123,10 +159,98 @@ const SendingAccountsInfrastructure = () => {
 
   const fetchEmailAccounts = async (isRefresh = false) => {
     try {
+      console.log('[EmailAccountsPage] Starting fetchEmailAccounts, isRefresh:', isRefresh);
+      console.log('[EmailAccountsPage] Current emailAccounts.length:', emailAccounts.length);
       await refreshInfrastructure(isRefresh);
+      console.log('[EmailAccountsPage] After refreshInfrastructure, emailAccounts.length:', emailAccounts.length);
+
+      // Also fetch the latest polling job status
+      await fetchPollingJobStatus();
     } catch (error) {
       console.error('Error fetching email accounts:', error);
     }
+  };
+
+  const fetchPollingJobStatus = async () => {
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data, error } = await supabase
+        .from('polling_job_status')
+        .select('*')
+        .eq('job_name', 'poll-sender-emails')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching polling job status:', error);
+        return;
+      }
+
+      setPollingJobStatus(data);
+    } catch (error) {
+      console.error('Error fetching polling job status:', error);
+    }
+  };
+
+  const triggerManualRefresh = async () => {
+    if (refreshCooldown > 0 || isManualRefreshing) {
+      return;
+    }
+
+    try {
+      setIsManualRefreshing(true);
+      setLoadingMessage('Triggering email sync job...');
+
+      // Trigger the polling job via Edge Function
+      const { supabase } = await import('@/integrations/supabase/client');
+      const { data, error } = await supabase.functions.invoke('poll-sender-emails');
+
+      if (error) {
+        console.error('Error triggering manual refresh:', error);
+        alert('Failed to trigger refresh: ' + error.message);
+        return;
+      }
+
+      console.log('Manual refresh triggered successfully:', data);
+
+      // Set cooldown (5 minutes)
+      const COOLDOWN_SECONDS = 300; // 5 minutes
+      setRefreshCooldown(COOLDOWN_SECONDS);
+
+      // Start countdown timer
+      const interval = setInterval(() => {
+        setRefreshCooldown(prev => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      // Wait a bit, then refresh the dashboard data
+      setLoadingMessage('Waiting for sync to complete...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      setLoadingMessage('Fetching updated data...');
+      await fetchEmailAccounts(true);
+
+      alert(`Sync completed successfully!\n\n${data.workspaces_processed}/${data.total_workspaces} workspaces synced\n${data.total_accounts_synced} accounts updated`);
+    } catch (error) {
+      console.error('Error during manual refresh:', error);
+      alert('An error occurred during refresh: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsManualRefreshing(false);
+      setLoadingMessage('Fetching all records...');
+    }
+  };
+
+  const formatCooldownTime = () => {
+    if (refreshCooldown === 0) return '';
+    const minutes = Math.floor(refreshCooldown / 60);
+    const seconds = refreshCooldown % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   const generatePriceAnalysisData = (accounts) => {
@@ -641,7 +765,12 @@ const SendingAccountsInfrastructure = () => {
                     Email Infrastructure Management & Monitoring
                     {lastUpdated && (
                       <span className="ml-2">
-                        • Updated {formatLastUpdated()}
+                        • <span className={`font-semibold ${getDataFreshnessColor()}`}>
+                          Synced {formatLastUpdated()}
+                        </span>
+                        <span className="text-xs ml-2 text-gray-500">
+                          (next sync in {getNextSyncTime()})
+                        </span>
                       </span>
                     )}
                   </p>
@@ -654,14 +783,15 @@ const SendingAccountsInfrastructure = () => {
                 All Systems Operational
               </Badge>
               <Button
-                onClick={() => fetchEmailAccounts(true)}
-                disabled={loading}
+                onClick={triggerManualRefresh}
+                disabled={loading || isManualRefreshing || refreshCooldown > 0}
                 variant="ghost"
                 size="sm"
                 className="hover:bg-accent"
+                title={refreshCooldown > 0 ? `Cooldown: ${formatCooldownTime()} remaining` : 'Trigger manual email sync'}
               >
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                Refresh Data
+                <RefreshCw className={`h-4 w-4 mr-2 ${(loading || isManualRefreshing) ? 'animate-spin' : ''}`} />
+                {refreshCooldown > 0 ? `Wait ${formatCooldownTime()}` : isManualRefreshing ? 'Syncing...' : 'Trigger Sync'}
               </Button>
                <Button 
                 onClick={downloadFailedAccounts}
@@ -689,6 +819,83 @@ const SendingAccountsInfrastructure = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Data Freshness Banner */}
+        {lastUpdated && (() => {
+          const now = new Date();
+          const diffHours = (now.getTime() - lastUpdated.getTime()) / 3600000;
+
+          if (diffHours >= 6) {
+            return (
+              <div className={`mb-6 p-4 rounded-lg border ${
+                diffHours >= 24
+                  ? 'bg-red-900/20 border-red-500/50'
+                  : 'bg-yellow-900/20 border-yellow-500/50'
+              }`}>
+                <div className="flex items-center gap-3">
+                  {diffHours >= 24 ? (
+                    <AlertTriangle className="h-5 w-5 text-red-500" />
+                  ) : (
+                    <Info className="h-5 w-5 text-yellow-500" />
+                  )}
+                  <div className="flex-1">
+                    <h3 className={`font-semibold ${diffHours >= 24 ? 'text-red-300' : 'text-yellow-300'}`}>
+                      {diffHours >= 24 ? 'Data is Very Stale' : 'Data May Be Outdated'}
+                    </h3>
+                    <p className={`text-sm ${diffHours >= 24 ? 'text-red-400' : 'text-yellow-400'}`}>
+                      Last synced {formatLastUpdated()} • {getDataFreshnessMessage()}
+                      {diffHours >= 24 && ' • Click "Refresh Data" button to update'}
+                    </p>
+                    {pollingJobStatus && (
+                      <div className="mt-2 text-xs text-gray-400">
+                        Last sync job: {pollingJobStatus.workspaces_processed}/{pollingJobStatus.total_workspaces} workspaces
+                        {pollingJobStatus.status === 'partial' && (
+                          <span className="ml-2 text-yellow-400">
+                            (⚠️ Incomplete - {pollingJobStatus.workspaces_skipped} skipped due to timeout)
+                          </span>
+                        )}
+                        {pollingJobStatus.status === 'failed' && (
+                          <span className="ml-2 text-red-400">
+                            (❌ Failed: {pollingJobStatus.error_message})
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
+        {/* Polling Job Status - Show even when data is fresh */}
+        {pollingJobStatus && pollingJobStatus.status === 'partial' && (() => {
+          const now = new Date();
+          const diffHours = lastUpdated ? (now.getTime() - lastUpdated.getTime()) / 3600000 : 999;
+
+          // Only show if not already shown in the stale data banner
+          if (diffHours < 6) {
+            return (
+              <div className="mb-6 p-4 rounded-lg border bg-yellow-900/20 border-yellow-500/50">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-yellow-300">
+                      Last Sync Was Incomplete
+                    </h3>
+                    <p className="text-sm text-yellow-400">
+                      {pollingJobStatus.workspaces_processed}/{pollingJobStatus.total_workspaces} workspaces synced
+                      • {pollingJobStatus.workspaces_skipped} skipped due to timeout
+                      • Some accounts may be missing from the dashboard
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
         {/* Status Overview - 4 Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Card 1: Total Email Accounts Owned */}

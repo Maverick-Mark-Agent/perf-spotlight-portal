@@ -463,6 +463,22 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   const fetchInfrastructureDataInternal = useCallback(async (force: boolean = false) => {
     try {
+      console.log('[DashboardContext] fetchInfrastructureDataInternal called, force:', force);
+      console.log('[DashboardContext] Current emailAccounts.length:', infrastructureDashboard.emailAccounts.length);
+
+      // Check if we have recent data (< 10 minutes old) and skip refresh
+      const now = Date.now();
+      const lastUpdate = infrastructureDashboard.lastUpdated?.getTime() || 0;
+      const age = now - lastUpdate;
+      const TEN_MINUTES = 10 * 60 * 1000;
+
+      if (!force && age < TEN_MINUTES && infrastructureDashboard.emailAccounts.length > 0) {
+        console.log(`[Infrastructure] Skipping fetch - data is only ${Math.round(age / 1000 / 60)} minutes old`);
+        return; // Use existing cached data
+      }
+
+      console.log('[DashboardContext] Proceeding with fetch...');
+
       if (!force && infrastructureDashboard.emailAccounts.length > 0) {
         // Silent background refresh
       } else {
@@ -472,7 +488,15 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       // Use new dataService with validation
       const result = await fetchInfrastructureData(force);
 
+      console.log('[DashboardContext] Fetch result:', {
+        success: result.success,
+        dataLength: result.data?.length,
+        error: result.error,
+        cached: result.cached,
+      });
+
       if (result.success && result.data) {
+        console.log('[DashboardContext] Setting emailAccounts to:', result.data.length, 'accounts');
         setInfrastructureDashboard(prev => ({
           ...prev,
           emailAccounts: result.data!,

@@ -31,6 +31,7 @@ const MonthlyKPIProgress = () => {
 
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Destructure dashboard state
   const {
@@ -133,6 +134,34 @@ const MonthlyKPIProgress = () => {
       });
     } finally {
       setIsWebhookLoading(false);
+    }
+  };
+
+  const handleSyncMetrics = async () => {
+    setIsSyncing(true);
+    try {
+      console.log("Syncing daily metrics from Email Bison...");
+      const { data, error } = await supabase.functions.invoke('sync-daily-kpi-metrics');
+
+      if (error) throw error;
+
+      console.log("Sync response:", data);
+      toast({
+        title: "Success",
+        description: "Daily metrics synced successfully. Refreshing dashboard...",
+      });
+
+      // Refresh dashboard after sync
+      await handleRefresh();
+    } catch (error) {
+      console.error("Error syncing metrics:", error);
+      toast({
+        title: "Error",
+        description: "Failed to sync daily metrics. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -274,6 +303,17 @@ const MonthlyKPIProgress = () => {
                 fresh={isFresh}
                 warnings={warnings}
               />
+              <Button
+                onClick={handleSyncMetrics}
+                disabled={isSyncing}
+                variant="outline"
+                size="default"
+                className="shadow-md hover:shadow-lg transition-all border-success/50 hover:border-success"
+                title="Sync today's metrics from Email Bison"
+              >
+                <BarChart3 className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-pulse' : ''}`} />
+                {isSyncing ? 'Syncing...' : 'Sync Metrics'}
+              </Button>
               <Button
                 onClick={handleRefresh}
                 disabled={loading || !canRefresh()}

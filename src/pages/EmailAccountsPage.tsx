@@ -363,6 +363,8 @@ const SendingAccountsInfrastructure = () => {
           totalRepliesQualifying: 0,    // Sum of replies from accounts with ≥50 sent
           totalSentQualifying: 0,       // Sum of sent from accounts with ≥50 sent
           qualifyingAccountCount: 0,    // Count of accounts with ≥50 sent
+          noReplyAccountCount: 0,       // Count of accounts with 100+ sent, 0 replies
+          totalSentNoReply: 0,          // Total sent from 100+ sent, 0 reply accounts
           totalAccountCount: 0,         // Total account count
           avgReplyRate: 0
         };
@@ -388,6 +390,12 @@ const SendingAccountsInfrastructure = () => {
         providerGroups[provider].totalRepliesQualifying += totalReplied;
         providerGroups[provider].totalSentQualifying += totalSent;
         providerGroups[provider].qualifyingAccountCount += 1;
+      }
+
+      // Track accounts with 100+ sent and 0 replies
+      if (totalSent >= 100 && totalReplied === 0) {
+        providerGroups[provider].noReplyAccountCount += 1;
+        providerGroups[provider].totalSentNoReply += totalSent;
       }
     });
     
@@ -429,6 +437,9 @@ const SendingAccountsInfrastructure = () => {
         break;
       case 'Accounts 50+':
         sortedData = providerData.sort((a, b) => b.avgReplyRate - a.avgReplyRate);
+        break;
+      case '100+ No Replies':
+        sortedData = providerData.sort((a, b) => b.noReplyAccountCount - a.noReplyAccountCount);
         break;
       case 'Daily Availability':
         sortedData = providerData.sort((a, b) => b.totalDailyLimit - a.totalDailyLimit);
@@ -667,21 +678,47 @@ const SendingAccountsInfrastructure = () => {
     });
   }, []);
 
-  const downloadProviderAccounts = useCallback((provider: any) => {
-    // Filter accounts with ≥50 sent
-    const qualifyingAccounts = provider.accounts.filter(account => {
-      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-      return totalSent >= 50;
-    });
+  const downloadProviderAccounts = useCallback((provider: any, viewType: string) => {
+    // Filter accounts based on view type
+    let accountsToExport;
+    if (viewType === 'Accounts 50+') {
+      accountsToExport = provider.accounts.filter(account => {
+        const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+        return totalSent >= 50;
+      });
+    } else if (viewType === '100+ No Replies') {
+      accountsToExport = provider.accounts.filter(account => {
+        const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+        const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
+        return totalSent >= 100 && totalReplied === 0;
+      });
+    } else {
+      accountsToExport = provider.accounts; // All accounts for Total Email Sent
+    }
 
-    if (qualifyingAccounts.length === 0) {
-      alert(`No accounts found for ${provider.name} with ≥50 emails sent`);
+    if (accountsToExport.length === 0) {
+      alert(`No accounts found for ${provider.name}`);
       return;
+    }
+
+    // Sort by reply rate (highest to lowest) for Accounts 50+ view
+    if (viewType === 'Accounts 50+') {
+      accountsToExport.sort((a, b) => {
+        const totalSentA = parseFloat(a.fields['Total Sent']) || 0;
+        const totalRepliedA = parseFloat(a.fields['Total Replied']) || 0;
+        const replyRateA = totalSentA > 0 ? (totalRepliedA / totalSentA) * 100 : 0;
+
+        const totalSentB = parseFloat(b.fields['Total Sent']) || 0;
+        const totalRepliedB = parseFloat(b.fields['Total Replied']) || 0;
+        const replyRateB = totalSentB > 0 ? (totalRepliedB / totalSentB) * 100 : 0;
+
+        return replyRateB - replyRateA; // Highest to lowest
+      });
     }
 
     // Create CSV content
     const headers = ['Account Name', 'Client', 'Status', 'Total Sent', 'Total Replied', 'Reply Rate %', 'Daily Limit'];
-    const rows = qualifyingAccounts.map(account => {
+    const rows = accountsToExport.map(account => {
       const totalSent = parseFloat(account.fields['Total Sent']) || 0;
       const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
       const replyRate = totalSent > 0 ? ((totalReplied / totalSent) * 100).toFixed(2) : '0.00';
@@ -702,12 +739,21 @@ const SendingAccountsInfrastructure = () => {
       .map(row => row.map(cell => `"${cell}"`).join(','))
       .join('\n');
 
-    // Create download
+    // Create download with appropriate filename
+    let filenameSuffix;
+    if (viewType === 'Accounts 50+') {
+      filenameSuffix = '50plus';
+    } else if (viewType === '100+ No Replies') {
+      filenameSuffix = '100plus_no_replies';
+    } else {
+      filenameSuffix = 'all_accounts';
+    }
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `${provider.name}_accounts_50plus_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `${provider.name}_${filenameSuffix}_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -1467,6 +1513,7 @@ const SendingAccountsInfrastructure = () => {
                   <SelectContent>
                     <SelectItem value="Total Email Sent">Total Email Sent by Provider</SelectItem>
                     <SelectItem value="Accounts 50+">Accounts with ≥50 Emails Sent</SelectItem>
+                    <SelectItem value="100+ No Replies">100+ Sent, 0 Replies</SelectItem>
                     <SelectItem value="Daily Availability">Daily Sending Availability</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1503,14 +1550,16 @@ const SendingAccountsInfrastructure = () => {
                               <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40">
                                 {selectedProviderView === 'Accounts 50+'
                                   ? provider.qualifyingAccountCount
+                                  : selectedProviderView === '100+ No Replies'
+                                  ? provider.noReplyAccountCount
                                   : provider.totalAccountCount} accounts
                               </Badge>
                             </div>
-                            {selectedProviderView === 'Accounts 50+' && (
+                            {(selectedProviderView === 'Accounts 50+' || selectedProviderView === 'Total Email Sent' || selectedProviderView === '100+ No Replies') && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => downloadProviderAccounts(provider)}
+                                onClick={() => downloadProviderAccounts(provider, selectedProviderView)}
                                 className="bg-white/10 border-white/20 text-white hover:bg-white/20"
                               >
                                 <Download className="h-4 w-4 mr-2" />
@@ -1518,21 +1567,21 @@ const SendingAccountsInfrastructure = () => {
                               </Button>
                             )}
                           </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
 
                             {/* MODE 1: Total Email Sent by Provider */}
                             {selectedProviderView === 'Total Email Sent' && (
                               <>
-                                <div className="flex justify-between">
-                                  <span className="text-white/70">Total Sent:</span>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Total Sent</span>
                                   <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className="text-white/70">Total Replies:</span>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Total Replies</span>
                                   <div className="text-white font-semibold">{provider.totalReplies.toLocaleString()}</div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className="text-white/70">Reply Rate:</span>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Reply Rate</span>
                                   <div className="text-white font-semibold">{provider.overallReplyRate.toFixed(2)}%</div>
                                 </div>
                               </>
@@ -1541,34 +1590,52 @@ const SendingAccountsInfrastructure = () => {
                             {/* MODE 2: Accounts with ≥50 Emails Sent */}
                             {selectedProviderView === 'Accounts 50+' && (
                               <>
-                                <div className="flex justify-between">
-                                  <span className="text-white/70">Total Sent (≥50):</span>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Total Sent (≥50)</span>
                                   <div className="text-white font-semibold">{provider.totalSentQualifying.toLocaleString()}</div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className="text-white/70">Total Replies (≥50):</span>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Total Replies (≥50)</span>
                                   <div className="text-white font-semibold">{provider.totalRepliesQualifying.toLocaleString()}</div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className="text-white/70">Avg Reply Rate:</span>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Avg Reply Rate</span>
                                   <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(2)}%</div>
                                 </div>
                               </>
                             )}
 
-                            {/* MODE 3: Daily Sending Availability */}
+                            {/* MODE 3: 100+ Sent, 0 Replies */}
+                            {selectedProviderView === '100+ No Replies' && (
+                              <>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Problem Accounts</span>
+                                  <div className="text-dashboard-warning font-semibold">{provider.noReplyAccountCount}</div>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Total Sent (No Replies)</span>
+                                  <div className="text-white font-semibold">{provider.totalSentNoReply.toLocaleString()}</div>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Wasted Volume</span>
+                                  <div className="text-dashboard-warning font-semibold">{provider.totalSentNoReply.toLocaleString()} emails</div>
+                                </div>
+                              </>
+                            )}
+
+                            {/* MODE 4: Daily Sending Availability */}
                             {selectedProviderView === 'Daily Availability' && (
                               <>
-                                <div className="flex justify-between">
-                                  <span className="text-white/70">Theoretical Limit:</span>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Theoretical Limit</span>
                                   <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}/day</div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className="text-white/70">Current Limit:</span>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Current Limit</span>
                                   <div className="text-white font-semibold">{provider.currentDailyLimit.toLocaleString()}/day</div>
                                 </div>
-                                <div className="flex justify-between">
-                                  <span className="text-white/70">Warmup Progress:</span>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Warmup Progress</span>
                                   <div className="text-white font-semibold">{provider.utilizationRate.toFixed(1)}%</div>
                                 </div>
                               </>
@@ -1577,26 +1644,54 @@ const SendingAccountsInfrastructure = () => {
                           </div>
                         </div>
 
-                        {/* Expandable Account List for Accounts 50+ */}
-                        {selectedProviderView === 'Accounts 50+' && (
+                        {/* Expandable Account List for Accounts 50+, Total Email Sent, and 100+ No Replies */}
+                        {(selectedProviderView === 'Accounts 50+' || selectedProviderView === 'Total Email Sent' || selectedProviderView === '100+ No Replies') && (
                           <CollapsibleContent>
                             <div className="border-t border-white/10 p-4 bg-white/5">
                               {(() => {
-                                // Filter accounts with ≥50 sent
-                                const qualifyingAccounts = provider.accounts.filter(account => {
-                                  const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-                                  return totalSent >= 50;
-                                });
+                                // Filter accounts based on view
+                                let filteredAccounts;
+                                if (selectedProviderView === 'Accounts 50+') {
+                                  filteredAccounts = provider.accounts.filter(account => {
+                                    const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+                                    return totalSent >= 50;
+                                  });
+                                } else if (selectedProviderView === '100+ No Replies') {
+                                  filteredAccounts = provider.accounts.filter(account => {
+                                    const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+                                    const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
+                                    return totalSent >= 100 && totalReplied === 0;
+                                  });
+                                } else {
+                                  filteredAccounts = provider.accounts; // Show all accounts for Total Email Sent
+                                }
 
                                 // Group by client
                                 const clientGroups = {};
-                                qualifyingAccounts.forEach(account => {
+                                filteredAccounts.forEach(account => {
                                   const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
                                   if (!clientGroups[clientName]) {
                                     clientGroups[clientName] = [];
                                   }
                                   clientGroups[clientName].push(account);
                                 });
+
+                                // Sort accounts by reply rate (highest to lowest) for Accounts 50+ view
+                                if (selectedProviderView === 'Accounts 50+') {
+                                  Object.keys(clientGroups).forEach(clientName => {
+                                    clientGroups[clientName].sort((a, b) => {
+                                      const totalSentA = parseFloat(a.fields['Total Sent']) || 0;
+                                      const totalRepliedA = parseFloat(a.fields['Total Replied']) || 0;
+                                      const replyRateA = totalSentA > 0 ? (totalRepliedA / totalSentA) * 100 : 0;
+
+                                      const totalSentB = parseFloat(b.fields['Total Sent']) || 0;
+                                      const totalRepliedB = parseFloat(b.fields['Total Replied']) || 0;
+                                      const replyRateB = totalSentB > 0 ? (totalRepliedB / totalSentB) * 100 : 0;
+
+                                      return replyRateB - replyRateA; // Highest to lowest
+                                    });
+                                  });
+                                }
 
                                 return (
                                   <div className="space-y-4">

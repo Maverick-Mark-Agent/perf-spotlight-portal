@@ -521,44 +521,36 @@ const SendingAccountsInfrastructure = () => {
           totalAccounts: 0,
           connectedAccounts: 0,
           totalPrice: 0,
-          maxSendingVolume: 0, // Sum of Volume Per Account
-          currentAvailableSending: 0, // Sum of Daily Limit
+          maxSendingVolume: 0,
+          currentAvailableSending: 0,
           zeroReplyRateAccounts: 0,
           accounts: []
         };
       }
 
-      // Add to group
       clientGroups[clientName].accounts.push(account);
       clientGroups[clientName].totalAccounts += 1;
 
-      // Count connected accounts
       if (account.fields['Status'] === 'Connected') {
         clientGroups[clientName].connectedAccounts += 1;
       }
 
-      // Sum price
       const price = parseFloat(account.fields['Price']) || 0;
       clientGroups[clientName].totalPrice += price;
 
-      // Sum volume per account (max theoretical capacity)
       const volumePerAccount = parseFloat(account.fields['Volume Per Account']) || 0;
       clientGroups[clientName].maxSendingVolume += volumePerAccount;
 
-      // Sum daily limit (current available sending)
       const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
       clientGroups[clientName].currentAvailableSending += dailyLimit;
 
-      // Count accounts with 0% reply rate
       const replyRate = parseFloat(account.fields['Reply Rate Per Account %']) || 0;
       if (replyRate === 0) {
         clientGroups[clientName].zeroReplyRateAccounts += 1;
       }
     });
 
-    // Calculate final metrics for each client
     const clientData = Object.values(clientGroups).map((client: any) => {
-      // Calculate zero reply rate percentage
       const zeroReplyRatePercentage = client.totalAccounts > 0
         ? ((client.zeroReplyRateAccounts / client.totalAccounts) * 100).toFixed(1)
         : '0.0';
@@ -576,9 +568,8 @@ const SendingAccountsInfrastructure = () => {
       };
     })
     .filter(client => client.totalAccounts > 0)
-    .sort((a, b) => b.maxSendingVolume - a.maxSendingVolume); // Sort by max sending capacity
+    .sort((a, b) => b.maxSendingVolume - a.maxSendingVolume);
 
-    console.log('📊 Client Sending Data Generated:', clientData.length, 'clients');
     setClientAccountsData(clientData);
   };
 
@@ -605,18 +596,13 @@ const SendingAccountsInfrastructure = () => {
   }, [setInfrastructureModalOpen, setInfrastructureSelectedClient, setInfrastructureFilter]);
 
   const toggleAccountType = useCallback((accountType: string) => {
-    console.log('[toggleAccountType] Toggling:', accountType);
     setInfrastructureExpandedAccountTypes(prev => {
-      console.log('[toggleAccountType] Previous state:', prev);
       const newSet = new Set(prev);
       if (newSet.has(accountType)) {
         newSet.delete(accountType);
-        console.log('[toggleAccountType] Removed:', accountType);
       } else {
         newSet.add(accountType);
-        console.log('[toggleAccountType] Added:', accountType);
       }
-      console.log('[toggleAccountType] New state:', newSet);
       return newSet;
     });
   }, [setInfrastructureExpandedAccountTypes]);
@@ -1709,7 +1695,6 @@ const SendingAccountsInfrastructure = () => {
 const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, toggleAccountType, toggleStatus, filter }) => {
   // Ensure we have Set objects (convert if needed)
   const accountTypesSet = useMemo(() => {
-    console.log('[ClientAccountsModal] expandedAccountTypes type:', typeof expandedAccountTypes, expandedAccountTypes);
     if (expandedAccountTypes instanceof Set) return expandedAccountTypes;
     if (Array.isArray(expandedAccountTypes)) return new Set(expandedAccountTypes);
     if (expandedAccountTypes && typeof expandedAccountTypes === 'object' && typeof expandedAccountTypes !== 'function') {
@@ -1719,7 +1704,6 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
   }, [expandedAccountTypes]);
 
   const statusesSet = useMemo(() => {
-    console.log('[ClientAccountsModal] expandedStatuses type:', typeof expandedStatuses, expandedStatuses);
     if (expandedStatuses instanceof Set) return expandedStatuses;
     if (Array.isArray(expandedStatuses)) return new Set(expandedStatuses);
     if (expandedStatuses && typeof expandedStatuses === 'object' && typeof expandedStatuses !== 'function') {
@@ -1729,11 +1713,7 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
   }, [expandedStatuses]);
 
   const organizedAccounts = useMemo(() => {
-    console.log('[ClientAccountsModal] Processing client:', client.clientName);
-    console.log('[ClientAccountsModal] Number of accounts:', client.accounts?.length);
-
     if (!client.accounts || client.accounts.length === 0) {
-      console.warn('[ClientAccountsModal] No accounts found for client:', client.clientName);
       return {};
     }
 
@@ -1748,20 +1728,10 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
         const replyRate = typeof replyRateRaw === 'number' ? replyRateRaw : parseFloat(replyRateRaw);
         return totalSent > 50 && replyRate === 0;
       });
-      console.log('[ClientAccountsModal] After 0% reply filter:', accountsToProcess.length, 'accounts');
     }
 
-    accountsToProcess.forEach((account, idx) => {
+    accountsToProcess.forEach(account => {
       const accountType = account.fields['Account Type'] || 'Unknown';
-
-      // Debug first account
-      if (idx === 0) {
-        console.log('[ClientAccountsModal] Sample account fields:', {
-          'Account Type': account.fields['Account Type'],
-          'Status': account.fields['Status'],
-          'Email': account.fields['Email']
-        });
-      }
 
       if (!accountsByType[accountType]) {
         accountsByType[accountType] = {
@@ -1772,11 +1742,6 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
 
       const status = account.fields['Status'] === 'Connected' ? 'Connected' : 'Disconnected';
       accountsByType[accountType][status].push(account);
-    });
-
-    console.log('[ClientAccountsModal] Organized by type:', Object.keys(accountsByType));
-    Object.entries(accountsByType).forEach(([type, groups]) => {
-      console.log(`  ${type}: ${(groups as any).Connected?.length || 0} connected, ${(groups as any).Disconnected?.length || 0} disconnected`);
     });
 
     return accountsByType;
@@ -1792,22 +1757,14 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
 
   return (
     <div className="space-y-3">
-      {Object.entries(organizedAccounts).map(([accountType, statusGroups]) => {
-        console.log('[Rendering] Account Type:', accountType, 'isOpen:', accountTypesSet.has(accountType));
-        return (
-          <Collapsible
-            key={accountType}
-            open={accountTypesSet.has(accountType)}
-            onOpenChange={() => {
-              console.log('[Collapsible] onOpenChange triggered for:', accountType);
-              toggleAccountType(accountType);
-            }}
-          >
-            <CollapsibleTrigger asChild>
-              <div
-                className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors"
-                onClick={() => console.log('[Click] Clicked on:', accountType)}
-              >
+      {Object.entries(organizedAccounts).map(([accountType, statusGroups]) => (
+        <Collapsible
+          key={accountType}
+          open={accountTypesSet.has(accountType)}
+          onOpenChange={() => toggleAccountType(accountType)}
+        >
+          <CollapsibleTrigger asChild>
+            <div className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     {accountTypesSet.has(accountType) ? (
@@ -1905,8 +1862,7 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
             </div>
           </CollapsibleContent>
         </Collapsible>
-        );
-      })}
+      ))}
     </div>
   );
 };

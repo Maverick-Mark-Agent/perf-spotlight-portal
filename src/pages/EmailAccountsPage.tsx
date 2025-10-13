@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useDashboardContext } from "@/contexts/DashboardContext";
+import { supabase } from "@/integrations/supabase/client";
 
 // Removed localStorage caching due to quota limits with large dataset (4000+ accounts)
 // Data is now fetched fresh on each page load for real-time accuracy
@@ -509,7 +510,7 @@ const SendingAccountsInfrastructure = () => {
     document.body.removeChild(link);
   };
 
-  const generateClientSendingData = (accounts) => {
+  const generateClientSendingData = async (accounts) => {
     const clientGroups = {};
 
     accounts.forEach(account => {
@@ -550,6 +551,23 @@ const SendingAccountsInfrastructure = () => {
       }
     });
 
+    // Fetch daily_sending_target from client_registry for all clients
+    const clientNames = Object.keys(clientGroups);
+    const { data: clientRegistryData, error } = await supabase
+      .from('client_registry')
+      .select('workspace_name, daily_sending_target')
+      .in('workspace_name', clientNames);
+
+    if (error) {
+      console.error('Error fetching client daily targets:', error);
+    }
+
+    // Create a map of client name -> daily_sending_target
+    const dailyTargetMap = {};
+    (clientRegistryData || []).forEach(row => {
+      dailyTargetMap[row.workspace_name] = row.daily_sending_target || 0;
+    });
+
     const clientData = Object.values(clientGroups).map((client: any) => {
       const zeroReplyRatePercentage = client.totalAccounts > 0
         ? ((client.zeroReplyRateAccounts / client.totalAccounts) * 100).toFixed(1)
@@ -560,9 +578,8 @@ const SendingAccountsInfrastructure = () => {
         ? Math.round((client.currentAvailableSending / client.maxSendingVolume) * 100)
         : 0;
 
-      // For now, use currentAvailableSending as medianDailyTarget since we don't have that field
-      // In the future, this could be calculated from client_registry.daily_target
-      const medianDailyTarget = client.currentAvailableSending;
+      // Fetch daily target from client_registry, fallback to 0 if not found
+      const medianDailyTarget = dailyTargetMap[client.clientName] || 0;
 
       // Calculate shortfall (gap between target and available)
       const shortfall = Math.max(0, medianDailyTarget - client.currentAvailableSending);
@@ -683,11 +700,14 @@ const SendingAccountsInfrastructure = () => {
 
   useEffect(() => {
     if (emailAccounts.length > 0) {
-      try {
-        generateClientSendingData(emailAccounts);
-      } catch (error) {
-        console.error('Error generating client sending data:', error);
-      }
+      const loadClientSendingData = async () => {
+        try {
+          await generateClientSendingData(emailAccounts);
+        } catch (error) {
+          console.error('Error generating client sending data:', error);
+        }
+      };
+      loadClientSendingData();
     }
   }, [emailAccounts]);
 

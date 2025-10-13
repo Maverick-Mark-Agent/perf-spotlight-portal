@@ -555,6 +555,15 @@ const SendingAccountsInfrastructure = () => {
         ? ((client.zeroReplyRateAccounts / client.totalAccounts) * 100).toFixed(1)
         : '0.0';
 
+      // Calculate utilization percentage (available vs max capacity)
+      const utilizationPercentage = client.maxSendingVolume > 0
+        ? Math.round((client.currentAvailableSending / client.maxSendingVolume) * 100)
+        : 0;
+
+      // For now, use currentAvailableSending as medianDailyTarget since we don't have that field
+      // In the future, this could be calculated from client_registry.daily_target
+      const medianDailyTarget = client.currentAvailableSending;
+
       return {
         clientName: client.clientName,
         totalAccounts: client.totalAccounts,
@@ -564,7 +573,13 @@ const SendingAccountsInfrastructure = () => {
         currentAvailableSending: client.currentAvailableSending,
         zeroReplyRatePercentage: zeroReplyRatePercentage,
         zeroReplyRateAccounts: client.zeroReplyRateAccounts,
-        accounts: client.accounts
+        accounts: client.accounts,
+        utilizationPercentage: utilizationPercentage,
+        medianDailyTarget: medianDailyTarget,
+        // Aliases for backwards compatibility with Client Sending Capacity section
+        accountCount: client.totalAccounts,
+        maxSending: client.maxSendingVolume,
+        availableSending: client.currentAvailableSending,
       };
     })
     .filter(client => client.totalAccounts > 0)

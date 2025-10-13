@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 
 type AddAgencyModalProps = {
   open: boolean;
@@ -35,13 +36,21 @@ export default function AddAgencyModal({
   onClose,
   onAddAgency,
 }: AddAgencyModalProps) {
+  const { toast } = useToast();
   const [clientName, setClientName] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
   const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0]);
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
-    if (!clientName.trim()) return;
+    if (!clientName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter an agency name.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -50,13 +59,24 @@ export default function AddAgencyModal({
         workspaceName.trim() || clientName.trim(),
         selectedColor
       );
+
+      toast({
+        title: "Success",
+        description: `Agency "${clientName}" added successfully! It's now available in ZIP Dashboard and Contact Pipeline.`,
+      });
+
       onClose();
       // Reset form
       setClientName("");
       setWorkspaceName("");
       setSelectedColor(PRESET_COLORS[0]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to add agency:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add agency. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }

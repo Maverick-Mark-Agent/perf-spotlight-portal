@@ -199,9 +199,36 @@ export default function ZipDashboard() {
   // Handle adding new agency
   async function handleAddAgency(clientName: string, workspaceName: string, color: string) {
     try {
-      // Create a placeholder ZIP assignment for this agency to make it visible
-      // This ensures the agency appears in the dropdown even if no ZIPs assigned yet
-      const { error } = await supabase
+      // Step 1: Generate a unique workspace_id (use timestamp-based ID)
+      const workspaceId = Math.floor(Date.now() / 1000); // Unix timestamp as ID
+
+      // Step 2: Insert into client_registry (master table)
+      const { error: registryError } = await supabase
+        .from("client_registry")
+        .insert({
+          workspace_id: workspaceId,
+          workspace_name: workspaceName,
+          display_name: clientName,
+          is_active: true,
+          billing_type: 'retainer', // Default billing type
+          price_per_lead: 0,
+          monthly_retainer: 0,
+          monthly_kpi_target: 0,
+          monthly_sending_target: 0,
+          daily_sending_target: 0,
+        });
+
+      if (registryError) {
+        // If duplicate workspace_name, show helpful error
+        if (registryError.code === '23505') {
+          throw new Error(`Agency "${workspaceName}" already exists. Please use a different name.`);
+        }
+        throw registryError;
+      }
+
+      // Step 3: Create a placeholder ZIP assignment to set the agency color
+      // This ensures the agency appears in the ZIP dashboard with its color
+      const { error: zipError } = await supabase
         .from("client_zipcodes")
         .insert({
           zip: "00000", // Placeholder ZIP
@@ -212,7 +239,10 @@ export default function ZipDashboard() {
           state: null,
         });
 
-      if (error) throw error;
+      if (zipError) {
+        console.warn("Placeholder ZIP insert failed (non-critical):", zipError);
+        // Don't throw - agency was added to registry successfully
+      }
 
       // Reload data
       await loadZipData();

@@ -585,7 +585,14 @@ const SendingAccountsInfrastructure = () => {
     .filter(client => client.totalAccounts > 0)
     .sort((a, b) => b.maxSendingVolume - a.maxSendingVolume);
 
-    setClientAccountsData(clientData);
+    console.log('📊 Client Sending Data for Capacity Analysis:', clientData.length, 'clients');
+    if (clientData.length > 0) {
+      console.log('Sample client data:', clientData[0]);
+    }
+
+    // Set both states - they're used by different sections
+    setClientAccountsData(clientData); // For "Client Email Accounts" section
+    setClientSendingData(clientData);  // For "Client Sending Capacity Analysis" section
   };
 
   const openClientModal = useCallback((client: any) => {

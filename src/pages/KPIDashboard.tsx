@@ -8,11 +8,12 @@ import { AggregateMetricsCard } from "@/components/dashboard/AggregateMetricsCar
 import { UnifiedTopCards } from "@/components/dashboard/UnifiedTopCards";
 import { UnifiedClientCard } from "@/components/dashboard/UnifiedClientCard";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw, ArrowLeft } from "lucide-react";
+import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw, ArrowLeft, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { DataFreshnessIndicator } from "@/components/DataFreshnessIndicator";
+import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState, useEffect } from "react";
 
 const MonthlyKPIProgress = () => {
@@ -29,6 +30,7 @@ const MonthlyKPIProgress = () => {
   } = useDashboardContext();
 
   const [refreshCooldown, setRefreshCooldown] = useState(0);
+  const [isWebhookLoading, setIsWebhookLoading] = useState(false);
 
   // Destructure dashboard state
   const {
@@ -107,6 +109,31 @@ const MonthlyKPIProgress = () => {
       title: "Success",
       description: "Data refreshed successfully",
     });
+  };
+
+  const handleSlackNotification = async () => {
+    setIsWebhookLoading(true);
+    try {
+      console.log("Sending volume report to Slack...");
+      const { data, error } = await supabase.functions.invoke('send-volume-slack-dm');
+
+      if (error) throw error;
+
+      console.log("Slack response:", data);
+      toast({
+        title: "Success",
+        description: "Volume report sent to Slack successfully",
+      });
+    } catch (error) {
+      console.error("Error sending to Slack:", error);
+      toast({
+        title: "Error",
+        description: "Failed to send volume report to Slack. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsWebhookLoading(false);
+    }
   };
 
   // Merge KPI and Volume data by client name
@@ -257,6 +284,17 @@ const MonthlyKPIProgress = () => {
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 {refreshCooldown > 0 ? `Wait ${refreshCooldown}s` : 'Refresh Data'}
+              </Button>
+              <Button
+                onClick={handleSlackNotification}
+                disabled={isWebhookLoading}
+                variant="default"
+                size="default"
+                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-md hover:shadow-lg transition-all"
+                title="Send daily volume report to Slack"
+              >
+                <Send className={`h-4 w-4 mr-2 ${isWebhookLoading ? 'animate-pulse' : ''}`} />
+                {isWebhookLoading ? 'Sending...' : 'Send to Slack'}
               </Button>
             </div>
           </div>

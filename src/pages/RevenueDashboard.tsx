@@ -4,19 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import {
   DollarSign,
   TrendingUp,
-  TrendingDown,
   Users,
   ArrowLeft,
   RefreshCw,
-  Percent,
   Target
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -33,23 +29,21 @@ const RevenueDashboard = () => {
     toast({ title: "Success", description: "Revenue data refreshed successfully" });
   };
 
-  // Sort clients by profit (descending)
-  const sortedByProfit = useMemo(() => {
-    return [...clients].sort((a, b) => b.current_month_profit - a.current_month_profit);
+  // Sort clients by revenue (descending) for main chart
+  const sortedByRevenue = useMemo(() => {
+    return [...clients].sort((a, b) => b.current_month_revenue - a.current_month_revenue);
   }, [clients]);
 
-  // Calculate average profit margin
-  const avgProfitMargin = useMemo(() => {
-    if (clients.length === 0) return 0;
-    const sum = clients.reduce((acc, c) => acc + c.profit_margin, 0);
-    return sum / clients.length;
-  }, [clients]);
+  // Calculate revenue percentages
+  const perLeadPercentage = useMemo(() => {
+    if (totals.total_mtd_revenue === 0) return 0;
+    return (totals.total_per_lead_revenue / totals.total_mtd_revenue) * 100;
+  }, [totals]);
 
-  // Billing type breakdown
-  const billingBreakdown = useMemo(() => [
-    { name: 'Per-Lead', value: totals.total_per_lead_revenue, fill: '#10b981' },
-    { name: 'Retainer', value: totals.total_retainer_revenue, fill: '#3b82f6' }
-  ], [totals]);
+  const retainerPercentage = useMemo(() => {
+    if (totals.total_mtd_revenue === 0) return 0;
+    return (totals.total_retainer_revenue / totals.total_mtd_revenue) * 100;
+  }, [totals]);
 
   if (loading) {
     return (
@@ -85,7 +79,7 @@ const RevenueDashboard = () => {
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold">Revenue & Billing Dashboard</h1>
-                  <p className="text-sm text-muted-foreground">Real-time revenue, KPI, and performance tracking</p>
+                  <p className="text-sm text-muted-foreground">Real-time revenue and cost tracking</p>
                 </div>
               </div>
             </div>
@@ -122,7 +116,7 @@ const RevenueDashboard = () => {
                   <p className="text-sm text-muted-foreground font-medium">Per-Lead Revenue</p>
                   <p className="text-3xl font-bold text-success">${totals.total_per_lead_revenue.toLocaleString()}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {totals.per_lead_count || 0} clients
+                    {perLeadPercentage.toFixed(1)}% of total • {totals.per_lead_count || 0} clients
                   </p>
                 </div>
                 <Users className="h-8 w-8 text-success" />
@@ -137,7 +131,7 @@ const RevenueDashboard = () => {
                   <p className="text-sm text-muted-foreground font-medium">Retainer Revenue</p>
                   <p className="text-3xl font-bold text-info">${totals.total_retainer_revenue.toLocaleString()}</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {totals.retainer_count || 0} clients
+                    {retainerPercentage.toFixed(1)}% of total • {totals.retainer_count || 0} clients
                   </p>
                 </div>
                 <Target className="h-8 w-8 text-info" />
@@ -161,253 +155,83 @@ const RevenueDashboard = () => {
           </Card>
         </div>
 
-        {/* Tabs */}
-        <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="profitability">Profitability</TabsTrigger>
-            <TabsTrigger value="kpi">KPI Performance</TabsTrigger>
-            <TabsTrigger value="breakdown">Client Breakdown</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Revenue by Type */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Revenue by Billing Type</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={billingBreakdown}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={100}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {billingBreakdown.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => `$${Number(value).toLocaleString()}`} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="mt-4 flex justify-center gap-6">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-success rounded"></div>
-                      <span className="text-sm">Per-Lead: ${totals.total_per_lead_revenue.toLocaleString()}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-info rounded"></div>
-                      <span className="text-sm">Retainer: ${totals.total_retainer_revenue.toLocaleString()}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Top Revenue Clients */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Top 5 Revenue Generators</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={sortedByProfit.slice(0, 5)}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="workspace_name" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={80} />
-                      <YAxis />
-                      <Tooltip formatter={(value) => `$${Number(value).toLocaleString()}`} />
-                      <Bar dataKey="current_month_revenue" fill="#10b981" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="profitability" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Client Profitability Ranking</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Rank</TableHead>
-                      <TableHead>Client</TableHead>
-                      <TableHead className="text-right">Revenue</TableHead>
-                      <TableHead className="text-right">Profit</TableHead>
-                      <TableHead className="text-right">Margin</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedByProfit.map((client, idx) => (
-                      <TableRow key={client.workspace_name}>
-                        <TableCell>{idx + 1}</TableCell>
-                        <TableCell className="font-medium">{client.workspace_name}</TableCell>
-                        <TableCell className="text-right">${client.current_month_revenue.toLocaleString()}</TableCell>
-                        <TableCell className="text-right text-success">${client.current_month_profit.toLocaleString()}</TableCell>
-                        <TableCell className="text-right">{client.profit_margin.toFixed(1)}%</TableCell>
-                      </TableRow>
+        {/* All Active Clients - Revenue Overview - FULL WIDTH */}
+        <div className="space-y-6 mb-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>All Active Clients - Revenue Overview</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Revenue (blue) and Profit (green = positive, red = negative) for all active clients
+              </p>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={500}>
+                <BarChart data={sortedByRevenue}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="workspace_name" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={100} />
+                  <YAxis />
+                  <Tooltip formatter={(value) => `$${Number(value).toLocaleString()}`} />
+                  <Bar dataKey="current_month_revenue" fill="#3b82f6" name="Revenue" />
+                  <Bar dataKey="current_month_profit" name="Profit">
+                    {sortedByRevenue.map((client, index) => (
+                      <Cell
+                        key={`cell-profit-${index}`}
+                        fill={client.current_month_profit >= 0 ? '#10b981' : '#ef4444'}
+                      />
                     ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
 
-          <TabsContent value="kpi" className="space-y-6">
-            {/* KPI Progress Overview */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>KPI Progress by Client</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={clients.slice(0, 10)}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="workspace_name" tick={{ fontSize: 10 }} angle={-45} textAnchor="end" height={80} />
-                      <YAxis />
-                      <Tooltip formatter={(value) => `${Number(value).toFixed(1)}%`} />
-                      <Bar dataKey="kpi_progress" fill="#3b82f6" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Email Performance Metrics</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Total Emails Sent</p>
-                        <p className="text-2xl font-bold">{totals.total_emails_sent?.toLocaleString() || 0}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Total Replies</p>
-                        <p className="text-2xl font-bold">{totals.total_replies?.toLocaleString() || 0}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-muted-foreground">Reply Rate</p>
-                        <p className="text-lg font-semibold text-success">{totals.overall_reply_rate?.toFixed(2) || 0}%</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Interested Leads</p>
-                        <p className="text-2xl font-bold">{totals.total_interested?.toLocaleString() || 0}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-muted-foreground">Interested Rate</p>
-                        <p className="text-lg font-semibold text-success">{totals.overall_interested_rate?.toFixed(2) || 0}%</p>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* KPI Details Table */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Client KPI Performance Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Client</TableHead>
-                      <TableHead className="text-right">Leads MTD</TableHead>
-                      <TableHead className="text-right">Monthly KPI</TableHead>
-                      <TableHead className="text-right">Progress</TableHead>
-                      <TableHead className="text-right">Remaining</TableHead>
-                      <TableHead className="text-right">Reply Rate</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {clients.map((client) => (
-                      <TableRow key={client.workspace_name}>
-                        <TableCell className="font-medium">{client.workspace_name}</TableCell>
-                        <TableCell className="text-right">{client.current_month_leads}</TableCell>
-                        <TableCell className="text-right">{client.monthly_kpi || 0}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant={client.kpi_progress >= 100 ? 'default' : 'secondary'}>
-                            {client.kpi_progress?.toFixed(1) || 0}%
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">{client.leads_remaining || 0}</TableCell>
-                        <TableCell className="text-right">{client.reply_rate?.toFixed(2) || 0}%</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={client.kpi_progress >= 100 ? 'default' : client.kpi_progress >= 80 ? 'secondary' : 'destructive'}
-                          >
-                            {client.kpi_progress >= 100 ? 'On Track' : client.kpi_progress >= 80 ? 'Warning' : 'Behind'}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="breakdown" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>MTD Client Revenue Breakdown</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Client</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="text-right">MTD Leads</TableHead>
-                      <TableHead className="text-right">MTD Revenue</TableHead>
-                      <TableHead className="text-right">MTD Costs</TableHead>
-                      <TableHead className="text-right">MTD Profit</TableHead>
-                      <TableHead>Margin</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {clients.map((client) => (
-                      <TableRow key={client.workspace_name}>
-                        <TableCell className="font-medium">{client.workspace_name}</TableCell>
-                        <TableCell>
-                          <Badge variant={client.billing_type === 'retainer' ? 'default' : 'secondary'}>
-                            {client.billing_type === 'retainer' ? 'Retainer' : 'Per-Lead'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">{client.current_month_leads}</TableCell>
-                        <TableCell className="text-right">${client.current_month_revenue.toLocaleString()}</TableCell>
-                        <TableCell className="text-right">${client.current_month_costs.toLocaleString()}</TableCell>
-                        <TableCell className="text-right text-success">${client.current_month_profit.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Badge variant={client.profit_margin > 50 ? 'default' : 'secondary'}>
-                            {client.profit_margin.toFixed(1)}%
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        {/* Client Breakdown Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Client Breakdown - MTD Performance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">MTD Leads</TableHead>
+                  <TableHead className="text-right">MTD Revenue</TableHead>
+                  <TableHead className="text-right">Infra Costs</TableHead>
+                  <TableHead className="text-right">MTD Profit</TableHead>
+                  <TableHead className="text-right">Margin</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedByRevenue.map((client) => (
+                  <TableRow key={client.workspace_name}>
+                    <TableCell className="font-medium">{client.workspace_name}</TableCell>
+                    <TableCell>
+                      <Badge variant={client.billing_type === 'retainer' ? 'default' : 'secondary'}>
+                        {client.billing_type === 'retainer' ? 'Retainer' : 'Per-Lead'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{client.current_month_leads}</TableCell>
+                    <TableCell className="text-right">${client.current_month_revenue.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">${client.current_month_costs.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">
+                      <span className={client.current_month_profit >= 0 ? 'text-success' : 'text-destructive'}>
+                        ${client.current_month_profit.toLocaleString()}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant={client.profit_margin > 50 ? 'default' : client.profit_margin > 0 ? 'secondary' : 'destructive'}>
+                        {client.profit_margin.toFixed(1)}%
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

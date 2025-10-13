@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Users, TrendingUp, MapPin, ArrowLeft } from "lucide-react";
+import { Search, Users, TrendingUp, MapPin, ArrowLeft, PieChart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Workspace {
@@ -179,12 +179,20 @@ export default function ClientPortalHub() {
               Select a workspace to view their lead pipeline and performance metrics
             </p>
           </div>
-          <Button asChild variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
-            <Link to="/zip-dashboard">
-              <MapPin className="h-4 w-4 mr-2" />
-              ZIP Dashboard
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+              <Link to="/zip-dashboard">
+                <MapPin className="h-4 w-4 mr-2" />
+                ZIP Dashboard
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+              <Link to="/roi-dashboard">
+                <PieChart className="h-4 w-4 mr-2" />
+                ROI Dashboard
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Search */}

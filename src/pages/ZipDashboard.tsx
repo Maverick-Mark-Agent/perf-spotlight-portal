@@ -212,7 +212,7 @@ export default function ZipDashboard() {
           is_active: true,
           billing_type: 'retainer', // Default billing type
           price_per_lead: 0,
-          monthly_retainer: 0,
+          retainer_amount: 0,
           monthly_kpi_target: 0,
           monthly_sending_target: 0,
           daily_sending_target: 0,

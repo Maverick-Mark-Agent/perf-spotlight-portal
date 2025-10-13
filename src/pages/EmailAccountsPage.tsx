@@ -1708,8 +1708,16 @@ const SendingAccountsInfrastructure = () => {
 // Separate component for better performance
 const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, toggleAccountType, toggleStatus, filter }) => {
   const organizedAccounts = useMemo(() => {
+    console.log('[ClientAccountsModal] Processing client:', client.clientName);
+    console.log('[ClientAccountsModal] Number of accounts:', client.accounts?.length);
+
+    if (!client.accounts || client.accounts.length === 0) {
+      console.warn('[ClientAccountsModal] No accounts found for client:', client.clientName);
+      return {};
+    }
+
     const accountsByType = {};
-    
+
     // Apply filter if specified
     let accountsToProcess = client.accounts;
     if (filter === 'zeroReplyRate') {
@@ -1719,23 +1727,47 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
         const replyRate = typeof replyRateRaw === 'number' ? replyRateRaw : parseFloat(replyRateRaw);
         return totalSent > 50 && replyRate === 0;
       });
+      console.log('[ClientAccountsModal] After 0% reply filter:', accountsToProcess.length, 'accounts');
     }
-    
-    accountsToProcess.forEach(account => {
+
+    accountsToProcess.forEach((account, idx) => {
       const accountType = account.fields['Account Type'] || 'Unknown';
+
+      // Debug first account
+      if (idx === 0) {
+        console.log('[ClientAccountsModal] Sample account fields:', {
+          'Account Type': account.fields['Account Type'],
+          'Status': account.fields['Status'],
+          'Email': account.fields['Email']
+        });
+      }
+
       if (!accountsByType[accountType]) {
         accountsByType[accountType] = {
           Connected: [],
           Disconnected: []
         };
       }
-      
+
       const status = account.fields['Status'] === 'Connected' ? 'Connected' : 'Disconnected';
       accountsByType[accountType][status].push(account);
     });
-    
+
+    console.log('[ClientAccountsModal] Organized by type:', Object.keys(accountsByType));
+    Object.entries(accountsByType).forEach(([type, groups]) => {
+      console.log(`  ${type}: ${(groups as any).Connected?.length || 0} connected, ${(groups as any).Disconnected?.length || 0} disconnected`);
+    });
+
     return accountsByType;
   }, [client.accounts, filter]);
+
+  if (Object.keys(organizedAccounts).length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-white/70">No accounts found for this client.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">

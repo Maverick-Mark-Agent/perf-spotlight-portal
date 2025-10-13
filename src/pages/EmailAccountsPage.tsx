@@ -564,6 +564,12 @@ const SendingAccountsInfrastructure = () => {
       // In the future, this could be calculated from client_registry.daily_target
       const medianDailyTarget = client.currentAvailableSending;
 
+      // Calculate shortfall (gap between target and available)
+      const shortfall = Math.max(0, medianDailyTarget - client.currentAvailableSending);
+      const shortfallPercentage = client.maxSendingVolume > 0
+        ? Math.round((shortfall / client.maxSendingVolume) * 100)
+        : 0;
+
       return {
         clientName: client.clientName,
         totalAccounts: client.totalAccounts,
@@ -576,6 +582,8 @@ const SendingAccountsInfrastructure = () => {
         accounts: client.accounts,
         utilizationPercentage: utilizationPercentage,
         medianDailyTarget: medianDailyTarget,
+        shortfall: shortfall,
+        shortfallPercentage: shortfallPercentage,
         // Aliases for backwards compatibility with Client Sending Capacity section
         accountCount: client.totalAccounts,
         maxSending: client.maxSendingVolume,
@@ -675,7 +683,11 @@ const SendingAccountsInfrastructure = () => {
 
   useEffect(() => {
     if (emailAccounts.length > 0) {
-      generateClientSendingData(emailAccounts);
+      try {
+        generateClientSendingData(emailAccounts);
+      } catch (error) {
+        console.error('Error generating client sending data:', error);
+      }
     }
   }, [emailAccounts]);
 
@@ -1513,15 +1525,23 @@ const SendingAccountsInfrastructure = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {(() => {
+                    if (!clientSendingData || clientSendingData.length === 0) {
+                      return <div className="col-span-3 text-center text-white/70 py-8">No client data available</div>;
+                    }
+
                     let displayData;
                     if (selectedClientForSending === 'All Clients') {
                       displayData = clientSendingData.slice(0, 6); // Show top 6 clients
                     } else if (selectedClientForSending === 'Insufficient Capacity') {
-                      displayData = clientSendingData.filter(client => client.medianDailyTarget > client.availableSending);
+                      displayData = clientSendingData.filter(client => (client.medianDailyTarget || 0) > (client.availableSending || 0));
                     } else {
                       displayData = clientSendingData.filter(client => client.clientName === selectedClientForSending);
                     }
-                    
+
+                    if (!displayData || displayData.length === 0) {
+                      return <div className="col-span-3 text-center text-white/70 py-8">No clients match the selected filter</div>;
+                    }
+
                     return displayData.map((client: any, index) => (
                       <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
                         <div className="flex justify-between items-start mb-3">
@@ -1568,12 +1588,12 @@ const SendingAccountsInfrastructure = () => {
                           <div className="w-full bg-white/10 rounded-full h-2">
                             <div
                               className={`h-2 rounded-full ${
-                                (client.medianDailyTarget || 0) > (client.availableSending || 0) 
-                                  ? 'bg-dashboard-warning' 
+                                (client.medianDailyTarget || 0) > (client.availableSending || 0)
+                                  ? 'bg-dashboard-warning'
                                   : 'bg-dashboard-success'
                               }`}
-                              style={{ 
-                                width: `${Math.min((client.medianDailyTarget / client.maxSending) * 100, 100)}%` 
+                              style={{
+                                width: `${(client.maxSending || 0) > 0 ? Math.min(((client.medianDailyTarget || 0) / client.maxSending) * 100, 100) : 0}%`
                               }}
                             ></div>
                           </div>
@@ -1583,19 +1603,19 @@ const SendingAccountsInfrastructure = () => {
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
                             <span className="text-white/70">Utilization:</span>
-                            <div className="text-white font-semibold">{client.utilizationPercentage}%</div>
+                            <div className="text-white font-semibold">{client.utilizationPercentage || 0}%</div>
                           </div>
                           <div>
                             <span className="text-white/70">Shortfall:</span>
-                            <div className="text-dashboard-warning font-semibold">{client.shortfallPercentage}%</div>
+                            <div className="text-dashboard-warning font-semibold">{client.shortfallPercentage || 0}%</div>
                           </div>
                           <div>
                             <span className="text-white/70">Daily Target:</span>
-                            <div className="text-white font-semibold">{client.medianDailyTarget.toLocaleString()}</div>
+                            <div className="text-white font-semibold">{(client.medianDailyTarget || 0).toLocaleString()}</div>
                           </div>
                           <div>
                             <span className="text-white/70">Gap:</span>
-                            <div className="text-dashboard-warning font-semibold">{client.shortfall.toLocaleString()}</div>
+                            <div className="text-dashboard-warning font-semibold">{(client.shortfall || 0).toLocaleString()}</div>
                           </div>
                         </div>
                       </div>

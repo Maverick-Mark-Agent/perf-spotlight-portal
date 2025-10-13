@@ -157,19 +157,14 @@ const SendingAccountsInfrastructure = () => {
     document.body.removeChild(link);
   }, [emailAccounts]);
 
-  const fetchEmailAccounts = async (isRefresh = false) => {
+  const fetchEmailAccounts = useCallback(async (isRefresh = false) => {
     try {
-      console.log('[EmailAccountsPage] Starting fetchEmailAccounts, isRefresh:', isRefresh);
-      console.log('[EmailAccountsPage] Current emailAccounts.length:', emailAccounts.length);
       await refreshInfrastructure(isRefresh);
-      console.log('[EmailAccountsPage] After refreshInfrastructure, emailAccounts.length:', emailAccounts.length);
-
-      // Also fetch the latest polling job status
       await fetchPollingJobStatus();
     } catch (error) {
       console.error('Error fetching email accounts:', error);
     }
-  };
+  }, [refreshInfrastructure]);
 
   const fetchPollingJobStatus = async () => {
     try {

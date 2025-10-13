@@ -605,13 +605,18 @@ const SendingAccountsInfrastructure = () => {
   }, [setInfrastructureModalOpen, setInfrastructureSelectedClient, setInfrastructureFilter]);
 
   const toggleAccountType = useCallback((accountType: string) => {
+    console.log('[toggleAccountType] Toggling:', accountType);
     setInfrastructureExpandedAccountTypes(prev => {
+      console.log('[toggleAccountType] Previous state:', prev);
       const newSet = new Set(prev);
       if (newSet.has(accountType)) {
         newSet.delete(accountType);
+        console.log('[toggleAccountType] Removed:', accountType);
       } else {
         newSet.add(accountType);
+        console.log('[toggleAccountType] Added:', accountType);
       }
+      console.log('[toggleAccountType] New state:', newSet);
       return newSet;
     });
   }, [setInfrastructureExpandedAccountTypes]);
@@ -1787,23 +1792,31 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
 
   return (
     <div className="space-y-3">
-      {Object.entries(organizedAccounts).map(([accountType, statusGroups]) => (
-        <Collapsible
-          key={accountType}
-          open={accountTypesSet.has(accountType)}
-          onOpenChange={() => toggleAccountType(accountType)}
-        >
-          <CollapsibleTrigger asChild>
-            <div className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  {accountTypesSet.has(accountType) ? (
-                    <ChevronDown className="h-4 w-4 text-white/70" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-white/70" />
-                  )}
-                  <span className="text-white font-medium">{accountType}</span>
-                </div>
+      {Object.entries(organizedAccounts).map(([accountType, statusGroups]) => {
+        console.log('[Rendering] Account Type:', accountType, 'isOpen:', accountTypesSet.has(accountType));
+        return (
+          <Collapsible
+            key={accountType}
+            open={accountTypesSet.has(accountType)}
+            onOpenChange={() => {
+              console.log('[Collapsible] onOpenChange triggered for:', accountType);
+              toggleAccountType(accountType);
+            }}
+          >
+            <CollapsibleTrigger asChild>
+              <div
+                className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors"
+                onClick={() => console.log('[Click] Clicked on:', accountType)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    {accountTypesSet.has(accountType) ? (
+                      <ChevronDown className="h-4 w-4 text-white/70" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-white/70" />
+                    )}
+                    <span className="text-white font-medium">{accountType}</span>
+                  </div>
                 <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
                   {((statusGroups as any).Connected?.length || 0) + ((statusGroups as any).Disconnected?.length || 0)} accounts
                 </Badge>
@@ -1892,7 +1905,8 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
             </div>
           </CollapsibleContent>
         </Collapsible>
-      ))}
+        );
+      })}
     </div>
   );
 };

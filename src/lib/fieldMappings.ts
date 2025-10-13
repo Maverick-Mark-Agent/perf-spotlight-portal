@@ -198,6 +198,8 @@ export function transformToEmailAccount(dbRow: any): any {
       'Price': dbRow.price || 0,
       'Bison Instance': dbRow.bison_instance || 'maverick',
       'Reply Rate Per Account %': dbRow.reply_rate_percentage || 0,
+      'Volume Per Account': dbRow.volume_per_account || 0,
+      'Account Type': dbRow.account_type || '',
     },
   };
 }

@@ -516,61 +516,75 @@ const SendingAccountsInfrastructure = () => {
 
   const generateClientSendingData = (accounts) => {
     const clientGroups = {};
-    
+
     accounts.forEach(account => {
       const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
-      
+
       if (!clientGroups[clientName]) {
         clientGroups[clientName] = {
           clientName,
-          maxSending: 0, // Sum of Volume Per Account
-          availableSending: 0, // Sum of Daily Limit
-          dailyVolumeTargets: [], // Array for median calculation
-          accountCount: 0
+          totalAccounts: 0,
+          connectedAccounts: 0,
+          totalPrice: 0,
+          maxSendingVolume: 0, // Sum of Volume Per Account
+          currentAvailableSending: 0, // Sum of Daily Limit
+          zeroReplyRateAccounts: 0,
+          accounts: []
         };
       }
-      
+
+      // Add to group
+      clientGroups[clientName].accounts.push(account);
+      clientGroups[clientName].totalAccounts += 1;
+
+      // Count connected accounts
+      if (account.fields['Status'] === 'Connected') {
+        clientGroups[clientName].connectedAccounts += 1;
+      }
+
+      // Sum price
+      const price = parseFloat(account.fields['Price']) || 0;
+      clientGroups[clientName].totalPrice += price;
+
+      // Sum volume per account (max theoretical capacity)
       const volumePerAccount = parseFloat(account.fields['Volume Per Account']) || 0;
+      clientGroups[clientName].maxSendingVolume += volumePerAccount;
+
+      // Sum daily limit (current available sending)
       const dailyLimit = parseFloat(account.fields['Daily Limit']) || 0;
-      const dailyVolumeTarget = parseFloat(account.fields['Clients Daily Volume Target']) || 0;
-      
-      clientGroups[clientName].maxSending += volumePerAccount;
-      clientGroups[clientName].availableSending += dailyLimit;
-      clientGroups[clientName].accountCount += 1;
-      
-      if (dailyVolumeTarget > 0) {
-        clientGroups[clientName].dailyVolumeTargets.push(dailyVolumeTarget);
+      clientGroups[clientName].currentAvailableSending += dailyLimit;
+
+      // Count accounts with 0% reply rate
+      const replyRate = parseFloat(account.fields['Reply Rate Per Account %']) || 0;
+      if (replyRate === 0) {
+        clientGroups[clientName].zeroReplyRateAccounts += 1;
       }
     });
-    
-    // Calculate metrics for each client
+
+    // Calculate final metrics for each client
     const clientData = Object.values(clientGroups).map((client: any) => {
-      // Calculate median daily volume target
-      const targets = client.dailyVolumeTargets.sort((a, b) => a - b);
-      const median = targets.length > 0 
-        ? targets.length % 2 === 0 
-          ? (targets[targets.length / 2 - 1] + targets[targets.length / 2]) / 2
-          : targets[Math.floor(targets.length / 2)]
-        : 0;
-      
-      // Calculate percentage of available vs maximum
-      const utilizationPercentage = client.maxSending > 0 
-        ? Math.round((client.availableSending / client.maxSending) * 100)
-        : 0;
-      
+      // Calculate zero reply rate percentage
+      const zeroReplyRatePercentage = client.totalAccounts > 0
+        ? ((client.zeroReplyRateAccounts / client.totalAccounts) * 100).toFixed(1)
+        : '0.0';
+
       return {
-        ...client,
-        medianDailyTarget: median,
-        utilizationPercentage,
-        shortfall: client.maxSending - client.availableSending,
-        shortfallPercentage: client.maxSending > 0 
-          ? Math.round(((client.maxSending - client.availableSending) / client.maxSending) * 100)
-          : 0
+        clientName: client.clientName,
+        totalAccounts: client.totalAccounts,
+        connectedAccounts: client.connectedAccounts,
+        totalPrice: client.totalPrice,
+        maxSendingVolume: client.maxSendingVolume,
+        currentAvailableSending: client.currentAvailableSending,
+        zeroReplyRatePercentage: zeroReplyRatePercentage,
+        zeroReplyRateAccounts: client.zeroReplyRateAccounts,
+        accounts: client.accounts
       };
-    }).filter(client => client.accountCount > 0)
-      .sort((a, b) => b.maxSending - a.maxSending); // Sort by max sending capacity
-    
-    setClientSendingData(clientData);
+    })
+    .filter(client => client.totalAccounts > 0)
+    .sort((a, b) => b.maxSendingVolume - a.maxSendingVolume); // Sort by max sending capacity
+
+    console.log('📊 Client Sending Data Generated:', clientData.length, 'clients');
+    setClientAccountsData(clientData);
   };
 
   const openClientModal = useCallback((client: any) => {

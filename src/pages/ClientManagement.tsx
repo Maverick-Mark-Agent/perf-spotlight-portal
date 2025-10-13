@@ -12,8 +12,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { supabase } from '@/integrations/supabase/client';
-import { Settings, RefreshCw, ArrowLeft, Building2, CheckCircle2, XCircle, Search, ChevronRight } from 'lucide-react';
+import { Settings, RefreshCw, ArrowLeft, Building2, CheckCircle2, XCircle, Search, ChevronRight, Plus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import AddClientModal, { ClientFormData } from '@/components/AddClientModal';
+import { useToast } from '@/hooks/use-toast';
 
 interface ClientData {
   workspace_id: number;
@@ -27,10 +29,12 @@ interface ClientData {
 }
 
 const ClientManagement: React.FC = () => {
+  const { toast } = useToast();
   const [clients, setClients] = useState<ClientData[]>([]);
   const [filteredClients, setFilteredClients] = useState<ClientData[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [addClientOpen, setAddClientOpen] = useState(false);
   const navigate = useNavigate();
 
   const fetchClients = async () => {
@@ -69,6 +73,55 @@ const ClientManagement: React.FC = () => {
     }
   }, [searchTerm, clients]);
 
+  const handleAddClient = async (clientData: ClientFormData) => {
+    try {
+      // Generate unique workspace_id
+      const workspaceId = Math.floor(Date.now() / 1000);
+
+      // Insert into client_registry
+      const { error: registryError } = await supabase
+        .from('client_registry')
+        .insert({
+          workspace_id: workspaceId,
+          workspace_name: clientData.workspaceName,
+          display_name: clientData.clientName,
+          is_active: true,
+          billing_type: clientData.billingType,
+          price_per_lead: clientData.pricePerLead || 0,
+          retainer_amount: clientData.retainerAmount || 0,
+          monthly_kpi_target: clientData.monthlyKPITarget || 0,
+          monthly_sending_target: clientData.monthlySendingTarget || 0,
+          daily_sending_target: clientData.monthlySendingTarget
+            ? Math.floor(clientData.monthlySendingTarget / 30)
+            : 0,
+        });
+
+      if (registryError) {
+        if (registryError.code === '23505') {
+          throw new Error(`Client "${clientData.workspaceName}" already exists. Please use a different name.`);
+        }
+        throw registryError;
+      }
+
+      // Create placeholder ZIP entry with client's color (for current month)
+      const currentMonth = new Date().toISOString().slice(0, 7); // "2025-10"
+      await supabase.from('client_zipcodes').insert({
+        zip: '00000',
+        month: currentMonth,
+        client_name: clientData.clientName,
+        workspace_name: clientData.workspaceName,
+        agency_color: clientData.zipColor,
+        state: null,
+      });
+
+      // Refresh client list
+      await fetchClients();
+    } catch (e: any) {
+      console.error('Failed to add client:', e);
+      throw e;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -98,10 +151,16 @@ const ClientManagement: React.FC = () => {
             Manage client data, billing, targets, and configuration
           </p>
         </div>
-        <Button variant="outline" onClick={fetchClients}>
-          <RefreshCw className="w-4 w-4 mr-2" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="default" onClick={() => setAddClientOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Client
+          </Button>
+          <Button variant="outline" onClick={fetchClients}>
+            <RefreshCw className="w-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -228,6 +287,13 @@ const ClientManagement: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Add Client Modal */}
+      <AddClientModal
+        open={addClientOpen}
+        onClose={() => setAddClientOpen(false)}
+        onAddClient={handleAddClient}
+      />
     </div>
   );
 };

@@ -4,7 +4,6 @@ import ZipVisualization, { type ZipData } from "@/components/ZipVisualization";
 import ZipChoroplethLeaflet from "@/components/ZipChoroplethLeaflet";
 import ZipAssignmentModal from "@/components/ZipAssignmentModal";
 import BulkZipAssignmentModal from "@/components/BulkZipAssignmentModal";
-import AddAgencyModal from "@/components/AddAgencyModal";
 import StateLeadsAnalytics from "@/components/StateLeadsAnalytics";
 import AgencyColorPicker from "@/components/AgencyColorPicker";
 import { Button } from "@/components/ui/button";
@@ -53,7 +52,6 @@ export default function ZipDashboard() {
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [selectedZip, setSelectedZip] = useState<string | null>(null);
   const [bulkAssignmentOpen, setBulkAssignmentOpen] = useState(false);
-  const [addAgencyOpen, setAddAgencyOpen] = useState(false);
 
   useEffect(() => {
     loadZipData();
@@ -196,61 +194,6 @@ export default function ZipDashboard() {
     }
   }
 
-  // Handle adding new agency
-  async function handleAddAgency(clientName: string, workspaceName: string, color: string) {
-    try {
-      // Step 1: Generate a unique workspace_id (use timestamp-based ID)
-      const workspaceId = Math.floor(Date.now() / 1000); // Unix timestamp as ID
-
-      // Step 2: Insert into client_registry (master table)
-      const { error: registryError } = await supabase
-        .from("client_registry")
-        .insert({
-          workspace_id: workspaceId,
-          workspace_name: workspaceName,
-          display_name: clientName,
-          is_active: true,
-          billing_type: 'retainer', // Default billing type
-          price_per_lead: 0,
-          retainer_amount: 0,
-          monthly_kpi_target: 0,
-          monthly_sending_target: 0,
-          daily_sending_target: 0,
-        });
-
-      if (registryError) {
-        // If duplicate workspace_name, show helpful error
-        if (registryError.code === '23505') {
-          throw new Error(`Agency "${workspaceName}" already exists. Please use a different name.`);
-        }
-        throw registryError;
-      }
-
-      // Step 3: Create a placeholder ZIP assignment to set the agency color
-      // This ensures the agency appears in the ZIP dashboard with its color
-      const { error: zipError } = await supabase
-        .from("client_zipcodes")
-        .insert({
-          zip: "00000", // Placeholder ZIP
-          month: month,
-          client_name: clientName,
-          workspace_name: workspaceName,
-          agency_color: color,
-          state: null,
-        });
-
-      if (zipError) {
-        console.warn("Placeholder ZIP insert failed (non-critical):", zipError);
-        // Don't throw - agency was added to registry successfully
-      }
-
-      // Reload data
-      await loadZipData();
-    } catch (e: any) {
-      console.error("Failed to add agency:", e);
-      throw e;
-    }
-  }
 
   // Handle color change for agency
   async function handleColorChange(clientName: string, newColor: string) {
@@ -321,15 +264,6 @@ export default function ZipDashboard() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setAddAgencyOpen(true)}
-                className="bg-green-500/20 border-green-500/50 text-green-300 hover:bg-green-500/30"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Agency
-              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -547,13 +481,6 @@ export default function ZipDashboard() {
         onClose={() => setBulkAssignmentOpen(false)}
         onBulkAssign={handleBulkAssignZips}
         agencies={stats.agencies}
-      />
-
-      {/* Add Agency Modal */}
-      <AddAgencyModal
-        open={addAgencyOpen}
-        onClose={() => setAddAgencyOpen(false)}
-        onAddAgency={handleAddAgency}
       />
     </div>
   );

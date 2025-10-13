@@ -63,6 +63,7 @@ const SendingAccountsInfrastructure = () => {
   const [pollingJobStatus, setPollingJobStatus] = useState<any>(null);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
+  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
 
   const formatLastUpdated = () => {
     if (!lastUpdated) return '';
@@ -653,6 +654,65 @@ const SendingAccountsInfrastructure = () => {
       return newSet;
     });
   }, [setInfrastructureExpandedAccountTypes]);
+
+  const toggleProvider = useCallback((providerName: string) => {
+    setExpandedProviders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(providerName)) {
+        newSet.delete(providerName);
+      } else {
+        newSet.add(providerName);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const downloadProviderAccounts = useCallback((provider: any) => {
+    // Filter accounts with ≥50 sent
+    const qualifyingAccounts = provider.accounts.filter(account => {
+      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+      return totalSent >= 50;
+    });
+
+    if (qualifyingAccounts.length === 0) {
+      alert(`No accounts found for ${provider.name} with ≥50 emails sent`);
+      return;
+    }
+
+    // Create CSV content
+    const headers = ['Account Name', 'Client', 'Status', 'Total Sent', 'Total Replied', 'Reply Rate %', 'Daily Limit'];
+    const rows = qualifyingAccounts.map(account => {
+      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+      const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
+      const replyRate = totalSent > 0 ? ((totalReplied / totalSent) * 100).toFixed(2) : '0.00';
+      const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown';
+
+      return [
+        account.fields['Account Name'] || '',
+        clientName,
+        account.fields['Status'] || '',
+        totalSent,
+        totalReplied,
+        replyRate,
+        account.fields['Daily Limit'] || 0
+      ];
+    });
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+
+    // Create download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${provider.name}_accounts_50plus_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, []);
 
   const toggleStatus = useCallback((statusKey: string) => {
     setInfrastructureExpandedStatuses(prev => {
@@ -1423,75 +1483,175 @@ const SendingAccountsInfrastructure = () => {
                     <div className="text-white/70">No Data Available</div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                     {emailProviderData.map((provider: any, index) => (
-                      <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                        <div className="flex justify-between items-start mb-3">
-                          <h4 className="text-white font-medium text-lg">{provider.name}</h4>
-                          <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40 ml-2">
-                            {selectedProviderView === 'Accounts 50+'
-                              ? provider.qualifyingAccountCount
-                              : provider.totalAccountCount} accounts
-                          </Badge>
+                      <Collapsible key={index} className="bg-white/5 rounded-lg border border-white/10">
+                        <div className="p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex items-center gap-3 flex-1">
+                              <CollapsibleTrigger
+                                className="hover:bg-white/10 p-1 rounded transition-colors"
+                                onClick={() => toggleProvider(provider.name)}
+                              >
+                                {expandedProviders.has(provider.name) ? (
+                                  <ChevronDown className="h-5 w-5 text-white" />
+                                ) : (
+                                  <ChevronRight className="h-5 w-5 text-white" />
+                                )}
+                              </CollapsibleTrigger>
+                              <h4 className="text-white font-medium text-lg">{provider.name}</h4>
+                              <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40">
+                                {selectedProviderView === 'Accounts 50+'
+                                  ? provider.qualifyingAccountCount
+                                  : provider.totalAccountCount} accounts
+                              </Badge>
+                            </div>
+                            {selectedProviderView === 'Accounts 50+' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => downloadProviderAccounts(provider)}
+                                className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+                              >
+                                <Download className="h-4 w-4 mr-2" />
+                                Download CSV
+                              </Button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+
+                            {/* MODE 1: Total Email Sent by Provider */}
+                            {selectedProviderView === 'Total Email Sent' && (
+                              <>
+                                <div className="flex justify-between">
+                                  <span className="text-white/70">Total Sent:</span>
+                                  <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-white/70">Total Replies:</span>
+                                  <div className="text-white font-semibold">{provider.totalReplies.toLocaleString()}</div>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-white/70">Reply Rate:</span>
+                                  <div className="text-white font-semibold">{provider.overallReplyRate.toFixed(2)}%</div>
+                                </div>
+                              </>
+                            )}
+
+                            {/* MODE 2: Accounts with ≥50 Emails Sent */}
+                            {selectedProviderView === 'Accounts 50+' && (
+                              <>
+                                <div className="flex justify-between">
+                                  <span className="text-white/70">Total Sent (≥50):</span>
+                                  <div className="text-white font-semibold">{provider.totalSentQualifying.toLocaleString()}</div>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-white/70">Total Replies (≥50):</span>
+                                  <div className="text-white font-semibold">{provider.totalRepliesQualifying.toLocaleString()}</div>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-white/70">Avg Reply Rate:</span>
+                                  <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(2)}%</div>
+                                </div>
+                              </>
+                            )}
+
+                            {/* MODE 3: Daily Sending Availability */}
+                            {selectedProviderView === 'Daily Availability' && (
+                              <>
+                                <div className="flex justify-between">
+                                  <span className="text-white/70">Theoretical Limit:</span>
+                                  <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}/day</div>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-white/70">Current Limit:</span>
+                                  <div className="text-white font-semibold">{provider.currentDailyLimit.toLocaleString()}/day</div>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-white/70">Warmup Progress:</span>
+                                  <div className="text-white font-semibold">{provider.utilizationRate.toFixed(1)}%</div>
+                                </div>
+                              </>
+                            )}
+
+                          </div>
                         </div>
-                        <div className="grid grid-cols-1 gap-3 text-sm">
 
-                          {/* MODE 1: Total Email Sent by Provider */}
-                          {selectedProviderView === 'Total Email Sent' && (
-                            <>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Total Sent:</span>
-                                <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Total Replies:</span>
-                                <div className="text-white font-semibold">{provider.totalReplies.toLocaleString()}</div>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Reply Rate:</span>
-                                <div className="text-white font-semibold">{provider.overallReplyRate.toFixed(2)}%</div>
-                              </div>
-                            </>
-                          )}
+                        {/* Expandable Account List for Accounts 50+ */}
+                        {selectedProviderView === 'Accounts 50+' && (
+                          <CollapsibleContent>
+                            <div className="border-t border-white/10 p-4 bg-white/5">
+                              {(() => {
+                                // Filter accounts with ≥50 sent
+                                const qualifyingAccounts = provider.accounts.filter(account => {
+                                  const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+                                  return totalSent >= 50;
+                                });
 
-                          {/* MODE 2: Accounts with ≥50 Emails Sent */}
-                          {selectedProviderView === 'Accounts 50+' && (
-                            <>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Total Sent (≥50):</span>
-                                <div className="text-white font-semibold">{provider.totalSentQualifying.toLocaleString()}</div>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Total Replies (≥50):</span>
-                                <div className="text-white font-semibold">{provider.totalRepliesQualifying.toLocaleString()}</div>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Avg Reply Rate:</span>
-                                <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(2)}%</div>
-                              </div>
-                            </>
-                          )}
+                                // Group by client
+                                const clientGroups = {};
+                                qualifyingAccounts.forEach(account => {
+                                  const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
+                                  if (!clientGroups[clientName]) {
+                                    clientGroups[clientName] = [];
+                                  }
+                                  clientGroups[clientName].push(account);
+                                });
 
-                          {/* MODE 3: Daily Sending Availability */}
-                          {selectedProviderView === 'Daily Availability' && (
-                            <>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Theoretical Limit:</span>
-                                <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}/day</div>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Current Limit:</span>
-                                <div className="text-white font-semibold">{provider.currentDailyLimit.toLocaleString()}/day</div>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-white/70">Warmup Progress:</span>
-                                <div className="text-white font-semibold">{provider.utilizationRate.toFixed(1)}%</div>
-                              </div>
-                            </>
-                          )}
+                                return (
+                                  <div className="space-y-4">
+                                    {Object.entries(clientGroups).map(([clientName, accounts]: [string, any[]]) => (
+                                      <div key={clientName}>
+                                        <h5 className="text-white font-medium mb-2 flex items-center gap-2">
+                                          {clientName}
+                                          <Badge variant="secondary" className="text-xs">
+                                            {accounts.length} accounts
+                                          </Badge>
+                                        </h5>
+                                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                                          {accounts.map((account, idx) => {
+                                            const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+                                            const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
+                                            const replyRate = totalSent > 0 ? ((totalReplied / totalSent) * 100).toFixed(2) : '0.00';
 
-                        </div>
-                      </div>
+                                            return (
+                                              <div key={idx} className="bg-white/5 rounded p-3 text-sm">
+                                                <div className="flex justify-between items-start mb-2">
+                                                  <span className="text-white font-medium">{account.fields['Account Name']}</span>
+                                                  <Badge
+                                                    variant={account.fields['Status'] === 'Connected' ? 'default' : 'destructive'}
+                                                    className="text-xs"
+                                                  >
+                                                    {account.fields['Status']}
+                                                  </Badge>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-2 text-white/70">
+                                                  <div>
+                                                    <div className="text-xs">Sent</div>
+                                                    <div className="text-white font-semibold">{totalSent.toLocaleString()}</div>
+                                                  </div>
+                                                  <div>
+                                                    <div className="text-xs">Replies</div>
+                                                    <div className="text-white font-semibold">{totalReplied.toLocaleString()}</div>
+                                                  </div>
+                                                  <div>
+                                                    <div className="text-xs">Reply Rate</div>
+                                                    <div className="text-white font-semibold">{replyRate}%</div>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          </CollapsibleContent>
+                        )}
+                      </Collapsible>
                     ))}
                   </div>
                 )

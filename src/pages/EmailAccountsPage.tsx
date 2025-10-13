@@ -485,18 +485,18 @@ const SendingAccountsInfrastructure = () => {
     const csvContent = [
       headers.join(','),
       ...failedAccounts.map(account => [
-        `"${account.fields['Email Account'] || ''}"`,
+        `"${account.fields['Email'] || ''}"`,
         `"${account.fields['Tag - Reseller'] || ''}"`,
         `"${account.fields['Tag - Email Provider'] || ''}"`,
         `"${account.fields['Name'] || ''}"`,
         `"${account.fields['Status'] || ''}"`,
         `"${account.fields['Client Name (from Client)']?.[0] || ''}"`,
         `"${account.fields['Domain'] || ''}"`,
-        `"${account.fields['Account Type'] || account.fields['Accounts Type'] || ''}"`,
-        `"${account.fields['Workspace'] || ''}"`,
+        `"${account.fields['Account Type'] || ''}"`,
+        `"${account.workspace_name || ''}"`,
         account.fields['Total Sent'] || 0,
         account.fields['Total Replied'] || 0,
-        account.fields['Total Bounced'] || 0,
+        account.fields['Bounced'] || 0,
         account.fields['Daily Limit'] || 0,
         account.fields['Price'] || 0
       ].join(','))
@@ -1802,26 +1802,26 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
                               <div className="col-span-4">
                                 <div className="flex items-center space-x-1">
                                   <Mail className="h-3 w-3 text-dashboard-primary" />
-                                  <span className="text-white font-medium truncate">{account.fields['Email Account']}</span>
+                                  <span className="text-white font-medium truncate">{account.fields['Email']}</span>
                                 </div>
                                 <div className="text-white/60 truncate">{account.fields['Name']}</div>
                               </div>
-                              
+
                               <div className="col-span-2 text-white/70">
                                 <div>{account.fields['Domain']}</div>
                                 <div>{account.fields['Tag - Email Provider']}</div>
                               </div>
-                              
+
                               <div className="col-span-2 text-white/70">
                                 <div>Limit: {account.fields['Daily Limit'] || 'N/A'}</div>
                                 <div>Vol: {account.fields['Volume Per Account'] || 'N/A'}</div>
                               </div>
-                              
+
                               <div className="col-span-2 text-white/70">
                                 <div>Sent: {account.fields['Total Sent'] || 0}</div>
                                 <div>Replies: {account.fields['Total Replied'] || 0}</div>
                               </div>
-                              
+
                               <div className="col-span-2 text-right">
                                 <div className="flex items-center justify-end space-x-1">
                                   <DollarSign className="h-3 w-3 text-dashboard-accent" />
@@ -1830,7 +1830,7 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
                                   </span>
                                 </div>
                                 <div className="text-white/60">
-                                  Bounced: {account.fields['Total Bounced'] || 0}
+                                  Bounced: {account.fields['Bounced'] || 0}
                                 </div>
                               </div>
                             </div>

@@ -527,12 +527,18 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     }));
   }, []);
 
-  const setInfrastructureExpandedAccountTypes = useCallback((types: Set<string>) => {
-    setInfrastructureDashboard(prev => ({ ...prev, expandedAccountTypes: types }));
+  const setInfrastructureExpandedAccountTypes = useCallback((types: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setInfrastructureDashboard(prev => ({
+      ...prev,
+      expandedAccountTypes: typeof types === 'function' ? types(prev.expandedAccountTypes) : types
+    }));
   }, []);
 
-  const setInfrastructureExpandedStatuses = useCallback((statuses: Set<string>) => {
-    setInfrastructureDashboard(prev => ({ ...prev, expandedStatuses: statuses }));
+  const setInfrastructureExpandedStatuses = useCallback((statuses: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setInfrastructureDashboard(prev => ({
+      ...prev,
+      expandedStatuses: typeof statuses === 'function' ? statuses(prev.expandedStatuses) : statuses
+    }));
   }, []);
 
   const setInfrastructureSelectedClient = useCallback((client: any) => {

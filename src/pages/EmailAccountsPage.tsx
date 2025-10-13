@@ -1703,8 +1703,25 @@ const SendingAccountsInfrastructure = () => {
 // Separate component for better performance
 const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, toggleAccountType, toggleStatus, filter }) => {
   // Ensure we have Set objects (convert if needed)
-  const accountTypesSet = expandedAccountTypes instanceof Set ? expandedAccountTypes : new Set(expandedAccountTypes);
-  const statusesSet = expandedStatuses instanceof Set ? expandedStatuses : new Set(expandedStatuses);
+  const accountTypesSet = useMemo(() => {
+    console.log('[ClientAccountsModal] expandedAccountTypes type:', typeof expandedAccountTypes, expandedAccountTypes);
+    if (expandedAccountTypes instanceof Set) return expandedAccountTypes;
+    if (Array.isArray(expandedAccountTypes)) return new Set(expandedAccountTypes);
+    if (expandedAccountTypes && typeof expandedAccountTypes === 'object' && typeof expandedAccountTypes !== 'function') {
+      return new Set(Object.keys(expandedAccountTypes));
+    }
+    return new Set();
+  }, [expandedAccountTypes]);
+
+  const statusesSet = useMemo(() => {
+    console.log('[ClientAccountsModal] expandedStatuses type:', typeof expandedStatuses, expandedStatuses);
+    if (expandedStatuses instanceof Set) return expandedStatuses;
+    if (Array.isArray(expandedStatuses)) return new Set(expandedStatuses);
+    if (expandedStatuses && typeof expandedStatuses === 'object' && typeof expandedStatuses !== 'function') {
+      return new Set(Object.keys(expandedStatuses));
+    }
+    return new Set();
+  }, [expandedStatuses]);
 
   const organizedAccounts = useMemo(() => {
     console.log('[ClientAccountsModal] Processing client:', client.clientName);

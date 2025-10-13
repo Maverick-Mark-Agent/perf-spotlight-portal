@@ -27,7 +27,7 @@ const formatNumber = (num: number): string => {
 
 // Generate Slack message blocks
 const generateSlackMessage = (clients: any[]) => {
-  const totalEmails = clients.reduce((sum, c) => sum + c.emails, 0);
+  const totalEmailsToday = clients.reduce((sum, c) => sum + c.dailyAverage, 0);
   const totalDailyGoal = clients.reduce((sum, c) => sum + c.dailyQuota, 0);
 
   const blocks: any[] = [
@@ -35,7 +35,7 @@ const generateSlackMessage = (clients: any[]) => {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `📧 *${formatNumber(totalEmails)}* emails going out today\n🎯 *Total Daily Goal:* ${formatNumber(Math.round(totalDailyGoal))} emails`
+        text: `📧 *${formatNumber(totalEmailsToday)}* emails going out today\n🎯 *Total Daily Goal:* ${formatNumber(Math.round(totalDailyGoal))} emails`
       }
     },
     {

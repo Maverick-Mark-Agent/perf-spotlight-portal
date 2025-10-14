@@ -19,7 +19,7 @@ interface ClientFullData {
   workspace_name: string;
   display_name: string | null;
   is_active: boolean;
-  is_agency: boolean;
+  client_type: 'home_insurance' | 'other';
 
   // Email Bison Integration
   bison_workspace_id: number | null;
@@ -178,12 +178,56 @@ const ClientProfile: React.FC = () => {
 
     setSaving(true);
     try {
+      // If changing to home_insurance, check if ZIP placeholder exists
+      console.log('[ClientProfile] Saving client, client_type:', client.client_type);
+      if (client.client_type === 'home_insurance') {
+        console.log('[ClientProfile] Client is home_insurance, checking for ZIP placeholder...');
+        const { data: existingZip, error: zipCheckError } = await supabase
+          .from('client_zipcodes')
+          .select('zip')
+          .eq('workspace_name', client.workspace_name)
+          .limit(1);
+
+        console.log('[ClientProfile] Existing ZIP check:', { existingZip, zipCheckError });
+
+        // Create ZIP placeholder if it doesn't exist
+        if (!existingZip || existingZip.length === 0) {
+          console.log('[ClientProfile] No ZIP found, creating placeholder...');
+          const currentMonth = new Date().toISOString().slice(0, 7);
+          const insertData = {
+            zip: '00000',
+            month: currentMonth,
+            client_name: client.display_name || client.workspace_name,
+            workspace_name: client.workspace_name,
+            agency_color: client.agency_color || '#3B82F6',
+            state: null,
+          };
+          console.log('[ClientProfile] Inserting ZIP with data:', insertData);
+
+          const { data: insertResult, error: insertError } = await supabase
+            .from('client_zipcodes')
+            .insert(insertData)
+            .select();
+
+          console.log('[ClientProfile] ZIP insert result:', { insertResult, insertError });
+
+          if (insertError) {
+            console.error('[ClientProfile] Failed to create ZIP placeholder:', insertError);
+            throw new Error(`Failed to create ZIP placeholder: ${insertError.message}`);
+          } else {
+            console.log('[ClientProfile] ✅ ZIP placeholder created successfully!');
+          }
+        } else {
+          console.log('[ClientProfile] ZIP already exists, skipping creation');
+        }
+      }
+
       const { error } = await supabase
         .from('client_registry')
         .update({
           display_name: client.display_name,
           is_active: client.is_active,
-          is_agency: client.is_agency,
+          client_type: client.client_type,
           bison_workspace_id: client.bison_workspace_id,
           bison_workspace_name: client.bison_workspace_name,
           billing_type: client.billing_type,
@@ -367,11 +411,11 @@ const ClientProfile: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <Switch
-                    id="is_agency"
-                    checked={client.is_agency}
-                    onCheckedChange={(checked) => handleFieldChange('is_agency', checked)}
+                    id="client_type"
+                    checked={client.client_type === 'home_insurance'}
+                    onCheckedChange={(checked) => handleFieldChange('client_type', checked ? 'home_insurance' : 'other')}
                   />
-                  <Label htmlFor="is_agency">Agency Account</Label>
+                  <Label htmlFor="client_type">Home Insurance (ZIP Dashboard + Contact Pipeline)</Label>
                 </div>
               </div>
 

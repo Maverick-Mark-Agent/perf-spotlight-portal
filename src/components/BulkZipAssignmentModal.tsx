@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
 
 type Agency = {
   client_name: string;
@@ -40,6 +41,36 @@ export default function BulkZipAssignmentModal({
   const [selectedAgency, setSelectedAgency] = useState<string>("");
   const [zipInput, setZipInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [allClients, setAllClients] = useState<Agency[]>([]);
+
+  // Fetch ALL home_insurance clients from client_registry
+  useEffect(() => {
+    const fetchClients = async () => {
+      if (!open) return;
+
+      console.log('[BulkZipAssign] Fetching home_insurance clients...');
+      const { data, error } = await supabase
+        .from('client_registry')
+        .select('workspace_name, display_name, agency_color')
+        .eq('is_active', true)
+        .eq('client_type', 'home_insurance')
+        .order('display_name');
+
+      if (error) {
+        console.error('[BulkZipAssign] Error fetching clients:', error);
+      } else {
+        const clients: Agency[] = (data || []).map(c => ({
+          client_name: c.display_name || c.workspace_name,
+          workspace_name: c.workspace_name,
+          agency_color: c.agency_color,
+        }));
+        console.log('[BulkZipAssign] Found clients:', clients.length);
+        setAllClients(clients);
+      }
+    };
+
+    fetchClients();
+  }, [open]);
 
   const parseZipCodes = (input: string): string[] => {
     // Split by commas, newlines, or spaces, then clean up
@@ -56,7 +87,7 @@ export default function BulkZipAssignmentModal({
 
     setLoading(true);
     try {
-      const agency = agencies.find((a) => a.client_name === selectedAgency);
+      const agency = allClients.find((a) => a.client_name === selectedAgency);
       const color = agency?.agency_color || "#3B82F6";
       await onBulkAssign(zipCodes, selectedAgency, color);
       onClose();
@@ -108,7 +139,7 @@ export default function BulkZipAssignmentModal({
                 <SelectValue placeholder="Choose an agency..." />
               </SelectTrigger>
               <SelectContent>
-                {agencies.map((agency) => (
+                {allClients.map((agency) => (
                   <SelectItem
                     key={agency.client_name}
                     value={agency.client_name}

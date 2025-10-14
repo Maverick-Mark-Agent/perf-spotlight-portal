@@ -28,12 +28,13 @@ type AddClientModalProps = {
 export interface ClientFormData {
   clientName: string;
   workspaceName: string;
+  clientType: 'home_insurance' | 'other';
   billingType: 'per_lead' | 'retainer';
   pricePerLead?: number;
   retainerAmount?: number;
   monthlyKPITarget?: number;
   monthlySendingTarget?: number;
-  zipColor: string;
+  zipColor?: string;
 }
 
 const PRESET_COLORS = [
@@ -57,6 +58,7 @@ export default function AddClientModal({
   const { toast } = useToast();
   const [clientName, setClientName] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
+  const [clientType, setClientType] = useState<'home_insurance' | 'other'>('other');
   const [billingType, setBillingType] = useState<'per_lead' | 'retainer'>('retainer');
   const [pricePerLead, setPricePerLead] = useState("");
   const [retainerAmount, setRetainerAmount] = useState("");
@@ -80,12 +82,13 @@ export default function AddClientModal({
       await onAddClient({
         clientName: clientName.trim(),
         workspaceName: workspaceName.trim() || clientName.trim(),
+        clientType,
         billingType,
         pricePerLead: pricePerLead ? parseFloat(pricePerLead) : undefined,
         retainerAmount: retainerAmount ? parseFloat(retainerAmount) : undefined,
         monthlyKPITarget: monthlyKPITarget ? parseInt(monthlyKPITarget) : undefined,
         monthlySendingTarget: monthlySendingTarget ? parseInt(monthlySendingTarget) : undefined,
-        zipColor: selectedColor,
+        zipColor: clientType === 'home_insurance' ? selectedColor : undefined,
       });
 
       toast({
@@ -97,6 +100,7 @@ export default function AddClientModal({
       // Reset form
       setClientName("");
       setWorkspaceName("");
+      setClientType('other');
       setBillingType('retainer');
       setPricePerLead("");
       setRetainerAmount("");
@@ -147,6 +151,23 @@ export default function AddClientModal({
             />
             <p className="text-xs text-muted-foreground">
               This will be used as the unique identifier in Email Bison and databases
+            </p>
+          </div>
+
+          {/* Client Type */}
+          <div className="space-y-2">
+            <Label htmlFor="client-type">Client Type *</Label>
+            <Select value={clientType} onValueChange={(value: 'home_insurance' | 'other') => setClientType(value)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="other">Standard Client</SelectItem>
+                <SelectItem value="home_insurance">Home Insurance (ZIP + Contact Pipeline)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Home insurance clients will have access to ZIP Dashboard and Contact Pipeline features
             </p>
           </div>
 
@@ -215,12 +236,13 @@ export default function AddClientModal({
             />
           </div>
 
-          {/* ZIP Dashboard Color */}
-          <div className="space-y-2">
-            <Label>ZIP Dashboard Color</Label>
-            <p className="text-xs text-muted-foreground mb-2">
-              This color will be used to identify this client on the ZIP Dashboard map
-            </p>
+          {/* ZIP Dashboard Color - Only for home insurance clients */}
+          {clientType === 'home_insurance' && (
+            <div className="space-y-2">
+              <Label>ZIP Dashboard Color</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                This color will be used to identify this client on the ZIP Dashboard map
+              </p>
             <div className="flex flex-wrap gap-2">
               {PRESET_COLORS.map((color) => (
                 <button
@@ -248,7 +270,8 @@ export default function AddClientModal({
               />
               <span className="text-sm text-gray-500 font-mono">{selectedColor}</span>
             </div>
-          </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>

@@ -86,6 +86,7 @@ const ClientManagement: React.FC = () => {
           workspace_name: clientData.workspaceName,
           display_name: clientData.clientName,
           is_active: true,
+          client_type: clientData.clientType,
           billing_type: clientData.billingType,
           price_per_lead: clientData.pricePerLead || 0,
           retainer_amount: clientData.retainerAmount || 0,
@@ -103,16 +104,18 @@ const ClientManagement: React.FC = () => {
         throw registryError;
       }
 
-      // Create placeholder ZIP entry with client's color (for current month)
-      const currentMonth = new Date().toISOString().slice(0, 7); // "2025-10"
-      await supabase.from('client_zipcodes').insert({
-        zip: '00000',
-        month: currentMonth,
-        client_name: clientData.clientName,
-        workspace_name: clientData.workspaceName,
-        agency_color: clientData.zipColor,
-        state: null,
-      });
+      // Create placeholder ZIP entry only for home insurance clients
+      if (clientData.clientType === 'home_insurance') {
+        const currentMonth = new Date().toISOString().slice(0, 7); // "2025-10"
+        await supabase.from('client_zipcodes').insert({
+          zip: '00000',
+          month: currentMonth,
+          client_name: clientData.clientName,
+          workspace_name: clientData.workspaceName,
+          agency_color: clientData.zipColor,
+          state: null,
+        });
+      }
 
       // Refresh client list
       await fetchClients();

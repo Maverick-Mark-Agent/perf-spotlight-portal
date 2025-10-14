@@ -6,6 +6,8 @@ import ZipAssignmentModal from "@/components/ZipAssignmentModal";
 import BulkZipAssignmentModal from "@/components/BulkZipAssignmentModal";
 import StateLeadsAnalytics from "@/components/StateLeadsAnalytics";
 import AgencyColorPicker from "@/components/AgencyColorPicker";
+import CommitZipsModal from "@/components/CommitZipsModal";
+import CommitClientZipsModal from "@/components/CommitClientZipsModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download, Filter, MapPin, ArrowLeft, Plus, Upload } from "lucide-react";
+import { Download, Filter, MapPin, ArrowLeft, Plus, Upload, Calendar } from "lucide-react";
 import { Link } from "react-router-dom";
 
 type ZipRow = {
@@ -52,6 +54,9 @@ export default function ZipDashboard() {
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [selectedZip, setSelectedZip] = useState<string | null>(null);
   const [bulkAssignmentOpen, setBulkAssignmentOpen] = useState(false);
+  const [commitModalOpen, setCommitModalOpen] = useState(false);
+  const [commitClientModalOpen, setCommitClientModalOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<{clientName: string, workspaceName: string, zipCount: number} | null>(null);
 
   useEffect(() => {
     loadZipData();
@@ -177,14 +182,80 @@ export default function ZipDashboard() {
   // Handle bulk ZIP assignment
   async function handleBulkAssignZips(zipCodes: string[], clientName: string, color: string) {
     try {
-      // Update all ZIPs in batch
-      const { error } = await supabase
+      console.log(`[BulkAssign] Assigning ${zipCodes.length} ZIPs to ${clientName} for ${month}`);
+
+      // Get workspace_name for this client
+      const { data: clientData } = await supabase
+        .from('client_registry')
+        .select('workspace_name')
+        .eq('display_name', clientName)
+        .single();
+
+      const workspaceName = clientData?.workspace_name || clientName;
+
+      // Insert new ZIP assignments (or update if they already exist)
+      const zipEntries = zipCodes.map(zip => ({
+        zip: zip,
+        month: month,
+        client_name: clientName,
+        workspace_name: workspaceName,
+        agency_color: color,
+        state: null, // State will be populated later if needed
+        source: 'manual',
+        pulled_at: new Date().toISOString(),
+        inserted_at: new Date().toISOString(),
+      }));
+
+      // Delete existing entries for these ZIPs in this month first
+      await supabase
         .from("client_zipcodes")
-        .update({ client_name: clientName, agency_color: color })
+        .delete()
         .eq("month", month)
         .in("zip", zipCodes);
 
-      if (error) throw error;
+      // Insert new entries
+      const { error } = await supabase
+        .from("client_zipcodes")
+        .insert(zipEntries);
+
+      if (error) {
+        console.error('[BulkAssign] Insert error:', error);
+        throw error;
+      }
+
+      console.log('[BulkAssign] ✓ Successfully assigned ZIPs');
+
+      // Initialize zip_batch_pulls tracking for Contact Pipeline
+      console.log('[BulkAssign] Initializing zip_batch_pulls tracking...');
+      const pullEntries = zipEntries.map((entry, index) => ({
+        workspace_name: workspaceName,
+        month: month,
+        zip: entry.zip,
+        state: entry.state,
+        batch_number: Math.floor(index / 25) + 1, // Group into batches of 25
+        pulled_at: null, // Not pulled yet
+        raw_contacts_uploaded: 0,
+      }));
+
+      // Delete existing pull tracking for these ZIPs in this month
+      await supabase
+        .from('zip_batch_pulls')
+        .delete()
+        .eq('workspace_name', workspaceName)
+        .eq('month', month)
+        .in('zip', zipCodes);
+
+      // Insert new pull tracking entries
+      const { error: pullError } = await supabase
+        .from('zip_batch_pulls')
+        .insert(pullEntries);
+
+      if (pullError) {
+        console.error('[BulkAssign] Error inserting pull tracking:', pullError);
+        // Don't throw - ZIP assignments succeeded
+      } else {
+        console.log('[BulkAssign] ✓ ZIP batch tracking initialized');
+      }
 
       // Reload data
       await loadZipData();
@@ -273,15 +344,33 @@ export default function ZipDashboard() {
                 <Upload className="h-4 w-4 mr-2" />
                 Bulk Assign
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCommitModalOpen(true)}
+                className="bg-purple-500/20 border-purple-500/50 text-purple-300 hover:bg-purple-500/30"
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Commit ZIPs to Month
+              </Button>
               <div className="h-6 w-px bg-white/20"></div>
               <label className="text-sm font-medium text-gray-300">Month:</label>
-              <Input
-                type="text"
-                className="w-32 bg-white/10 border-white/20 text-white placeholder:text-gray-400"
+              <select
                 value={month}
                 onChange={(e) => setMonth(e.target.value)}
-                placeholder="2025-11"
-              />
+                className="px-4 py-2 bg-white/10 border border-white/20 rounded-md text-white font-medium focus:ring-2 focus:ring-primary focus:outline-none"
+              >
+                {Array.from({ length: 12 }, (_, i) => {
+                  const date = new Date();
+                  date.setMonth(date.getMonth() + i);
+                  const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                  return (
+                    <option key={value} value={value}>
+                      {date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    </option>
+                  );
+                })}
+              </select>
             </div>
           </div>
         </div>
@@ -416,6 +505,7 @@ export default function ZipDashboard() {
                       <th className="py-3 px-4 text-gray-300 font-medium">Agency</th>
                       <th className="py-3 px-4 text-gray-300 font-medium">ZIPs</th>
                       <th className="py-3 px-4 text-gray-300 font-medium">Color</th>
+                      <th className="py-3 px-4 text-gray-300 font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -443,11 +533,29 @@ export default function ZipDashboard() {
                             }
                           />
                         </td>
+                        <td className="py-3 px-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedClient({
+                                clientName: agency.client_name,
+                                workspaceName: agency.workspace_name || agency.client_name,
+                                zipCount: agency.zipCount
+                              });
+                              setCommitClientModalOpen(true);
+                            }}
+                            className="bg-purple-500/20 border-purple-500/50 text-purple-300 hover:bg-purple-500/30 text-xs"
+                          >
+                            <Calendar className="h-3 w-3 mr-1" />
+                            Commit
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                     {stats.agencies.length === 0 && (
                       <tr>
-                        <td className="py-8 px-4 text-center text-gray-400" colSpan={3}>
+                        <td className="py-8 px-4 text-center text-gray-400" colSpan={4}>
                           No agencies with assigned ZIPs for {month}
                         </td>
                       </tr>
@@ -482,6 +590,36 @@ export default function ZipDashboard() {
         onBulkAssign={handleBulkAssignZips}
         agencies={stats.agencies}
       />
+
+      {/* Commit ZIPs to Month Modal */}
+      <CommitZipsModal
+        open={commitModalOpen}
+        onClose={() => setCommitModalOpen(false)}
+        currentMonth={month}
+        zipCount={zipData.length}
+        onCommitComplete={() => {
+          // Optionally refresh data or show success message
+          loadZipData();
+        }}
+      />
+
+      {/* Commit Client ZIPs to Month Modal */}
+      {selectedClient && (
+        <CommitClientZipsModal
+          open={commitClientModalOpen}
+          onClose={() => {
+            setCommitClientModalOpen(false);
+            setSelectedClient(null);
+          }}
+          currentMonth={month}
+          clientName={selectedClient.clientName}
+          workspaceName={selectedClient.workspaceName}
+          zipCount={selectedClient.zipCount}
+          onCommitComplete={() => {
+            loadZipData();
+          }}
+        />
+      )}
     </div>
   );
 }

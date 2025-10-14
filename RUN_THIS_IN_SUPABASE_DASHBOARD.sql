@@ -1,8 +1,9 @@
 -- =====================================================
 -- RUN THIS IN SUPABASE DASHBOARD SQL EDITOR
 -- =====================================================
--- This fixes the "Add Agency" button by adding write permissions
--- to the client_zipcodes table.
+-- This script:
+-- 1. Fixes the "Add Client" button by adding write permissions
+-- 2. Adds client_type field to distinguish home insurance clients
 --
 -- Instructions:
 -- 1. Go to: https://supabase.com/dashboard/project/gjqbbgrfhijescaouqkx/sql/new
@@ -10,7 +11,7 @@
 -- 3. Click "Run" button
 -- =====================================================
 
--- Allow authenticated users to insert new ZIP assignments
+-- PART 1: Allow authenticated users to insert new ZIP assignments
 CREATE POLICY IF NOT EXISTS "Authenticated users can insert client_zipcodes"
 ON public.client_zipcodes
 FOR INSERT
@@ -32,12 +33,43 @@ FOR DELETE
 TO authenticated
 USING (true);
 
--- Verify policies were created
+-- PART 2: Add client_type field
+ALTER TABLE public.client_registry
+ADD COLUMN IF NOT EXISTS client_type TEXT DEFAULT 'other' CHECK (client_type IN ('home_insurance', 'other'));
+
+-- Create index for filtering
+CREATE INDEX IF NOT EXISTS idx_client_registry_client_type
+ON public.client_registry(client_type)
+WHERE client_type = 'home_insurance';
+
+-- Add comment
+COMMENT ON COLUMN public.client_registry.client_type IS
+'Client type: home_insurance = uses ZIP Dashboard & Contact Pipeline, other = standard client without these features';
+
+-- Update existing clients that are clearly home insurance based on their ZIP assignments
+UPDATE public.client_registry
+SET client_type = 'home_insurance'
+WHERE workspace_name IN (
+  SELECT DISTINCT workspace_name
+  FROM public.client_zipcodes
+  WHERE workspace_name IS NOT NULL
+);
+
+-- Verify everything worked
 SELECT
-  schemaname,
-  tablename,
-  policyname,
-  cmd
+  'Policies Created' as check_type,
+  COUNT(*) as count
 FROM pg_policies
 WHERE tablename = 'client_zipcodes'
-ORDER BY policyname;
+UNION ALL
+SELECT
+  'Home Insurance Clients' as check_type,
+  COUNT(*) as count
+FROM public.client_registry
+WHERE client_type = 'home_insurance'
+UNION ALL
+SELECT
+  'Other Clients' as check_type,
+  COUNT(*) as count
+FROM public.client_registry
+WHERE client_type = 'other';

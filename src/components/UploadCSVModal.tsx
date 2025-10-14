@@ -31,18 +31,21 @@ const UploadCSVModal: React.FC<UploadCSVModalProps> = ({ open, onClose, onUpload
   const [uploadResult, setUploadResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch clients from client_registry
+  // Fetch clients from client_registry (only home_insurance clients)
   useEffect(() => {
     const fetchClients = async () => {
+      console.log('[UploadCSVModal] Fetching home_insurance clients...');
       const { data, error } = await supabase
         .from('client_registry')
         .select('workspace_name, display_name')
         .eq('is_active', true)
+        .eq('client_type', 'home_insurance')
         .order('display_name');
 
       if (error) {
-        console.error('Error fetching clients:', error);
+        console.error('[UploadCSVModal] Error fetching clients:', error);
       } else {
+        console.log('[UploadCSVModal] Found clients:', data);
         setClients(data || []);
       }
     };

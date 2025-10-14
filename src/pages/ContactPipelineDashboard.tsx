@@ -91,6 +91,19 @@ const ContactPipelineDashboard: React.FC = () => {
   // Fetch pipeline summaries
   const fetchPipelineSummaries = async () => {
     try {
+      console.log('[ContactPipeline] Fetching data for month:', selectedMonth);
+
+      // First, fetch ALL home insurance clients from client_registry
+      const { data: allClients, error: clientsError } = await supabase
+        .from('client_registry')
+        .select('workspace_name, display_name, monthly_contact_target, contact_tier')
+        .eq('is_active', true)
+        .eq('client_type', 'home_insurance')
+        .order('display_name');
+
+      if (clientsError) throw clientsError;
+      console.log('[ContactPipeline] Found home_insurance clients:', allClients?.length);
+
       // Fetch contact pipeline data
       const { data: pipelineData, error: pipelineError } = await supabase
         .from('monthly_contact_pipeline_summary')
@@ -110,13 +123,30 @@ const ContactPipelineDashboard: React.FC = () => {
         console.error('Error fetching ZIP progress:', zipError);
       }
 
-      // Merge the data - include clients from both pipeline and ZIP progress
+      // Merge the data - start with ALL home insurance clients
       const workspaceMap = new Map<string, PipelineSummary>();
 
-      // Add pipeline data
-      (pipelineData || []).forEach((pipeline) => {
-        workspaceMap.set(pipeline.workspace_name, {
-          ...pipeline,
+      // Initialize with all home insurance clients (zeros for everything)
+      (allClients || []).forEach((client) => {
+        workspaceMap.set(client.workspace_name, {
+          workspace_name: client.workspace_name,
+          month: selectedMonth,
+          client_display_name: client.display_name || client.workspace_name,
+          monthly_contact_target: client.monthly_contact_target || 0,
+          contact_tier: client.contact_tier || '',
+          upload_batch_count: 0,
+          raw_contacts_uploaded: 0,
+          verified_contacts: 0,
+          deliverable_count: 0,
+          undeliverable_count: 0,
+          risky_count: 0,
+          contacts_uploaded: 0,
+          contacts_pending: 0,
+          hnw_contacts: 0,
+          batches_created: 0,
+          batches_completed: 0,
+          contacts_needed: client.monthly_contact_target || 0,
+          target_percentage: 0,
           total_zips: 0,
           zips_pulled: 0,
           zips_remaining: 0,
@@ -124,39 +154,27 @@ const ContactPipelineDashboard: React.FC = () => {
         });
       });
 
-      // Add/merge ZIP progress data
+      // Overlay pipeline data (actual contact uploads)
+      (pipelineData || []).forEach((pipeline) => {
+        if (workspaceMap.has(pipeline.workspace_name)) {
+          const existing = workspaceMap.get(pipeline.workspace_name)!;
+          workspaceMap.set(pipeline.workspace_name, {
+            ...existing,
+            ...pipeline, // Override with actual pipeline data
+            total_zips: existing.total_zips, // Keep ZIP data from previous step
+            zips_pulled: existing.zips_pulled,
+            zips_remaining: existing.zips_remaining,
+            total_raw_contacts: existing.total_raw_contacts,
+          });
+        }
+      });
+
+      // Overlay ZIP progress data
       (zipProgress || []).forEach((zipData) => {
         if (workspaceMap.has(zipData.workspace_name)) {
-          // Merge with existing pipeline data
           const existing = workspaceMap.get(zipData.workspace_name)!;
           workspaceMap.set(zipData.workspace_name, {
             ...existing,
-            total_zips: zipData.total_zips || 0,
-            zips_pulled: zipData.zips_pulled || 0,
-            zips_remaining: zipData.zips_remaining || 0,
-            total_raw_contacts: zipData.total_raw_contacts || 0,
-          });
-        } else {
-          // Create new entry for ZIP-only clients
-          workspaceMap.set(zipData.workspace_name, {
-            workspace_name: zipData.workspace_name,
-            month: selectedMonth,
-            client_display_name: zipData.display_name || zipData.workspace_name,
-            monthly_contact_target: 0,
-            contact_tier: '',
-            upload_batch_count: 0,
-            raw_contacts_uploaded: 0,
-            verified_contacts: 0,
-            deliverable_count: 0,
-            undeliverable_count: 0,
-            risky_count: 0,
-            contacts_uploaded: 0,
-            contacts_pending: 0,
-            hnw_contacts: 0,
-            batches_created: 0,
-            batches_completed: 0,
-            contacts_needed: 0,
-            target_percentage: 0,
             total_zips: zipData.total_zips || 0,
             zips_pulled: zipData.zips_pulled || 0,
             zips_remaining: zipData.zips_remaining || 0,

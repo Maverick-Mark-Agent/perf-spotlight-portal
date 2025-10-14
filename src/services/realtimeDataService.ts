@@ -198,6 +198,7 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
           workspace_name,
           display_name,
           monthly_sending_target,
+          daily_sending_target,
           is_active
         )
       `)
@@ -237,13 +238,14 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
               workspace_name,
               display_name,
               monthly_sending_target,
+              daily_sending_target,
               is_active
             )
           `)
           .eq('metric_type', 'mtd')
           .eq('metric_date', recentDate.metric_date)
           .eq('client_registry.is_active', true)
-          .order('emails_sent_mtd', { ascending: false });
+          .order('emails_sent_mtd', { ascending: false});
 
         metrics = fallbackQuery.data;
         error = fallbackQuery.error;

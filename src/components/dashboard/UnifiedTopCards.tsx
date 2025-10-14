@@ -30,6 +30,9 @@ interface UnifiedTopCardsProps {
 }
 
 export const UnifiedTopCards = ({ kpiClients, volumeClients, onRefresh, isRefreshing = false }: UnifiedTopCardsProps) => {
+  // Create a map of KPI data by client name for easy lookup
+  const kpiMap = new Map(kpiClients.map(c => [c.name, c]));
+
   // Calculate KPI aggregates
   const totalLeads = kpiClients.reduce((sum, c) => sum + c.leadsGenerated, 0);
   const totalKPITarget = kpiClients.reduce((sum, c) => sum + c.monthlyKPI, 0);
@@ -83,37 +86,28 @@ export const UnifiedTopCards = ({ kpiClients, volumeClients, onRefresh, isRefres
         <CardContent className="max-h-[400px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
           {volumeClients
             .sort((a, b) => b.emailsToday - a.emailsToday)
-            .map((client) => (
-              <div
-                key={client.name}
-                className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-primary/40 hover:bg-white/20 transition-colors"
-              >
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="w-2 h-2 rounded-full bg-dashboard-primary"></div>
-                  <span className="text-foreground font-medium text-sm">{client.name}</span>
-                </div>
-                <div className="text-right">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-dashboard-primary font-bold text-lg">
-                      {client.emailsToday.toLocaleString()}
-                    </span>
-                    {client.dailySendingTarget > 0 && (
-                      <>
-                        <span className="text-muted-foreground text-xs">/</span>
-                        <span className="text-muted-foreground font-semibold text-sm">
-                          {client.dailySendingTarget.toLocaleString()}
-                        </span>
-                      </>
-                    )}
+            .map((client) => {
+              // Use dailySendingTarget if available, otherwise calculate from monthly target
+              const dailyGoal = client.dailySendingTarget > 0
+                ? client.dailySendingTarget
+                : Math.round(client.target / 30);
+              return (
+                <div
+                  key={client.name}
+                  className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-primary/40 hover:bg-white/20 transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-2 h-2 rounded-full bg-dashboard-primary"></div>
+                    <span className="text-foreground font-medium text-sm">{client.name}</span>
                   </div>
-                  {client.dailySendingTarget > 0 && (
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {Math.round((client.emailsToday / client.dailySendingTarget) * 100)}% of daily target
-                    </div>
-                  )}
+                  <div className="text-right">
+                    <span className="text-dashboard-primary font-bold text-lg">
+                      {client.emailsToday.toLocaleString()} / {dailyGoal.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
         </CardContent>
       </Card>
 

@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { parse } from 'https://deno.land/std@0.224.0/csv/parse.ts';
+import { mapCsvRow, isHeadOfHousehold, checkHNWCriteria, type ColumnMapping } from './flexible-csv-parser.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,37 +10,14 @@ const corsHeaders = {
 };
 
 /**
- * PROCESS CONTACT UPLOAD EDGE FUNCTION
+ * FLEXIBLE CONTACT UPLOAD PROCESSOR
  *
- * Handles CSV upload from Cole X Dates and auto-processes contacts:
- * 1. Parse CSV and validate required fields
- * 2. Filter Head of Household
- * 3. Apply home value criteria (<$900k standard, >$900k HNW for TX)
- * 4. Parse purchase dates and calculate renewal windows
- * 5. Store in raw_contacts and mark ready for verification
- *
- * Expected CSV columns from Cole X Dates (13 fields):
- * - First Name, Last Name
- * - Mailing Address, Mailing City, Mailing State, Mailing ZIP
- * - Property Address, Property City, Property State, Property ZIP
- * - Home Value Estimate, Purchase Date, Email
+ * Handles CSV uploads in ANY format by:
+ * 1. Auto-detecting column names
+ * 2. Mapping to standard database fields
+ * 3. Storing unmapped columns in JSONB extra_fields
+ * 4. Applying HNW filtering (TX contacts >= $900k → Kirk Hodgson)
  */
-
-interface ColeXDatesRow {
-  'First Name': string;
-  'Last Name': string;
-  'Mailing Address': string;
-  'Mailing City': string;
-  'Mailing State': string;
-  'Mailing ZIP': string;
-  'Property Address': string;
-  'Property City': string;
-  'Property State': string;
-  'Property ZIP': string;
-  'Home Value Estimate': string;
-  'Purchase Date': string;
-  'Email': string;
-}
 
 interface ProcessedContact {
   upload_batch_id: string;
@@ -48,19 +26,22 @@ interface ProcessedContact {
   month: string;
   uploaded_by: string;
 
-  first_name: string;
-  last_name: string;
-  mailing_address: string;
-  mailing_city: string;
-  mailing_state: string;
-  mailing_zip: string;
-  property_address: string;
-  property_city: string;
-  property_state: string;
-  property_zip: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  property_address: string | null;
+  property_city: string | null;
+  property_state: string | null;
+  property_zip: string | null;
+  mailing_address: string | null;
+  mailing_city: string | null;
+  mailing_state: string | null;
+  mailing_zip: string | null;
   home_value_estimate: number;
-  purchase_date: string;
-  email: string;
+  purchase_date: string | null;
+
+  extra_fields: Record<string, any>;
+  csv_column_mapping: Record<string, string>;
 
   is_head_of_household: boolean;
   meets_value_criteria: boolean;
@@ -70,88 +51,31 @@ interface ProcessedContact {
   filter_reason: string | null;
 }
 
-/**
- * Parse purchase date string into Date object
- * Handles formats: MM/DD/YYYY, M/D/YYYY, YYYY-MM-DD
- */
-function parsePurchaseDate(dateStr: string): Date | null {
-  if (!dateStr) return null;
-
-  // Try MM/DD/YYYY or M/D/YYYY format
-  const slashMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slashMatch) {
-    const [, month, day, year] = slashMatch;
-    return new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
-  }
-
-  // Try YYYY-MM-DD format
-  const dashMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (dashMatch) {
-    return new Date(dateStr);
-  }
-
-  return null;
-}
-
-/**
- * Check if contact is Head of Household
- * Logic: First name doesn't contain "&" or "and" or multiple names
- */
-function isHeadOfHousehold(firstName: string): boolean {
-  if (!firstName) return false;
-
-  const lowerFirst = firstName.toLowerCase();
-  return !(
-    lowerFirst.includes('&') ||
-    lowerFirst.includes(' and ') ||
-    lowerFirst.includes(',')
-  );
-}
-
-/**
- * Check if home value meets criteria
- * - Standard: <$900k
- * - High Net Worth (TX only): >$900k
- */
-function checkValueCriteria(homeValue: number, state: string): {
-  meetsStandard: boolean;
-  isHNW: boolean;
-} {
-  const isTexas = state?.toUpperCase() === 'TX';
-
-  if (isTexas && homeValue > 900000) {
-    return { meetsStandard: false, isHNW: true };
-  }
-
-  return { meetsStandard: homeValue < 900000, isHNW: false };
-}
-
-/**
- * Process a single contact row
- */
 function processContact(
-  row: ColeXDatesRow,
+  row: Record<string, string>,
+  headers: string[],
   uploadBatchId: string,
   clientName: string,
   workspaceName: string,
   month: string,
   uploadedBy: string
 ): ProcessedContact {
-  const firstName = row['First Name']?.trim() || '';
-  const lastName = row['Last Name']?.trim() || '';
-  const email = row['Email']?.trim().toLowerCase() || '';
-  const homeValueStr = row['Home Value Estimate']?.replace(/[$,]/g, '') || '0';
-  const homeValue = parseFloat(homeValueStr) || 0;
-  const propertyState = row['Property State']?.trim() || '';
-  const purchaseDateStr = row['Purchase Date']?.trim() || '';
+  // Use flexible parser to map columns
+  const mapped = mapCsvRow(row, headers);
 
-  // Parse purchase date
-  const purchaseDate = parsePurchaseDate(purchaseDateStr);
-  const parsedPurchaseDateISO = purchaseDate ? purchaseDate.toISOString().split('T')[0] : null;
+  // Validate and log home value
+  if (mapped.home_value_estimate && mapped.home_value_estimate > 0) {
+    if (mapped.property_state === 'TX' && mapped.home_value_estimate >= 900000) {
+      console.log(`🎯 HNW Candidate: ${mapped.first_name} ${mapped.last_name}, ${mapped.property_city} TX, $${mapped.home_value_estimate.toLocaleString()}`);
+    }
+  }
 
   // Apply filters
-  const isHoH = isHeadOfHousehold(firstName);
-  const { meetsStandard, isHNW } = checkValueCriteria(homeValue, propertyState);
+  const isHoH = isHeadOfHousehold(mapped.first_name);
+  const { meetsStandard, isHNW } = checkHNWCriteria(
+    mapped.home_value_estimate || 0,
+    mapped.property_state
+  );
 
   // Determine processing status
   let processingStatus: 'filtered_out' | 'ready_for_verification' = 'ready_for_verification';
@@ -162,14 +86,17 @@ function processContact(
     filterReason = 'Not head of household (multiple names detected)';
   } else if (!meetsStandard && !isHNW) {
     processingStatus = 'filtered_out';
-    filterReason = `Home value ${homeValue >= 900000 ? '≥' : '<'}$900k outside criteria for ${propertyState}`;
-  } else if (!email || !email.match(/^[^@]+@[^@]+\.[^@]+$/)) {
+    filterReason = `Home value ${mapped.home_value_estimate >= 900000 ? '≥' : '<'}$900k outside criteria for ${mapped.property_state || 'unknown state'}`;
+  } else if (mapped.email && !mapped.email.match(/^[^@]+@[^@]+\.[^@]+$/)) {
     processingStatus = 'filtered_out';
     filterReason = 'Invalid email format';
-  } else if (!parsedPurchaseDateISO) {
+  } else if (mapped.purchase_date && !mapped.purchase_date.match(/^\d{4}-\d{2}-\d{2}$/)) {
     processingStatus = 'filtered_out';
     filterReason = 'Invalid purchase date format';
   }
+
+  // If email is missing but everything else is good, allow it
+  // (Not all CSVs have email - they can be enriched later)
 
   return {
     upload_batch_id: uploadBatchId,
@@ -178,24 +105,27 @@ function processContact(
     month,
     uploaded_by: uploadedBy,
 
-    first_name: firstName,
-    last_name: lastName,
-    mailing_address: row['Mailing Address']?.trim() || '',
-    mailing_city: row['Mailing City']?.trim() || '',
-    mailing_state: row['Mailing State']?.trim() || '',
-    mailing_zip: row['Mailing ZIP']?.trim() || '',
-    property_address: row['Property Address']?.trim() || '',
-    property_city: row['Property City']?.trim() || '',
-    property_state: propertyState,
-    property_zip: row['Property ZIP']?.trim() || '',
-    home_value_estimate: homeValue,
-    purchase_date: purchaseDateStr,
-    email,
+    first_name: mapped.first_name || null,
+    last_name: mapped.last_name || null,
+    email: mapped.email || null,
+    property_address: mapped.property_address || null,
+    property_city: mapped.property_city || null,
+    property_state: mapped.property_state || null,
+    property_zip: mapped.property_zip || null,
+    mailing_address: mapped.mailing_address || mapped.property_address || null,
+    mailing_city: mapped.mailing_city || mapped.property_city || null,
+    mailing_state: mapped.mailing_state || mapped.property_state || null,
+    mailing_zip: mapped.mailing_zip || mapped.property_zip || null,
+    home_value_estimate: mapped.home_value_estimate || 0,
+    purchase_date: mapped.purchase_date,
+
+    extra_fields: mapped.extra_fields,
+    csv_column_mapping: mapped.csv_column_mapping,
 
     is_head_of_household: isHoH,
     meets_value_criteria: meetsStandard || isHNW,
     is_high_net_worth: isHNW,
-    parsed_purchase_date: parsedPurchaseDateISO,
+    parsed_purchase_date: mapped.purchase_date,
     processing_status: processingStatus,
     filter_reason: filterReason,
   };
@@ -220,22 +150,16 @@ serve(async (req) => {
     const formData = await req.formData();
     const csvFile = formData.get('csv_file') as File;
     const workspaceName = formData.get('workspace_name') as string;
-    const month = formData.get('month') as string; // Format: "2025-11"
+    const month = formData.get('month') as string;
     const uploadedBy = formData.get('uploaded_by') as string || 'system';
 
-    if (!csvFile) {
-      throw new Error('CSV file is required');
-    }
-    if (!workspaceName) {
-      throw new Error('workspace_name is required');
-    }
-    if (!month) {
-      throw new Error('month is required (format: YYYY-MM)');
-    }
+    if (!csvFile) throw new Error('CSV file is required');
+    if (!workspaceName) throw new Error('workspace_name is required');
+    if (!month) throw new Error('month is required (format: YYYY-MM)');
 
-    console.log(`Processing CSV upload for ${workspaceName}, month: ${month}`);
+    console.log(`📥 Processing CSV upload for ${workspaceName}, month: ${month}`);
 
-    // Get client info from registry
+    // Get client info
     const { data: clientData, error: clientError } = await supabase
       .from('client_registry')
       .select('workspace_name, display_name')
@@ -243,42 +167,102 @@ serve(async (req) => {
       .single();
 
     if (clientError || !clientData) {
-      throw new Error(`Client not found in registry: ${workspaceName}`);
+      throw new Error(`Client not found: ${workspaceName}`);
     }
 
     const clientName = clientData.display_name || clientData.workspace_name;
 
     // Parse CSV
     const csvText = await csvFile.text();
-    const rows = parse(csvText, {
-      skipFirstRow: true,
-      columns: [
-        'First Name', 'Last Name',
-        'Mailing Address', 'Mailing City', 'Mailing State', 'Mailing ZIP',
-        'Property Address', 'Property City', 'Property State', 'Property ZIP',
-        'Home Value Estimate', 'Purchase Date', 'Email'
-      ]
-    }) as ColeXDatesRow[];
+    const lines = csvText.split('\n').filter(line => line.trim());
 
-    console.log(`Parsed ${rows.length} rows from CSV`);
+    console.log(`📄 CSV has ${lines.length} lines (including header)`);
+
+    // Parse with flexible headers
+    const rows = parse(csvText, { skipFirstRow: true }) as Record<string, string>[];
+    const headers = Object.keys(rows[0] || {});
+
+    console.log(`📋 Detected ${headers.length} columns:`, headers.join(', '));
 
     // Generate batch ID
     const uploadBatchId = crypto.randomUUID();
 
     // Process all contacts
     const processedContacts = rows.map(row =>
-      processContact(row, uploadBatchId, clientName, workspaceName, month, uploadedBy)
+      processContact(row, headers, uploadBatchId, clientName, workspaceName, month, uploadedBy)
     );
 
-    // Insert into raw_contacts
-    const { data: insertedContacts, error: insertError } = await supabase
+    console.log(`✅ Processed ${processedContacts.length} contacts`);
+
+    // =====================================================
+    // KIRK HODGSON HNW ROUTING: MOVE (not duplicate)
+    // =====================================================
+    const TEXAS_AGENCIES = ['Kim Wallace', 'David Amiri', 'John Roberts', 'Jason Binyon'];
+    const isTexasAgency = TEXAS_AGENCIES.some(agency =>
+      clientName.toLowerCase().includes(agency.toLowerCase())
+    );
+
+    let standardContacts = processedContacts;
+    let kirkContacts: any[] = [];
+    let kirkRoutingCount = 0;
+
+    if (isTexasAgency) {
+      const { data: kirkWorkspace } = await supabase
+        .from('client_registry')
+        .select('workspace_name, display_name')
+        .ilike('display_name', '%Kirk%Hodg%')
+        .single();
+
+      if (kirkWorkspace) {
+        const hnwTexasContacts = processedContacts.filter(
+          c => c.is_high_net_worth && c.property_state === 'TX' && c.processing_status === 'ready_for_verification'
+        );
+
+        standardContacts = processedContacts.filter(
+          c => !(c.is_high_net_worth && c.property_state === 'TX' && c.processing_status === 'ready_for_verification')
+        );
+
+        if (hnwTexasContacts.length > 0) {
+          console.log(`🎯 Moving ${hnwTexasContacts.length} HNW Texas contacts to Kirk Hodgson...`);
+
+          kirkContacts = hnwTexasContacts.map(contact => {
+            const { upload_batch_id, ...contactData } = contact;
+            return {
+              ...contactData,
+              upload_batch_id: crypto.randomUUID(),
+              workspace_name: kirkWorkspace.workspace_name,
+              client_name: kirkWorkspace.display_name,
+              uploaded_by: `hnw_auto_route_from_${workspaceName}`,
+            };
+          });
+
+          kirkRoutingCount = kirkContacts.length;
+        }
+      }
+    }
+
+    // Insert standard contacts to original workspace
+    const { error: insertError } = await supabase
       .from('raw_contacts')
-      .insert(processedContacts)
-      .select();
+      .insert(standardContacts);
 
     if (insertError) {
       console.error('Error inserting contacts:', insertError);
       throw new Error(`Failed to insert contacts: ${insertError.message}`);
+    }
+
+    // Insert HNW contacts to Kirk Hodgson
+    if (kirkContacts.length > 0) {
+      const { error: kirkInsertError } = await supabase
+        .from('raw_contacts')
+        .insert(kirkContacts);
+
+      if (kirkInsertError) {
+        console.error('Warning: Failed to route HNW contacts to Kirk:', kirkInsertError);
+        kirkRoutingCount = 0;
+      } else {
+        console.log(`✅ Successfully moved ${kirkRoutingCount} HNW contacts to Kirk Hodgson`);
+      }
     }
 
     // Calculate stats
@@ -295,76 +279,11 @@ serve(async (req) => {
       }
     });
 
-    // Extract unique ZIP codes and populate client_zipcodes table for ZIP Dashboard
-    const uniqueZips = new Map<string, { state: string; zip: string }>();
-    processedContacts.forEach(c => {
-      if (c.property_zip && c.property_state && c.processing_status === 'ready_for_verification') {
-        const zipKey = `${c.property_zip}-${c.property_state}`;
-        if (!uniqueZips.has(zipKey)) {
-          uniqueZips.set(zipKey, {
-            zip: c.property_zip,
-            state: c.property_state
-          });
-        }
-      }
-    });
+    console.log(`✅ Upload complete: ${readyForVerification} ready, ${filteredOut} filtered out`);
 
-    // Insert ZIP codes into client_zipcodes table
-    let zipsInserted = 0;
-    if (uniqueZips.size > 0) {
-      const zipRecords = Array.from(uniqueZips.values()).map(({ zip, state }) => ({
-        client_name: clientName,
-        workspace_name: workspaceName,
-        month,
-        zip,
-        state,
-        source: 'contact_pipeline',
-        pulled_at: new Date().toISOString(),
-      }));
-
-      // Upsert ZIP codes (insert if not exists, ignore if exists)
-      const { error: zipError, data: zipData } = await supabase
-        .from('client_zipcodes')
-        .upsert(zipRecords, {
-          onConflict: 'client_name,month,zip',
-          ignoreDuplicates: true
-        })
-        .select();
-
-      if (zipError) {
-        console.error('Warning: Failed to insert ZIP codes:', zipError);
-        // Don't throw - this is supplementary data
-      } else {
-        zipsInserted = zipData?.length || 0;
-        console.log(`Inserted ${zipsInserted} unique ZIP codes into client_zipcodes`);
-      }
-    }
-
-    // Log to audit table
-    await supabase.from('upload_audit_log').insert({
-      workspace_name: workspaceName,
-      month,
-      action: 'csv_upload',
-      status: 'success',
-      contacts_processed: totalContacts,
-      contacts_succeeded: readyForVerification,
-      contacts_failed: filteredOut,
-      api_request: {
-        upload_batch_id: uploadBatchId,
-        file_name: csvFile.name,
-        file_size: csvFile.size,
-      },
-      api_response: {
-        total_contacts: totalContacts,
-        ready_for_verification: readyForVerification,
-        filtered_out: filteredOut,
-        hnw_contacts: hnwContacts,
-        filter_reasons: filterReasons,
-      },
-      performed_by: uploadedBy,
-    });
-
-    console.log(`Upload complete: ${readyForVerification} ready for verification, ${filteredOut} filtered out`);
+    const responseMessage = kirkRoutingCount > 0
+      ? `Processed ${totalContacts} contacts for ${clientName}: ${standardContacts.length} added to ${clientName}, ${kirkRoutingCount} HNW Texas contacts moved to Kirk Hodgson, ${filteredOut} filtered out.`
+      : `Processed ${totalContacts} contacts: ${readyForVerification} ready for verification, ${filteredOut} filtered out.`;
 
     return new Response(
       JSON.stringify({
@@ -375,11 +294,12 @@ serve(async (req) => {
           ready_for_verification: readyForVerification,
           filtered_out: filteredOut,
           hnw_contacts: hnwContacts,
-          unique_zip_codes: uniqueZips.size,
-          zips_inserted: zipsInserted,
+          kirk_routing_count: kirkRoutingCount,
+          columns_detected: headers.length,
+          column_names: headers,
           filter_reasons: filterReasons,
         },
-        message: `Processed ${totalContacts} contacts: ${readyForVerification} ready for verification, ${filteredOut} filtered out, ${zipsInserted} ZIP codes added to territory map`,
+        message: responseMessage,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

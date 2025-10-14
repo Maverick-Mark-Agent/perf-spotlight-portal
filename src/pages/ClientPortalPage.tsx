@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ClientKPIStats } from "@/components/dashboard/ClientKPIStats";
 import { LeadDetailModal } from "@/components/client-portal/LeadDetailModal";
-import { ClientROICalculator } from "@/components/client-portal/ClientROICalculator";
 import { PremiumInputDialog } from "@/components/client-portal/PremiumInputDialog";
 import {
   Select,
@@ -737,16 +736,6 @@ const ClientPortalPage = () => {
           wonLeads={getLeadsByStage('won').length}
           newLeads={getLeadsByStage('interested').length}
         />
-      )}
-
-      {/* ROI Calculator */}
-      {workspace && leads.length > 0 && (
-        <div className="mb-8">
-          <ClientROICalculator
-            workspaceName={workspace}
-            leads={leads}
-          />
-        </div>
       )}
 
       {/* Kanban Board */}

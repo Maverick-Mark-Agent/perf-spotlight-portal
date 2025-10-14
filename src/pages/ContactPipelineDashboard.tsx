@@ -34,27 +34,23 @@ interface PipelineSummary {
   workspace_name: string;
   month: string;
   client_display_name: string;
-  monthly_contact_target: number;
+  clean_contact_target: number;  // RENAMED from monthly_contact_target
   contact_tier: string;
   upload_batch_count: number;
-  raw_contacts_uploaded: number;
+  total_raw_contacts: number;  // RENAMED from raw_contacts_uploaded
   verified_contacts: number;
-  deliverable_count: number;
-  undeliverable_count: number;
-  risky_count: number;
-  contacts_uploaded: number;
-  contacts_pending: number;
-  hnw_contacts: number;
   batches_created: number;
-  batches_completed: number;
-  contacts_needed: number;
-  target_percentage: number;
+  added_to_campaign_count: number;  // NEW
+  contacts_gap: number;  // RENAMED from contacts_needed
 
-  // ZIP code progress fields
+  // ZIP code progress fields (keep these)
   total_zips?: number;
   zips_pulled?: number;
   zips_remaining?: number;
-  total_raw_contacts?: number;
+
+  // REMOVED: deliverable_count, undeliverable_count, risky_count,
+  //          contacts_uploaded, contacts_pending, hnw_contacts,
+  //          batches_completed, target_percentage
 }
 
 interface WeeklyBatch {
@@ -216,12 +212,10 @@ const ContactPipelineDashboard: React.FC = () => {
   }, [selectedMonth]);
 
   // Calculate overall stats
-  const totalTarget = pipelineSummaries.reduce((sum, p) => sum + (p.monthly_contact_target || 0), 0);
-  const totalRawUploads = pipelineSummaries.reduce((sum, p) => sum + p.raw_contacts_uploaded, 0);
+  const totalCleanTarget = pipelineSummaries.reduce((sum, p) => sum + (p.clean_contact_target || 0), 0);
+  const totalRawContacts = pipelineSummaries.reduce((sum, p) => sum + p.total_raw_contacts, 0);
   const totalVerified = pipelineSummaries.reduce((sum, p) => sum + p.verified_contacts, 0);
-  const totalUploaded = pipelineSummaries.reduce((sum, p) => sum + p.contacts_uploaded, 0);
-  const totalPending = pipelineSummaries.reduce((sum, p) => sum + p.contacts_pending, 0);
-  const overallPercentage = totalTarget > 0 ? (totalVerified / totalTarget) * 100 : 0;
+  const totalAddedToCampaign = pipelineSummaries.reduce((sum, p) => sum + p.added_to_campaign_count, 0);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -333,29 +327,29 @@ const ContactPipelineDashboard: React.FC = () => {
       )}
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Target</CardTitle>
+            <CardTitle className="text-sm font-medium">Clean Contact Target</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalTarget.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{totalCleanTarget.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              Monthly contact quota
+              Monthly verified contact goal
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Raw Uploads</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Raw Contacts</CardTitle>
             <Upload className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalRawUploads.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{totalRawContacts.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              Total CSV contacts
+              Total uploaded contacts
             </p>
           </CardContent>
         </Card>
@@ -368,34 +362,20 @@ const ContactPipelineDashboard: React.FC = () => {
           <CardContent>
             <div className="text-2xl font-bold">{totalVerified.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              {overallPercentage.toFixed(1)}% of target
+              Email verified & deliverable
             </p>
-            <Progress value={overallPercentage} className="mt-2" />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Uploaded</CardTitle>
+            <CardTitle className="text-sm font-medium">Added to Campaign</CardTitle>
             <Mail className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalUploaded.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{totalAddedToCampaign.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              Sent to Email Bison
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Upload</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalPending.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              Ready for weekly batches
+              Batches in Email Bison
             </p>
           </CardContent>
         </Card>
@@ -422,15 +402,12 @@ const ContactPipelineDashboard: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Client</TableHead>
-                    <TableHead className="text-right">Target</TableHead>
+                    <TableHead className="text-right">Clean Contact Target</TableHead>
                     <TableHead className="text-right">ZIP Codes Pulled</TableHead>
                     <TableHead className="text-right">Verified</TableHead>
-                    <TableHead className="text-right">Deliverable</TableHead>
-                    <TableHead className="text-right">Uploaded</TableHead>
-                    <TableHead className="text-right">Pending</TableHead>
-                    <TableHead className="text-right">HNW</TableHead>
-                    <TableHead className="text-right">Progress</TableHead>
+                    <TableHead className="text-right">Total Raw Contacts</TableHead>
                     <TableHead className="text-right">Gap</TableHead>
+                    <TableHead className="text-right">Added to Campaign</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -464,9 +441,12 @@ const ContactPipelineDashboard: React.FC = () => {
                           </Badge>
                         )}
                       </TableCell>
+                      {/* 2. Clean Contact Target */}
                       <TableCell className="text-right">
-                        {summary.monthly_contact_target?.toLocaleString() || '—'}
+                        {summary.clean_contact_target?.toLocaleString() || '0'}
                       </TableCell>
+
+                      {/* 3. ZIP Codes Pulled */}
                       <TableCell className="text-right">
                         {summary.total_zips ? (
                           <div className="flex flex-col items-end">
@@ -483,50 +463,38 @@ const ContactPipelineDashboard: React.FC = () => {
                           <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
+
+                      {/* 4. Verified */}
                       <TableCell className="text-right">
                         {summary.verified_contacts.toLocaleString()}
                       </TableCell>
+
+                      {/* 5. Total Raw Contacts */}
                       <TableCell className="text-right">
-                        <span className="text-green-600 font-medium">
-                          {summary.deliverable_count.toLocaleString()}
-                        </span>
-                        <span className="text-xs text-muted-foreground ml-1">
-                          ({summary.undeliverable_count + summary.risky_count} bad)
-                        </span>
+                        {summary.total_raw_contacts.toLocaleString()}
                       </TableCell>
+
+                      {/* 6. Gap */}
                       <TableCell className="text-right">
-                        {summary.contacts_uploaded.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {summary.contacts_pending.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {summary.hnw_contacts > 0 && (
-                          <Badge variant="outline" className="bg-purple-50">
-                            {summary.hnw_contacts.toLocaleString()}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <span className={`font-medium ${
-                            summary.target_percentage >= 100 ? 'text-green-600' :
-                            summary.target_percentage >= 80 ? 'text-yellow-600' :
-                            'text-red-600'
-                          }`}>
-                            {summary.target_percentage?.toFixed(0) || 0}%
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {summary.contacts_needed > 0 ? (
+                        {summary.contacts_gap > 0 ? (
                           <span className="text-red-600 font-medium">
-                            -{summary.contacts_needed.toLocaleString()}
+                            -{summary.contacts_gap.toLocaleString()}
                           </span>
                         ) : (
                           <span className="text-green-600 font-medium">
-                            +{Math.abs(summary.contacts_needed).toLocaleString()}
+                            ✓
                           </span>
+                        )}
+                      </TableCell>
+
+                      {/* 7. Added to Campaign */}
+                      <TableCell className="text-right">
+                        {summary.added_to_campaign_count > 0 ? (
+                          <Badge variant="outline" className="bg-green-50">
+                            {summary.added_to_campaign_count}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </TableCell>
                     </TableRow>

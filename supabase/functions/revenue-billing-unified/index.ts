@@ -264,10 +264,120 @@ Deno.serve(async (req) => {
       ? (totals.total_interested / totals.total_replies) * 100
       : 0
 
+    // ============= BILLABLE LEADS ONLY METRICS =============
+    const perLeadClients = rankedClients.filter(c => c.billing_type === 'per-lead' || c.billing_type === 'per_lead')
+
+    // Total possible billable revenue (per-lead clients only, 100% KPI)
+    const totalPossibleBillableRevenue = perLeadClients.reduce((sum, client) =>
+      sum + (client.monthly_kpi * (client.price_per_lead || 0)), 0
+    )
+
+    // Days in month calculations
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    const currentDay = now.getDate()
+
+    // Daily billable revenue target (what we SHOULD generate per day)
+    const dailyBillableRevenueTarget = daysInMonth > 0
+      ? totalPossibleBillableRevenue / daysInMonth
+      : 0
+
+    // Total MTD billable revenue (per-lead clients only)
+    const totalMtdBillableRevenue = perLeadClients.reduce((sum, client) =>
+      sum + client.current_month_revenue, 0
+    )
+
+    // Query daily billable lead data from client_leads table
+    console.log('📊 Fetching daily billable revenue data from client_leads...')
+
+    const { data: leadData, error: leadError } = await supabase
+      .from('client_leads')
+      .select('date_received, workspace_name, lead_value')
+      .gte('date_received', `${currentMonthYear}-01`)
+      .lte('date_received', `${currentMonthYear}-31`)
+      .order('date_received', { ascending: true })
+
+    if (leadError) {
+      console.error('⚠️ Error fetching lead data:', leadError)
+    }
+
+    // Filter to per-lead clients only and group by date
+    const dailyRevenueMap = new Map<string, { revenue: number; leads: number }>()
+
+    if (leadData) {
+      leadData.forEach(lead => {
+      // Check if this lead belongs to a per-lead client
+      const client = clients.find(c =>
+        c.workspace_name === lead.workspace_name && (c.billing_type === 'per-lead' || c.billing_type === 'per_lead')
+      )
+
+      if (!client) return // Skip non-per-lead clients
+
+      const date = lead.date_received.split('T')[0]
+      const pricePerLead = parseFloat(client.price_per_lead as any) || 0
+
+      if (!dailyRevenueMap.has(date)) {
+        dailyRevenueMap.set(date, { revenue: 0, leads: 0 })
+      }
+
+      const dayData = dailyRevenueMap.get(date)!
+      dayData.revenue += pricePerLead
+      dayData.leads += 1
+      })
+    }
+
+    // Build daily billable revenue array for time-series chart
+    const dailyBillableRevenue: Array<{
+      day: number
+      date: string
+      daily_revenue: number
+      cumulative_revenue: number
+      lead_count: number
+    }> = []
+    let cumulativeRevenue = 0
+
+    for (let day = 1; day <= currentDay; day++) {
+      const dateStr = `${currentMonthYear}-${day.toString().padStart(2, '0')}`
+      const dayData = dailyRevenueMap.get(dateStr) || { revenue: 0, leads: 0 }
+
+      cumulativeRevenue += dayData.revenue
+
+      dailyBillableRevenue.push({
+        day,
+        date: dateStr,
+        daily_revenue: dayData.revenue,
+        cumulative_revenue: cumulativeRevenue,
+        lead_count: dayData.leads,
+      })
+    }
+
+    // ============= BILLABLE LEADS ONLY FORECAST =============
+    const avgBillableKPIProgress = perLeadClients.length > 0
+      ? perLeadClients.reduce((sum, c) => sum + c.kpi_progress, 0) / perLeadClients.length
+      : 0
+
+    const dailyBillableAverage = currentDay > 0 ? totalMtdBillableRevenue / currentDay : 0
+
+    const billableForecast = {
+      conservative: Math.min(
+        totalMtdBillableRevenue + (dailyBillableAverage * (daysInMonth - currentDay)),
+        totalPossibleBillableRevenue
+      ),
+      linear: dailyBillableAverage * daysInMonth,
+      optimistic: totalMtdBillableRevenue + (dailyBillableRevenueTarget * (daysInMonth - currentDay)),
+      confidence: (avgBillableKPIProgress >= 80 ? 'high' : avgBillableKPIProgress >= 60 ? 'medium' : 'low') as 'high' | 'medium' | 'low',
+      avg_kpi_progress: avgBillableKPIProgress,
+      daily_average: dailyBillableAverage,
+      days_elapsed: currentDay,
+      days_remaining: daysInMonth - currentDay,
+    }
+
     console.log(`✅ Successfully fetched data for ${rankedClients.length} clients`)
-    console.log(`📈 Total MTD Revenue: $${totals.total_mtd_revenue.toLocaleString()}`)
-    console.log(`💰 Total MTD Profit: $${totals.total_mtd_profit.toLocaleString()}`)
+    console.log(`📈 Total MTD Revenue: $${totals.total_mtd_revenue}`)
+    console.log(`💰 Total MTD Profit: $${totals.total_mtd_profit}`)
     console.log(`📊 Total MTD Leads: ${totals.total_mtd_leads}`)
+    console.log(`💵 Total MTD Billable Revenue: $${totalMtdBillableRevenue}`)
+    console.log(`🎯 Daily Billable Revenue Target: $${dailyBillableRevenueTarget}`)
+    console.log(`📊 Daily billable revenue data: ${dailyBillableRevenue.length} days`)
 
     return new Response(
       JSON.stringify({
@@ -277,6 +387,12 @@ Deno.serve(async (req) => {
           overall_profit_margin: overallProfitMargin,
           overall_reply_rate: overallReplyRate,
           overall_interested_rate: overallInterestedRate,
+          // Billable-only metrics
+          total_possible_billable_revenue: totalPossibleBillableRevenue,
+          daily_billable_revenue_target: dailyBillableRevenueTarget,
+          total_mtd_billable_revenue: totalMtdBillableRevenue,
+          daily_billable_revenue: dailyBillableRevenue,
+          billable_forecast: billableForecast,
         },
         date_range: {
           start: monthStart,

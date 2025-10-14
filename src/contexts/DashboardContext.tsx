@@ -78,14 +78,19 @@ interface RevenueClientData {
   monthly_kpi: number;
   kpi_progress: number;
   leads_remaining: number;
+  // Cost Details (NEW)
+  cost_source?: 'manual' | 'calculated';
+  email_account_costs?: number;
+  labor_costs?: number;
+  other_costs?: number;
   // Email Performance Metrics
-  emails_sent_mtd: number;
-  replies_mtd: number;
-  interested_mtd: number;
-  bounces_mtd: number;
-  unsubscribes_mtd: number;
-  reply_rate: number;
-  interested_rate: number;
+  emails_sent_mtd?: number;
+  replies_mtd?: number;
+  interested_mtd?: number;
+  bounces_mtd?: number;
+  unsubscribes_mtd?: number;
+  reply_rate?: number;
+  interested_rate?: number;
   rank: number;
 }
 
@@ -99,14 +104,53 @@ interface RevenueTotals {
   per_lead_count: number;
   retainer_count: number;
   overall_profit_margin: number;
+  // NEW: Daily Average & Projections
+  daily_average_revenue?: number;
+  projected_eom_revenue?: number;
+  total_possible_revenue?: number;
+  revenue_gap?: number;
+  total_kpi_target?: number;
+  // NEW: Revenue Forecast (ALL revenue including retainers)
+  forecast?: {
+    linear: number;
+    velocity_adjusted: number;
+    conservative: number;
+    optimistic: number;
+    confidence: 'high' | 'medium' | 'low';
+    avg_kpi_progress: number;
+    days_elapsed: number;
+    days_remaining: number;
+  };
+  // NEW: Billable Leads Only Metrics
+  total_possible_billable_revenue?: number; // Per-lead clients only, 100% KPI
+  daily_billable_revenue_target?: number; // Daily target pace for billable revenue
+  total_mtd_billable_revenue?: number; // Actual MTD billable revenue (per-lead only)
+  daily_billable_revenue?: Array<{
+    day: number;
+    date: string;
+    daily_revenue: number;
+    cumulative_revenue: number;
+    lead_count: number;
+  }>;
+  // NEW: Billable Leads Only Forecast
+  billable_forecast?: {
+    conservative: number;
+    linear: number;
+    optimistic: number;
+    confidence: 'high' | 'medium' | 'low';
+    avg_kpi_progress: number;
+    daily_average: number;
+    days_elapsed: number;
+    days_remaining: number;
+  };
   // Email Performance Totals
-  total_emails_sent: number;
-  total_replies: number;
-  total_interested: number;
-  total_bounces: number;
-  total_unsubscribes: number;
-  overall_reply_rate: number;
-  overall_interested_rate: number;
+  total_emails_sent?: number;
+  total_replies?: number;
+  total_interested?: number;
+  total_bounces?: number;
+  total_unsubscribes?: number;
+  overall_reply_rate?: number;
+  overall_interested_rate?: number;
 }
 
 interface RevenueDashboardState {
@@ -284,6 +328,11 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       per_lead_count: 0,
       retainer_count: 0,
       overall_profit_margin: 0,
+      daily_average_revenue: 0,
+      projected_eom_revenue: 0,
+      total_possible_revenue: 0,
+      revenue_gap: 0,
+      total_kpi_target: 0,
     },
     lastUpdated: null,
     loading: true,

@@ -64,33 +64,26 @@ const CommitClientZipsModal: React.FC<CommitClientZipsModalProps> = ({
 
     setCommitting(true);
     try {
-      console.log(`[CommitClientZips] Copying ${clientName} ZIPs from ${currentMonth} to ${targetMonth}...`);
+      console.log(`[CommitClientZips] Copying ${clientName} ZIPs from staging (${currentMonth}) to ${targetMonth}...`);
 
-      // Fetch all ZIP assignments for this specific client from current month
+      // Fetch all ZIP assignments for this specific client from staging area (currentMonth = 'active')
       const { data: currentZips, error: fetchError } = await supabase
         .from('client_zipcodes')
         .select('*')
-        .eq('month', currentMonth)
+        .eq('month', currentMonth) // This will be 'active'
         .eq('workspace_name', workspaceName)
         .order('zip', { ascending: true });
 
       if (fetchError) throw fetchError;
 
       if (!currentZips || currentZips.length === 0) {
-        throw new Error(`No ZIP assignments found for ${clientName} in ${currentMonth}`);
+        throw new Error(`No ZIP assignments found for ${clientName} in staging area`);
       }
 
-      console.log(`[CommitClientZips] Found ${currentZips.length} ZIP assignments to copy`);
+      console.log(`[CommitClientZips] Found ${currentZips.length} ZIP assignments to copy from staging`);
 
-      // If same month, no need to do anything
-      if (currentMonth === targetMonth) {
-        toast({
-          title: 'No Changes',
-          description: 'Source and target months are the same. No changes needed.',
-        });
-        onClose();
-        return;
-      }
+      // Note: We keep ZIPs in staging ('active') and copy to target month
+      // This allows re-committing to different months
 
       // Delete existing assignments for this client in target month
       const { error: deleteError } = await supabase
@@ -200,10 +193,13 @@ const CommitClientZipsModal: React.FC<CommitClientZipsModalProps> = ({
 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="current-month">Current View</Label>
+            <Label htmlFor="current-view">Source</Label>
             <div className="px-3 py-2 bg-muted rounded-md text-sm font-medium">
-              {monthOptions.find(m => m.value === currentMonth)?.label || currentMonth}
+              Staging Area ({zipCount.toLocaleString()} ZIPs)
             </div>
+            <p className="text-xs text-muted-foreground">
+              ZIPs will remain in staging after commit (allows re-use for different months)
+            </p>
           </div>
 
           <div className="space-y-2">

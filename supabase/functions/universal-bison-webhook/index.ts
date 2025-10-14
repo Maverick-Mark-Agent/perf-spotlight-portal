@@ -219,10 +219,12 @@ async function handleLeadInterested(supabase: any, payload: any) {
     p_increment_by: 1
   })
 
-  // Build conversation URL
-  const conversationUrl = payload.event?.instance_url
-    ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
-    : null
+  // Build conversation URL using reply UUID (same format as n8n workflow)
+  const conversationUrl = reply?.uuid
+    ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
+    : (payload.event?.instance_url
+      ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
+      : null)
 
   // Extract phone from custom variables
   const phoneVariable = lead.custom_variables?.find((v: any) =>
@@ -255,6 +257,10 @@ async function handleLeadInterested(supabase: any, payload: any) {
   if (error) throw error
 
   console.log(`⭐ Interested lead recorded for ${workspaceName}: ${lead.email}`)
+
+  // Send Slack notification if webhook URL is configured
+  await sendSlackNotification(supabase, workspaceName, lead, reply)
+
   return { message: 'Interested lead recorded', lead_email: lead.email }
 }
 
@@ -429,4 +435,172 @@ async function getWorkspaceNameFromLog(supabase: any, logId: string): Promise<st
     .single()
 
   return data?.workspace_name || 'Unknown'
+}
+
+async function sendSlackNotification(supabase: any, workspaceName: string, lead: any, reply: any) {
+  try {
+    // Get the Slack webhook URL for this workspace
+    const { data: client } = await supabase
+      .from('client_registry')
+      .select('slack_webhook_url')
+      .eq('workspace_name', workspaceName)
+      .single()
+
+    const slackWebhookUrl = client?.slack_webhook_url
+
+    if (!slackWebhookUrl) {
+      console.log(`No Slack webhook configured for ${workspaceName}`)
+      return
+    }
+
+    // Extract custom variables
+    const getCustomVar = (name: string) => {
+      const variable = lead.custom_variables?.find((v: any) =>
+        v.name?.toLowerCase() === name.toLowerCase()
+      )
+      return variable?.value || 'N/A'
+    }
+
+    // Clean the reply text using OpenAI
+    const replyPreview = await cleanReplyWithAI(reply?.text_body || reply?.body_plain || 'No reply text available')
+
+    // Build the conversation URL (reply URL)
+    const replyUrl = reply?.uuid
+      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
+      : null
+
+    // Build the Slack message matching your format
+    const slackMessage = {
+      text: ':fire: New Lead!',
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `:fire: *New Lead!*\n*Name:* ${lead.first_name || ''} ${lead.last_name || ''}\n*Email:* ${lead.email}\n*Birthday:* ${getCustomVar('birthday')}\n*Address:* ${getCustomVar('address')}\n*City:* ${getCustomVar('city')}\n*State:* ${getCustomVar('state')}\n*ZIP:* ${getCustomVar('zip')}\n*Renewal Date:* ${getCustomVar('renewal_date')}\n*Phone:* ${getCustomVar('phone')}\n\n*Reply Preview:*\n${replyPreview}`
+          }
+        },
+        ...(replyUrl ? [
+          {
+            type: 'divider'
+          },
+          {
+            type: 'actions',
+            elements: [
+              {
+                type: 'button',
+                text: {
+                  type: 'plain_text',
+                  text: 'Respond',
+                  emoji: true
+                },
+                url: replyUrl,
+                action_id: 'respond_button'
+              }
+            ]
+          }
+        ] : [])
+      ]
+    }
+
+    // Send to Slack
+    const slackResponse = await fetch(slackWebhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(slackMessage)
+    })
+
+    if (!slackResponse.ok) {
+      console.error(`Failed to send Slack notification: ${slackResponse.status} ${slackResponse.statusText}`)
+    } else {
+      console.log(`✅ Slack notification sent for ${workspaceName}: ${lead.email}`)
+    }
+  } catch (error) {
+    console.error(`Error sending Slack notification for ${workspaceName}:`, error)
+    // Don't throw - we don't want Slack failures to break webhook processing
+  }
+}
+
+async function cleanReplyWithAI(emailBody: string): Promise<string> {
+  try {
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+
+    if (!openaiApiKey) {
+      console.warn('OpenAI API key not configured, using raw reply text')
+      return emailBody.substring(0, 200) + (emailBody.length > 200 ? '...' : '')
+    }
+
+    const prompt = `You are an email content extraction specialist. Your task is to extract ONLY the main message content from email replies, removing all metadata, signatures, formatting, and special characters.
+
+EXTRACTION RULES:
+1. Extract only the actual message the sender intended to communicate
+2. Remove ALL of the following:
+   - Email signatures (names, titles, company info)
+   - Contact information (emails, phone numbers, addresses)
+   - Unsubscribe links and text
+   - Email headers (From, To, Date, Subject lines)
+   - Quoted/previous email threads (anything after phrases like "On [date]", "wrote:", "--Original Message--")
+   - Auto-generated footers
+   - Legal disclaimers
+   - Social media links
+   - Website URLs (unless specifically mentioned as part of the actual message)
+   - Greeting lines if they're just "Hi [Name]" or similar
+   - Sign-offs (Thanks, Best regards, Sincerely, etc.)
+   - Marketing taglines
+   - Special characters like \\n, \\t, \\r, <, >, /, \\, quotation marks, etc.
+   - HTML tags or markup
+   - Line breaks and extra whitespace
+
+3. TEXT CLEANING:
+   - Convert any remaining text to plain ASCII where possible
+   - Replace multiple spaces with single spaces
+   - Remove leading/trailing whitespace
+   - Keep only standard punctuation (. , ! ? : ;)
+   - Preserve numbers and basic letters
+
+4. Output format:
+   - Plain text only
+   - NO explanations, headers, or meta-commentary
+   - NO phrases like "Here is the extracted content:" or "The message says:"
+   - Return ONLY the cleaned message text
+   - If there's no meaningful content after extraction, return only: "No content"
+
+CRITICAL: Return ONLY the extracted message. No additional text, formatting, or explanation.
+
+Email to extract:
+${emailBody}`
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiApiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 500
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    const cleanedText = data.choices?.[0]?.message?.content?.trim() || emailBody
+
+    // Limit to 200 characters for Slack
+    return cleanedText.length > 200 ? cleanedText.substring(0, 200) + '...' : cleanedText
+  } catch (error) {
+    console.error('Error cleaning reply with AI:', error)
+    // Fallback to simple truncation
+    return emailBody.substring(0, 200) + (emailBody.length > 200 ? '...' : '')
+  }
 }

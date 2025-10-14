@@ -342,7 +342,12 @@ export const UnifiedClientCard = ({ client, onClick }: UnifiedClientCardProps) =
                   <Send className="h-4 w-4" />
                   Email Volume Rolling Windows
                 </h4>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="p-3 bg-primary/10 rounded-lg border border-primary/20 text-center">
+                    <p className="text-[10px] text-muted-foreground mb-1">MTD Total</p>
+                    <p className="text-lg font-bold text-foreground">{client.emails.toLocaleString()}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">Goal: {client.target.toLocaleString()}</p>
+                  </div>
                   <div className="p-3 bg-muted/50 rounded-lg text-center">
                     <p className="text-[10px] text-muted-foreground mb-1">Last 7 Days</p>
                     <p className="text-lg font-bold text-foreground">{client.emailsLast7Days?.toLocaleString() || 0}</p>

@@ -214,7 +214,9 @@ const VolumeDashboard = () => {
                   </div>
                   <div className="text-right">
                     <span className="text-dashboard-primary font-bold text-lg">{client.emailsToday.toLocaleString()}</span>
-                    <div className="text-muted-foreground text-xs">emails sent</div>
+                    <div className="text-muted-foreground text-xs">
+                      MTD: {client.emails.toLocaleString()} / {client.target.toLocaleString()}
+                    </div>
                   </div>
                 </div>
               ))}

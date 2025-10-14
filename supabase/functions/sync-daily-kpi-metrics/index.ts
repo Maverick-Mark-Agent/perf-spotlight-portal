@@ -1,7 +1,7 @@
 /**
  * sync-daily-kpi-metrics Edge Function
  *
- * Purpose: Daily scheduled job to populate client_metrics table with MTD data
+ * Purpose: Daily scheduled job to populate client_metrics + client_revenue_mtd tables
  * Runs: Daily at 12:01 AM via pg_cron
  *
  * Flow:
@@ -9,8 +9,10 @@
  * 2. For each client, fetch Email Bison stats using workspace-specific API key
  * 3. Calculate MTD metrics and projections
  * 4. Upsert to client_metrics table with metric_type='mtd'
+ * 5. Upsert to client_revenue_mtd table with revenue/billing data
  *
  * @created 2025-10-09
+ * @updated 2025-10-12 - Added revenue table sync
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -93,10 +95,10 @@ serve(async (req) => {
 
     console.log('Date ranges:', dateRanges);
 
-    // Fetch all active clients with workspace-specific API keys
+    // Fetch all active clients with workspace-specific API keys + billing info
     const { data: clients, error: clientsError } = await supabase
       .from('client_registry')
-      .select('workspace_name, display_name, monthly_kpi_target, monthly_sending_target, bison_api_key, bison_instance')
+      .select('workspace_name, display_name, bison_workspace_id, monthly_kpi_target, monthly_sending_target, bison_api_key, bison_instance, billing_type, price_per_lead, retainer_amount')
       .eq('is_active', true);
 
     if (clientsError) {

@@ -30,6 +30,10 @@ const STATE_GEOJSON_FILES: Record<string, string> = {
   OR: "/geojson/or_oregon_zip_codes_geo.min.json",
   MO: "/geojson/mo_missouri_zip_codes_geo.min.json",
   OK: "/geojson/ok_oklahoma_zip_codes_geo.min.json",
+  FL: "/geojson/fl_florida_zip_codes_geo.min.json",
+  IA: "/geojson/ia_iowa_zip_codes_geo.min.json",
+  AL: "/geojson/al_alabama_zip_codes_geo.min.json",
+  MS: "/geojson/ms_mississippi_zip_codes_geo.min.json",
 };
 
 export default function ZipChoroplethLeaflet({ zipData, loading, onZipClick }: ZipChoroplethLeafletProps) {

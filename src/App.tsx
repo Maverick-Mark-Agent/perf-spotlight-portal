@@ -31,6 +31,7 @@ import RolloutProgress from "./pages/RolloutProgress";
 import ContactPipelineDashboard from "./pages/ContactPipelineDashboard";
 import ClientManagement from "./pages/ClientManagement";
 import ClientProfile from "./pages/ClientProfile";
+import UserManagement from "./pages/UserManagement";
 
 // Error pages
 import NotFoundPage from "./pages/NotFoundPage";
@@ -205,6 +206,16 @@ const App = () => (
                   <AdminProtectedRoute>
                     <MainLayout>
                       <ClientProfile />
+                    </MainLayout>
+                  </AdminProtectedRoute>
+                }
+              />
+              <Route
+                path="/user-management"
+                element={
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <UserManagement />
                     </MainLayout>
                   </AdminProtectedRoute>
                 }

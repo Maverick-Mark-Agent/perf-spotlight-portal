@@ -13,6 +13,7 @@ import {
   PieChart,
   CreditCard,
   Activity,
+  UserCog,
 } from "lucide-react";
 import {
   Sidebar,
@@ -65,6 +66,11 @@ const navigationItems = {
       title: "Client Management",
       icon: Settings,
       url: "/client-management",
+    },
+    {
+      title: "User Management",
+      icon: UserCog,
+      url: "/user-management",
     },
   ],
   finance: [

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Lock, Mail, Eye, EyeOff, Loader2 } from "lucide-react";
+import { FcGoogle } from "react-icons/fc";
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -75,6 +76,26 @@ const LoginPage = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/client-portal`,
+        }
+      });
+
+      if (error) throw error;
+    } catch (error: any) {
+      console.error("Google login error:", error);
+      toast({
+        title: "Login failed",
+        description: error.message || "Failed to sign in with Google",
+        variant: "destructive",
+      });
     }
   };
 
@@ -180,6 +201,33 @@ const LoginPage = () => {
                 </button>
               </div>
             </form>
+
+            {/* Divider */}
+            {!resetMode && (
+              <div className="mt-6 mb-6">
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-white/20"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-white/5 text-white/60">Or continue with</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Google Sign In Button */}
+            {!resetMode && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleLogin}
+                className="w-full bg-white hover:bg-gray-50 text-gray-900 border-white/20"
+              >
+                <FcGoogle className="w-5 h-5 mr-2" />
+                Sign in with Google
+              </Button>
+            )}
 
             {/* Help Text */}
             <div className="mt-6 pt-6 border-t border-white/10">

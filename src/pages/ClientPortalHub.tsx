@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Users, TrendingUp, MapPin, ArrowLeft, PieChart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/components/auth/ProtectedRoute";
+import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 
 interface Workspace {
   id: number;
@@ -58,93 +60,113 @@ export default function ClientPortalHub() {
     }
   }, [searchTerm, workspaces]);
 
+  const { user } = useAuth();
+  const { getUserWorkspaces } = useSecureWorkspaceData();
+
   const fetchWorkspaces = async () => {
     try {
       setLoading(true);
 
-      // Fetch all workspaces from Email Bison via our Edge Function
-      const BISON_API_KEY = "77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d";
-      const BISON_BASE_URL = "https://send.maverickmarketingllc.com/api";
+      // If user is authenticated, use secure Edge Function
+      // Otherwise, fall back to direct API call (for admin dashboard)
+      let workspacesWithCounts: Workspace[];
 
-      const workspacesResponse = await fetch(`${BISON_BASE_URL}/workspaces`, {
-        headers: {
-          'Authorization': `Bearer ${BISON_API_KEY}`,
-          'Accept': 'application/json',
-        },
-      });
+      if (user) {
+        // AUTHENTICATED: Use secure Edge Function (no exposed API keys)
+        const userWorkspacesData = await getUserWorkspaces();
 
-      if (!workspacesResponse.ok) {
-        throw new Error('Failed to fetch workspaces');
+        workspacesWithCounts = userWorkspacesData.map((w: any) => ({
+          id: w.workspace_id || 0, // We may not have workspace_id, that's ok
+          name: w.workspace_name,
+          leadsCount: Number(w.leads_count) || 0,
+          wonLeadsCount: Number(w.won_leads_count) || 0,
+        }));
+      } else {
+        // UNAUTHENTICATED: Direct API call (for internal admin dashboard)
+        // TODO: Eventually migrate admin dashboard to use authentication too
+        const BISON_API_KEY = "77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d";
+        const BISON_BASE_URL = "https://send.maverickmarketingllc.com/api";
+
+        const workspacesResponse = await fetch(`${BISON_BASE_URL}/workspaces`, {
+          headers: {
+            'Authorization': `Bearer ${BISON_API_KEY}`,
+            'Accept': 'application/json',
+          },
+        });
+
+        if (!workspacesResponse.ok) {
+          throw new Error('Failed to fetch workspaces');
+        }
+
+        const workspacesData = await workspacesResponse.json();
+        const bisonWorkspaces: Workspace[] = workspacesData.data.map((w: any) => ({
+          id: w.id,
+          name: w.name,
+        }));
+
+        // Fetch ALL lead counts from database using pagination (Supabase has 1000 row limit per request)
+        let allLeads: any[] = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('client_leads')
+            .select('workspace_name, pipeline_stage')
+            .range(from, from + pageSize - 1);
+
+          if (error) {
+            console.error('Error fetching leads:', error);
+            break;
+          }
+
+          if (data && data.length > 0) {
+            allLeads = [...allLeads, ...data];
+            from += pageSize;
+            hasMore = data.length === pageSize;
+          } else {
+            hasMore = false;
+          }
+        }
+
+        const leadCounts = allLeads;
+
+        // Aggregate counts by workspace
+        const countsByWorkspace = leadCounts?.reduce((acc: any, lead: any) => {
+          if (!acc[lead.workspace_name]) {
+            acc[lead.workspace_name] = { total: 0, won: 0 };
+          }
+          acc[lead.workspace_name].total++;
+          if (lead.pipeline_stage === 'won') {
+            acc[lead.workspace_name].won++;
+          }
+          return acc;
+        }, {});
+
+        // Merge counts into workspaces
+        workspacesWithCounts = bisonWorkspaces.map(w => ({
+          ...w,
+          leadsCount: countsByWorkspace?.[w.name]?.total || 0,
+          wonLeadsCount: countsByWorkspace?.[w.name]?.won || 0,
+        }));
+
+        // Filter to only show clients with webhooks deployed
+        workspacesWithCounts = workspacesWithCounts.filter(w =>
+          ALLOWED_WORKSPACES.includes(w.name)
+        );
       }
-
-      const workspacesData = await workspacesResponse.json();
-      const bisonWorkspaces: Workspace[] = workspacesData.data.map((w: any) => ({
-        id: w.id,
-        name: w.name,
-      }));
-
-      // Fetch ALL lead counts from database using pagination (Supabase has 1000 row limit per request)
-      let allLeads: any[] = [];
-      let from = 0;
-      const pageSize = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('client_leads')
-          .select('workspace_name, pipeline_stage')
-          .range(from, from + pageSize - 1);
-
-        if (error) {
-          console.error('Error fetching leads:', error);
-          break;
-        }
-
-        if (data && data.length > 0) {
-          allLeads = [...allLeads, ...data];
-          from += pageSize;
-          hasMore = data.length === pageSize;
-        } else {
-          hasMore = false;
-        }
-      }
-
-      const leadCounts = allLeads;
-
-      // Aggregate counts by workspace
-      const countsByWorkspace = leadCounts?.reduce((acc: any, lead: any) => {
-        if (!acc[lead.workspace_name]) {
-          acc[lead.workspace_name] = { total: 0, won: 0 };
-        }
-        acc[lead.workspace_name].total++;
-        if (lead.pipeline_stage === 'won') {
-          acc[lead.workspace_name].won++;
-        }
-        return acc;
-      }, {});
-
-      // Merge counts into workspaces
-      const workspacesWithCounts = bisonWorkspaces.map(w => ({
-        ...w,
-        leadsCount: countsByWorkspace?.[w.name]?.total || 0,
-        wonLeadsCount: countsByWorkspace?.[w.name]?.won || 0,
-      }));
-
-      // Filter to only show clients with webhooks deployed
-      const allowedWorkspaces = workspacesWithCounts.filter(w =>
-        ALLOWED_WORKSPACES.includes(w.name)
-      );
 
       // Sort by leads count (descending), then by name
-      allowedWorkspaces.sort((a, b) => {
+      workspacesWithCounts.sort((a, b) => {
         if (b.leadsCount !== a.leadsCount) {
           return (b.leadsCount || 0) - (a.leadsCount || 0);
         }
         return a.name.localeCompare(b.name);
       });
 
-      setWorkspaces(allowedWorkspaces);
-      setFilteredWorkspaces(allowedWorkspaces);
+      setWorkspaces(workspacesWithCounts);
+      setFilteredWorkspaces(workspacesWithCounts);
     } catch (error) {
       console.error('Error fetching workspaces:', error);
     } finally {

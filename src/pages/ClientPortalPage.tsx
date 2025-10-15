@@ -13,6 +13,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ClientKPIStats } from "@/components/dashboard/ClientKPIStats";
 import { LeadDetailModal } from "@/components/client-portal/LeadDetailModal";
 import { PremiumInputDialog } from "@/components/client-portal/PremiumInputDialog";
+import { useAuth } from "@/components/auth/ProtectedRoute";
+import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 import {
   Select,
   SelectContent,
@@ -382,22 +384,36 @@ const ClientPortalPage = () => {
     fetchWorkspaces();
   }, [workspace]);
 
+  const { user } = useAuth();
+  const { listWorkspaces } = useSecureWorkspaceData();
+
   const fetchWorkspaces = async () => {
     try {
-      const BISON_API_KEY = "77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d";
-      const BISON_BASE_URL = "https://send.maverickmarketingllc.com/api";
+      // Use secure Edge Function if authenticated, otherwise fallback
+      let workspaceData: any[] = [];
 
-      const response = await fetch(`${BISON_BASE_URL}/workspaces`, {
-        headers: {
-          'Authorization': `Bearer ${BISON_API_KEY}`,
-          'Accept': 'application/json',
-        },
-      });
+      if (user) {
+        // AUTHENTICATED: Use secure API
+        workspaceData = await listWorkspaces();
+      } else {
+        // UNAUTHENTICATED: Direct call (for admin dashboard)
+        const BISON_API_KEY = "77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d";
+        const BISON_BASE_URL = "https://send.maverickmarketingllc.com/api";
 
-      if (!response.ok) throw new Error('Failed to fetch workspaces');
+        const response = await fetch(`${BISON_BASE_URL}/workspaces`, {
+          headers: {
+            'Authorization': `Bearer ${BISON_API_KEY}`,
+            'Accept': 'application/json',
+          },
+        });
 
-      const data = await response.json();
-      const workspaceNames = data.data
+        if (!response.ok) throw new Error('Failed to fetch workspaces');
+
+        const data = await response.json();
+        workspaceData = data.data;
+      }
+
+      const workspaceNames = workspaceData
         .map((w: any) => w.name)
         .sort((a: string, b: string) => a.localeCompare(b));
 

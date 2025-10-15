@@ -7,6 +7,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { DashboardProvider } from "@/contexts/DashboardContext";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { AdminProtectedRoute } from "@/components/auth/AdminProtectedRoute";
 
 // Public pages
 import MarketingHomePage from "./pages/MarketingHomePage";
@@ -82,47 +83,56 @@ const App = () => (
               {/* ========================================= */}
               {/* ADMIN DASHBOARD ROUTES */}
               {/* ========================================= */}
-              {/* These are currently unauthenticated (internal use) */}
-              {/* TODO: Add admin authentication in future */}
+              {/* Protected routes for internal team with admin role */}
 
               <Route
                 path="/admin"
                 element={
-                  <MainLayout>
-                    <HomePage />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <HomePage />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
                 path="/kpi-dashboard"
                 element={
-                  <MainLayout>
-                    <KPIDashboard />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <KPIDashboard />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
                 path="/kpi-test"
                 element={
-                  <MainLayout>
-                    <KPITestPage />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <KPITestPage />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
                 path="/email-accounts"
                 element={
-                  <MainLayout>
-                    <EmailAccountsPage />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <EmailAccountsPage />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
                 path="/volume-dashboard"
                 element={
-                  <MainLayout>
-                    <VolumeDashboard />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <VolumeDashboard />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
@@ -132,57 +142,71 @@ const App = () => (
               <Route
                 path="/revenue-dashboard"
                 element={
-                  <MainLayout>
-                    <RevenueDashboard />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <RevenueDashboard />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
                 path="/zip-dashboard"
                 element={
-                  <MainLayout>
-                    <ZipDashboard />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <ZipDashboard />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
                 path="/roi-dashboard"
                 element={
-                  <MainLayout>
-                    <ROIDashboard />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <ROIDashboard />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
                 path="/rollout-progress"
                 element={
-                  <MainLayout>
-                    <RolloutProgress />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <RolloutProgress />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
                 path="/contact-pipeline"
                 element={
-                  <MainLayout>
-                    <ContactPipelineDashboard />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <ContactPipelineDashboard />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
                 path="/client-management"
                 element={
-                  <MainLayout>
-                    <ClientManagement />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <ClientManagement />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
               <Route
                 path="/client-management/:workspaceId"
                 element={
-                  <MainLayout>
-                    <ClientProfile />
-                  </MainLayout>
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <ClientProfile />
+                    </MainLayout>
+                  </AdminProtectedRoute>
                 }
               />
 

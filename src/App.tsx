@@ -49,8 +49,8 @@ const App = () => (
               {/* PUBLIC ROUTES (No authentication needed) */}
               {/* ========================================= */}
 
-              {/* Marketing landing page - shown to visitors */}
-              <Route path="/marketing" element={<MarketingHomePage />} />
+              {/* Marketing landing page - HOME PAGE - shown to all visitors */}
+              <Route path="/" element={<MarketingHomePage />} />
 
               {/* Login page */}
               <Route path="/login" element={<LoginPage />} />
@@ -86,7 +86,7 @@ const App = () => (
               {/* TODO: Add admin authentication in future */}
 
               <Route
-                path="/"
+                path="/admin"
                 element={
                   <MainLayout>
                     <HomePage />

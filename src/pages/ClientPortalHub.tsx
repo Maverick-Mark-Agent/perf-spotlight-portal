@@ -67,13 +67,17 @@ export default function ClientPortalHub() {
     try {
       setLoading(true);
 
-      // If user is authenticated, use secure Edge Function
-      // Otherwise, fall back to direct API call (for admin dashboard)
+      // Check if we have a valid session
+      const { data: { session } } = await supabase.auth.getSession();
+
       let workspacesWithCounts: Workspace[];
 
-      if (user) {
+      if (session?.user) {
         // AUTHENTICATED: Use secure Edge Function (no exposed API keys)
+        console.log('[ClientPortalHub] Fetching workspaces for authenticated user:', session.user.email);
         const userWorkspacesData = await getUserWorkspaces();
+
+        console.log('[ClientPortalHub] User workspace data:', userWorkspacesData);
 
         workspacesWithCounts = userWorkspacesData.map((w: any) => ({
           id: w.workspace_id || 0, // We may not have workspace_id, that's ok

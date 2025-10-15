@@ -432,8 +432,8 @@ const MarketingHomePage = () => {
                     </div>
                     <div>
                       <h3 className="font-semibold text-foreground mb-2">Email Us</h3>
-                      <a href="mailto:support@maverickmarketingllc.com" className="text-[#5B8FF9] hover:underline">
-                        support@maverickmarketingllc.com
+                      <a href="mailto:office@maverickmarketingllc.com" className="text-[#5B8FF9] hover:underline">
+                        office@maverickmarketingllc.com
                       </a>
                     </div>
                   </div>
@@ -519,7 +519,7 @@ const MarketingHomePage = () => {
               <h4 className="font-semibold text-foreground mb-4">Contact</h4>
               <ul className="space-y-2">
                 <li>
-                  <a href="mailto:support@maverickmarketingllc.com" className="text-foreground/70 hover:text-foreground transition-colors">
+                  <a href="mailto:office@maverickmarketingllc.com" className="text-foreground/70 hover:text-foreground transition-colors">
                     Email Us
                   </a>
                 </li>

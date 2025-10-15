@@ -30,13 +30,25 @@ const LoginPage = () => {
       if (error) throw error;
 
       if (data.user) {
+        // Check if user is admin
+        const { data: adminCheck } = await supabase
+          .from('user_workspace_access')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .eq('role', 'admin')
+          .single();
+
         toast({
           title: "Welcome back!",
           description: "Successfully logged in",
         });
 
-        // Redirect to client portal hub
-        navigate("/client-portal");
+        // Redirect based on role
+        if (adminCheck) {
+          navigate("/admin");
+        } else {
+          navigate("/client-portal");
+        }
       }
     } catch (error: any) {
       console.error("Login error:", error);
@@ -233,7 +245,7 @@ const LoginPage = () => {
             <div className="mt-6 pt-6 border-t border-white/10">
               <p className="text-center text-sm text-white/60">
                 Don't have an account?{" "}
-                <a href="mailto:support@maverickmarketingllc.com" className="text-purple-300 hover:text-purple-200 underline">
+                <a href="mailto:office@maverickmarketingllc.com" className="text-purple-300 hover:text-purple-200 underline">
                   Contact support
                 </a>
               </p>

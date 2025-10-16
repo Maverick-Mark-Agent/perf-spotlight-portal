@@ -379,8 +379,26 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     // Transform database rows to EmailAccount interface
     const transformedData = accounts.map(row => transformToEmailAccount(row));
 
-    // Validate transformed data
-    const validation = validateEmailAccounts(transformedData);
+    // CRITICAL: Deduplicate by email address (same as Edge Function logic)
+    // The database may contain the same email multiple times for different bison_instance values
+    // We only want to count each unique email address ONCE
+    const deduplicatedData: any[] = [];
+    const seenEmails = new Set<string>();
+
+    for (const account of transformedData) {
+      const email = account.fields['Email'] || account.fields['Email Account'];
+      if (email && !seenEmails.has(email)) {
+        seenEmails.add(email);
+        deduplicatedData.push(account);
+      }
+    }
+
+    const duplicateCount = transformedData.length - deduplicatedData.length;
+    console.log(`[Infrastructure Realtime] Deduplication: Removed ${duplicateCount} duplicate emails`);
+    console.log(`[Infrastructure Realtime] Unique email accounts: ${deduplicatedData.length}`);
+
+    // Validate deduplicated data
+    const validation = validateEmailAccounts(deduplicatedData);
 
     if (!validation.success) {
       console.error('[Infrastructure Realtime] Validation failed:', validation.errors);
@@ -390,7 +408,7 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
       // TEMPORARY: Return data anyway for debugging (remove strict validation)
       console.warn('[Infrastructure Realtime] ⚠️ Bypassing validation temporarily for debugging');
       return {
-        data: transformedData,
+        data: deduplicatedData,
         success: true,
         cached: false,
         fresh: false,
@@ -401,7 +419,7 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     }
 
     const fetchDuration = Date.now() - startTime;
-    console.log(`[Infrastructure Realtime] ✅ Fetched ${validation.data!.length} accounts in ${fetchDuration}ms`);
+    console.log(`[Infrastructure Realtime] ✅ Fetched ${validation.data!.length} unique accounts in ${fetchDuration}ms`);
 
     // Determine freshness (< 24 hours = fresh)
     const isFresh = ageHours < 24;

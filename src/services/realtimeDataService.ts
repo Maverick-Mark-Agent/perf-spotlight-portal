@@ -379,23 +379,27 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     // Transform database rows to EmailAccount interface
     const transformedData = accounts.map(row => transformToEmailAccount(row));
 
-    // CRITICAL: Deduplicate by email address (same as Edge Function logic)
-    // The database may contain the same email multiple times for different bison_instance values
-    // We only want to count each unique email address ONCE
+    // CRITICAL FIX: Deduplicate by (email_address + workspace_name) instead of just email_address
+    // The Edge Function deduplicates GLOBALLY, but that's WRONG for our use case!
+    // The same email can legitimately belong to different clients (workspaces)
+    // We should only remove duplicates from the SAME workspace + different bison_instance
     const deduplicatedData: any[] = [];
-    const seenEmails = new Set<string>();
+    const seenEmailWorkspace = new Set<string>();
 
     for (const account of transformedData) {
       const email = account.fields['Email'] || account.fields['Email Account'];
-      if (email && !seenEmails.has(email)) {
-        seenEmails.add(email);
+      const workspace = account.fields['Client Name (from Client)']?.[0] || account.workspace_name;
+      const key = `${email}|${workspace}`;
+
+      if (email && !seenEmailWorkspace.has(key)) {
+        seenEmailWorkspace.add(key);
         deduplicatedData.push(account);
       }
     }
 
     const duplicateCount = transformedData.length - deduplicatedData.length;
-    console.log(`[Infrastructure Realtime] Deduplication: Removed ${duplicateCount} duplicate emails`);
-    console.log(`[Infrastructure Realtime] Unique email accounts: ${deduplicatedData.length}`);
+    console.log(`[Infrastructure Realtime] Deduplication: Removed ${duplicateCount} duplicates (same email+workspace, different instance)`);
+    console.log(`[Infrastructure Realtime] Total accounts after deduplication: ${deduplicatedData.length}`);
 
     // Validate deduplicated data
     const validation = validateEmailAccounts(deduplicatedData);

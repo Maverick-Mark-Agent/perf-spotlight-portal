@@ -772,7 +772,7 @@ const SendingAccountsInfrastructure = () => {
     });
   }, [setInfrastructureExpandedStatuses]);
 
-  // Fetch data on mount and cleanup old cache
+  // Cleanup old cache on mount (data is already fetched by DashboardContext)
   useEffect(() => {
     // Clear any old cached data to free up space
     const oldCacheKeys = [
@@ -789,7 +789,8 @@ const SendingAccountsInfrastructure = () => {
     ];
     oldCacheKeys.forEach(key => localStorage.removeItem(key));
 
-    fetchEmailAccounts();
+    // Don't fetch here - DashboardContext already fetches on mount
+    // This prevents duplicate API calls
   }, []);
 
   useEffect(() => {

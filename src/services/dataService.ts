@@ -24,7 +24,7 @@ import {
  * Set to false to instantly rollback to Edge Functions
  */
 const FEATURE_FLAGS = {
-  useRealtimeInfrastructure: true, // NOW USING sender_emails_cache table (synced by poll-sender-emails cron job)
+  useRealtimeInfrastructure: true, // ✅ ENABLED: Read from sender_emails_cache table (1-2s vs 30-60s Edge Function)
   useRealtimeKPI: true, // KPI Dashboard (5-10s → <500ms)
   useRealtimeVolume: true, // Volume Dashboard (3-5s → <300ms)
 } as const;
@@ -32,10 +32,10 @@ const FEATURE_FLAGS = {
 // ============= Cache Configuration =============
 
 const CACHE_TTL = {
-  KPI: 2 * 60 * 1000,           // 2 minutes for high-priority KPI data
-  VOLUME: 30 * 1000,            // 30 seconds for volume data (reduced for debugging)
-  REVENUE: 2 * 60 * 1000,       // 2 minutes for revenue data (user-controlled refresh via button)
-  INFRASTRUCTURE: 10 * 60 * 1000, // 10 minutes for infrastructure data
+  KPI: 2 * 60 * 1000,            // 2 minutes for high-priority KPI data
+  VOLUME: 30 * 1000,             // 30 seconds for volume data (reduced for debugging)
+  REVENUE: 10 * 1000,            // 10 seconds for revenue data (reduced for real-time updates)
+  INFRASTRUCTURE: 60 * 60 * 1000, // 60 minutes (1 hour) - prevents constant refreshing & data inconsistency
 } as const;
 
 const RETRY_CONFIG = {
@@ -450,7 +450,7 @@ export async function fetchVolumeData(force: boolean = false): Promise<DataFetch
 
 /**
  * Fetch Revenue Dashboard Data
- * Uses revenue-billing-unified Edge Function (real-time Email Bison data)
+ * Uses revenue-analytics Edge Function
  */
 export async function fetchRevenueData(force: boolean = false): Promise<DataFetchResult<{ clients: RevenueClient[], totals: any }>> {
   const cacheKey = 'revenue-dashboard-data';
@@ -479,11 +479,11 @@ export async function fetchRevenueData(force: boolean = false): Promise<DataFetc
 
   const fetchPromise = (async (): Promise<DataFetchResult<{ clients: RevenueClient[], totals: any }>> => {
     try {
-      console.log('[Revenue] Fetching fresh data from unified Edge Function');
+      console.log('[Revenue] Fetching fresh data from Edge Function');
 
       const { data, error } = await fetchWithRetry(
-        () => supabase.functions.invoke('revenue-billing-unified'),
-        'Revenue & Billing Data Fetch'
+        () => supabase.functions.invoke('revenue-analytics'),
+        'Revenue Data Fetch'
       );
 
       if (error) {
@@ -579,7 +579,10 @@ export async function fetchInfrastructureData(force: boolean = false): Promise<D
 
     const cached = cache.get<EmailAccount[]>(cacheKey, CACHE_TTL.INFRASTRUCTURE);
     if (cached) {
-      console.log('[Infrastructure] Using cached data', { age: Date.now() - cached.timestamp });
+      const ageMs = Date.now() - cached.timestamp;
+      const ageMinutes = Math.round(ageMs / 60000);
+      console.log(`✅ [Infrastructure] Using cached data (age: ${ageMinutes}m, expires in: ${60 - ageMinutes}m)`);
+      console.log(`   📊 Cached ${cached.data.length} accounts - no API call needed!`);
       return {
         data: cached.data,
         success: true,
@@ -595,7 +598,7 @@ export async function fetchInfrastructureData(force: boolean = false): Promise<D
     try {
       console.log('📡 [Infrastructure] Fetching fresh data from Edge Function...');
 
-      const { data, error } = await fetchWithRetry(
+      const { data, error} = await fetchWithRetry(
         () => supabase.functions.invoke('hybrid-email-accounts-v2'),
         'Infrastructure Data Fetch'
       );

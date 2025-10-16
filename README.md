@@ -33,13 +33,30 @@ Email Bison API ──webhook──> Supabase ──edge functions──> React 
 Cole X Dates ──browser automation──> Raw Leads ──> Clay ──> Cleaned Leads ──> Email Bison
 ```
 
-## Quick Start
+## 🚀 Quick Start
+
+### Local Development Setup
+
+**Automated Setup (Recommended):**
+
+```bash
+# Run the automated setup script
+./setup-local.sh
+
+# Start development server
+npm run dev
+
+# Open http://localhost:8080
+```
+
+**Manual Setup:**
+
+See [LOCAL_DEVELOPMENT_GUIDE.md](./LOCAL_DEVELOPMENT_GUIDE.md) for detailed step-by-step instructions.
 
 ### Prerequisites
 - Node.js 18+ (install with [nvm](https://github.com/nvm-sh/nvm))
-- Redis (for BullMQ job queues)
-- Supabase account and project
-- Email Bison, Clay, and Cole X Dates accounts
+- Docker Desktop (for local Supabase)
+- Supabase CLI (`npm install -g supabase`)
 
 ### Installation
 
@@ -198,6 +215,47 @@ npm run types:generate         # Generate Supabase types
 npm run seed:credentials       # Seed encrypted credentials
 ```
 
+### Anthropic (Claude) integration
+
+We proxy Anthropic Messages API via a Supabase Edge Function to keep `ANTHROPIC_API_KEY` server-side and off the client.
+
+1) Configure secret in Supabase project settings:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+2) Deploy function:
+
+```
+supabase functions deploy anthropic-complete --no-verify-jwt
+```
+
+3) Frontend usage:
+
+```ts
+import { anthropicComplete } from "@/lib/anthropic";
+
+const result = await anthropicComplete({
+  model: "claude-3-5-sonnet-20240620",
+  messages: [
+    { role: 'system', content: 'You are a helpful assistant.' },
+    { role: 'user', content: 'Summarize this lead.' },
+  ],
+  max_tokens: 512,
+});
+
+if (!result.success) {
+  throw new Error(result.error || 'Anthropic request failed');
+}
+
+console.log(result.data);
+```
+
+Notes:
+- We did not add the Node SDK dependency; the Edge Function calls Anthropic directly.
+- If you prefer using the official SDK in Node processes, install `@anthropic-ai/sdk`.
+
 ## Database Schema
 
 **Lead Management:**
@@ -273,11 +331,120 @@ perf-spotlight-portal/
 └── docs/                # Documentation
 ```
 
+## 📚 Documentation
+
+Comprehensive documentation is available:
+
+- **[SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md)** - Complete system architecture, database schema, Edge Functions, and data flows
+- **[LOCAL_DEVELOPMENT_GUIDE.md](./LOCAL_DEVELOPMENT_GUIDE.md)** - Step-by-step guide for setting up local development environment
+- **[.env.local.example](./.env.local.example)** - Local environment variables template
+- **[.env.production.example](./.env.production.example)** - Production environment variables template
+
+### Key Documentation Sections:
+
+#### System Architecture
+- Complete overview of all 63 Edge Functions
+- Database schema for all 15+ tables
+- Frontend page components and routing
+- Data flow diagrams
+- Performance metrics and optimization strategies
+
+#### Local Development
+- Prerequisites and installation
+- Supabase local setup
+- Database migrations
+- Environment configuration
+- Testing and debugging
+- Deployment procedures
+
+## 🔄 Development Workflow
+
+### Making Changes Locally
+
+1. **Setup local environment** (one-time):
+   ```bash
+   ./setup-local.sh
+   ```
+
+2. **Start development**:
+   ```bash
+   npm run dev
+   # Frontend runs on http://localhost:8080
+   # Supabase Studio on http://localhost:54323
+   ```
+
+3. **Make changes** to frontend, database, or Edge Functions
+
+4. **Test locally** before deploying
+
+5. **Deploy to production**:
+   ```bash
+   # Deploy database changes
+   supabase db push
+
+   # Deploy Edge Functions
+   supabase functions deploy your-function-name
+
+   # Frontend auto-deploys on git push to main
+   git push origin main
+   ```
+
+### Switching Between Local and Production
+
+Edit `.env.local`:
+
+**Local Development:**
+```env
+VITE_SUPABASE_URL=http://localhost:54321
+VITE_SUPABASE_ANON_KEY=your-local-key
+```
+
+**Production Testing:**
+```env
+VITE_SUPABASE_URL=https://gjqbbgrfhijescaouqkx.supabase.co
+VITE_SUPABASE_ANON_KEY=your-production-key
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**Supabase won't start:**
+```bash
+# Make sure Docker is running
+docker ps
+
+# Stop and restart Supabase
+supabase stop
+supabase start
+```
+
+**Frontend can't connect:**
+```bash
+# Check environment variables
+cat .env.local
+
+# Restart dev server
+npm run dev
+```
+
+**Database migrations fail:**
+```bash
+# Reset database
+supabase db reset
+
+# Check migration files for errors
+ls -la supabase/migrations/
+```
+
+See [LOCAL_DEVELOPMENT_GUIDE.md](./LOCAL_DEVELOPMENT_GUIDE.md) for more troubleshooting tips.
+
 ## Support & Contributing
 
 **Issues**: Report bugs via GitHub Issues
-**Questions**: See documentation in `/docs/`
-**Lovable**: Make changes via [Lovable dashboard](https://lovable.dev/projects/ad87c4b8-0b3a-44f0-89e7-c815e1d9f5ad)
+**Questions**: See documentation files listed above
+**Architecture**: See [SYSTEM_ARCHITECTURE.md](./SYSTEM_ARCHITECTURE.md)
+**Setup Help**: See [LOCAL_DEVELOPMENT_GUIDE.md](./LOCAL_DEVELOPMENT_GUIDE.md)
 
 ## License
 

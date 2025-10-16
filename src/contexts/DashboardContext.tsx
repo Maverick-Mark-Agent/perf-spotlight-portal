@@ -605,6 +605,13 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
+
+    // When forcing refresh, clear cache first to ensure fresh data
+    if (force) {
+      console.log('[Infrastructure] Forcing refresh - clearing cache first');
+      clearDashboardCache('infrastructure');
+    }
+
     setLastRefreshTime(now);
     await fetchInfrastructureDataInternal(force);
   }, [fetchInfrastructureDataInternal, lastRefreshTime]);

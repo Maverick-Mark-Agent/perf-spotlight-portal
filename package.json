@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "claude:edit": "node scripts/anthropic-edit.mjs",
     "agent:dev": "nodemon --watch 'src/**/*.ts' --exec tsx",
     "agent:run": "tsx",
     "types:generate": "supabase gen types typescript --local > src/types/supabase.ts",

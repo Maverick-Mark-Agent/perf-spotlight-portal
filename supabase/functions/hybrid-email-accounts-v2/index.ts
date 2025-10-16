@@ -13,14 +13,23 @@ serve(async (req) => {
   }
 
   try {
+    console.log('🔍 [DIAGNOSTIC] Starting Edge Function execution...');
+
     const emailBisonApiKey = Deno.env.get('EMAIL_BISON_API_KEY');
     const longRunBisonApiKey = Deno.env.get('LONG_RUN_BISON_API_KEY');
     const longRunBisonBaseUrl = Deno.env.get('LONG_RUN_BISON_BASE_URL');
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+    console.log('🔍 [DIAGNOSTIC] Environment variables check:');
+    console.log(`  - EMAIL_BISON_API_KEY: ${emailBisonApiKey ? '✅ Present (length: ' + emailBisonApiKey.length + ')' : '❌ MISSING'}`);
+    console.log(`  - SUPABASE_URL: ${supabaseUrl ? '✅ Present' : '❌ MISSING'}`);
+    console.log(`  - SUPABASE_SERVICE_ROLE_KEY: ${supabaseKey ? '✅ Present' : '❌ MISSING'}`);
+
     if (!emailBisonApiKey) {
-      throw new Error('EMAIL_BISON_API_KEY not found');
+      const errorMsg = '❌ EMAIL_BISON_API_KEY environment variable is not set in Supabase Edge Functions';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
 
     // Define Email Bison instances to fetch from
@@ -45,25 +54,36 @@ serve(async (req) => {
 
     // Fetch from all Email Bison instances
     for (const instance of bisonInstances) {
-      console.log(`Fetching workspaces from ${instance.name} Email Bison...`);
+      console.log(`🔍 [${instance.name}] Fetching workspaces from ${instance.name} Email Bison...`);
+      console.log(`🔍 [${instance.name}] API URL: ${instance.baseUrl}/workspaces/v1.1`);
 
       // Step 1: Fetch all workspaces for this instance
-      const workspacesResponse = await fetch(`${instance.baseUrl}/workspaces/v1.1`, {
-        headers: {
-          'Authorization': `Bearer ${instance.apiKey}`,
-          'Accept': 'application/json',
-        },
-      });
+      let workspacesResponse;
+      try {
+        workspacesResponse = await fetch(`${instance.baseUrl}/workspaces/v1.1`, {
+          headers: {
+            'Authorization': `Bearer ${instance.apiKey}`,
+            'Accept': 'application/json',
+          },
+        });
 
-      if (!workspacesResponse.ok) {
-        console.error(`${instance.name} Email Bison API error: ${workspacesResponse.status}`);
+        console.log(`🔍 [${instance.name}] Workspaces API response status: ${workspacesResponse.status}`);
+
+        if (!workspacesResponse.ok) {
+          const errorText = await workspacesResponse.text();
+          console.error(`❌ [${instance.name}] Email Bison API error: ${workspacesResponse.status}`);
+          console.error(`❌ [${instance.name}] Response body: ${errorText}`);
+          continue;
+        }
+      } catch (fetchError) {
+        console.error(`❌ [${instance.name}] Failed to fetch workspaces:`, fetchError);
         continue;
       }
 
       const workspacesData = await workspacesResponse.json();
       const workspaces = workspacesData.data || [];
 
-      console.log(`Fetched ${workspaces.length} workspaces from ${instance.name}`);
+      console.log(`✅ [${instance.name}] Fetched ${workspaces.length} workspaces from ${instance.name}`);
 
       // Step 2: Fetch sender emails from each workspace by switching context
       for (const workspace of workspaces) {
@@ -91,42 +111,86 @@ serve(async (req) => {
 
           // Fetch ALL sender emails for this workspace with pagination
           let workspaceSenderEmails: any[] = [];
-          let nextUrl: string | null = `${instance.baseUrl}/sender-emails?per_page=100`;
+          // CRITICAL FIX: Email Bison API max per_page is 15 (not 100)
+          let nextUrl: string | null = `${instance.baseUrl}/sender-emails?per_page=15`;
+          let pageCount = 0;
+          const MAX_PAGES_PER_WORKSPACE = 100; // Increased limit: 15 × 100 = 1500 accounts max per workspace
+          const WORKSPACE_TIMEOUT_MS = 120000; // Increased to 120 seconds (2 minutes) per workspace
+          const workspaceStartTime = Date.now();
+          let hasTimeout = false;
+          let hasMaxPagesLimit = false;
 
-          // Loop through all pages
-          while (nextUrl) {
-            const bisonResponse = await fetch(nextUrl, {
-              headers: {
-                'Authorization': `Bearer ${instance.apiKey}`,
-                'Accept': 'application/json',
-              },
-            });
-
-            if (!bisonResponse.ok) {
-              console.error(`Failed to fetch sender emails for workspace ${workspace.name}: ${bisonResponse.status}`);
+          // Loop through all pages with timeout protection
+          while (nextUrl && pageCount < MAX_PAGES_PER_WORKSPACE) {
+            // Check workspace-level timeout
+            if (Date.now() - workspaceStartTime > WORKSPACE_TIMEOUT_MS) {
+              console.error(`⏱️ TIMEOUT: ${workspace.name} after ${pageCount} pages and ${workspaceSenderEmails.length} accounts`);
+              hasTimeout = true;
               break;
             }
 
-            const bisonData = await bisonResponse.json();
-            const pageEmails = bisonData.data || [];
+            pageCount++;
 
-            // Add workspace context to each sender email
-            pageEmails.forEach((email: any) => {
-              email.workspace_id = workspace.id;
-              email.workspace_name = workspace.name;
-              email.bison_instance = instance.name;
-            });
+            try {
+              const bisonResponse = await fetch(nextUrl, {
+                headers: {
+                  'Authorization': `Bearer ${instance.apiKey}`,
+                  'Accept': 'application/json',
+                },
+              });
 
-            workspaceSenderEmails = workspaceSenderEmails.concat(pageEmails);
+              if (!bisonResponse.ok) {
+                console.error(`❌ Failed to fetch sender emails for workspace ${workspace.name}: ${bisonResponse.status}`);
+                break;
+              }
 
-            // Check for next page
-            nextUrl = bisonData.links?.next || null;
+              const bisonData = await bisonResponse.json();
+              const pageEmails = bisonData.data || [];
 
-            console.log(`Fetched ${pageEmails.length} sender emails from ${workspace.name} (page ${bisonData.meta?.current_page || 1}/${bisonData.meta?.last_page || 1})`);
+              // Add workspace context to each sender email
+              pageEmails.forEach((email: any) => {
+                email.workspace_id = workspace.id;
+                email.workspace_name = workspace.name;
+                email.bison_instance = instance.name;
+              });
+
+              workspaceSenderEmails = workspaceSenderEmails.concat(pageEmails);
+
+              // CRITICAL: Use links.next from API response for pagination
+              nextUrl = bisonData.links?.next || null;
+
+              const currentPage = bisonData.meta?.current_page || pageCount;
+              const lastPage = bisonData.meta?.last_page || '?';
+              console.log(`📄 [${instance.name}] ${workspace.name}: Page ${currentPage}/${lastPage} - ${pageEmails.length} accounts (Total: ${workspaceSenderEmails.length})`);
+
+              // Add small delay between requests to avoid rate limiting
+              if (nextUrl) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+            } catch (fetchError) {
+              console.error(`❌ Error fetching page ${pageCount} for ${workspace.name}:`, fetchError);
+              break;
+            }
           }
 
+          // Log completion stats
+          const duration = ((Date.now() - workspaceStartTime) / 1000).toFixed(2);
+          if (pageCount >= MAX_PAGES_PER_WORKSPACE) {
+            console.warn(`⚠️ ${workspace.name}: Hit max pages limit (${MAX_PAGES_PER_WORKSPACE}). May have more accounts.`);
+            hasMaxPagesLimit = true;
+          }
+
+          // Mark emails with potential incompleteness flags
+          if (hasTimeout || hasMaxPagesLimit) {
+            workspaceSenderEmails.forEach((email: any) => {
+              email._incomplete_data_warning = true;
+              email._incomplete_reason = hasTimeout ? 'timeout' : 'max_pages_limit';
+            });
+          }
+
+          console.log(`✅ [${instance.name}] ${workspace.name}: Fetched ${workspaceSenderEmails.length} accounts across ${pageCount} pages in ${duration}s${hasTimeout ? ' [TIMEOUT]' : ''}${hasMaxPagesLimit ? ' [MAX PAGES]' : ''}`);
+
           allSenderEmails = allSenderEmails.concat(workspaceSenderEmails);
-          console.log(`Total fetched from ${workspace.name}: ${workspaceSenderEmails.length} sender emails`);
 
         } catch (error) {
           console.error(`Error fetching sender emails for workspace ${workspace.name}:`, error);
@@ -135,7 +199,38 @@ serve(async (req) => {
     }
 
     const senderEmails = allSenderEmails;
-    console.log(`Total sender emails fetched across all instances: ${senderEmails.length}`);
+
+    // Log comprehensive sync summary
+    console.log(`\n========================================`);
+    console.log(`📊 SYNC SUMMARY`);
+    console.log(`========================================`);
+    console.log(`Total Email Bison Instances: ${bisonInstances.length}`);
+    console.log(`Total Sender Emails Fetched: ${senderEmails.length}`);
+
+    // Count by instance
+    const instanceCounts = {};
+    senderEmails.forEach((email: any) => {
+      const instance = email.bison_instance || 'Unknown';
+      instanceCounts[instance] = (instanceCounts[instance] || 0) + 1;
+    });
+    Object.entries(instanceCounts).forEach(([instance, count]) => {
+      console.log(`  - ${instance}: ${count} accounts`);
+    });
+
+    // Count by workspace
+    const workspaceCounts = {};
+    senderEmails.forEach((email: any) => {
+      const workspace = email.workspace_name || 'Unknown';
+      workspaceCounts[workspace] = (workspaceCounts[workspace] || 0) + 1;
+    });
+    const topWorkspaces = Object.entries(workspaceCounts)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, 5);
+    console.log(`Top 5 Workspaces by Account Count:`);
+    topWorkspaces.forEach(([workspace, count]) => {
+      console.log(`  - ${workspace}: ${count} accounts`);
+    });
+    console.log(`========================================\n`);
 
     // Step 3: Fetch metadata from Supabase (for manual price overrides only)
     console.log('Fetching email account metadata from Supabase...');
@@ -155,7 +250,7 @@ serve(async (req) => {
 
     // Create a map of Supabase metadata by email address for quick lookup
     const metadataMap = new Map();
-    (metadataRecords || []).forEach(record => {
+    (metadataRecords || []).forEach((record: any) => {
       metadataMap.set(record.email_address.toLowerCase(), record);
     });
 
@@ -270,7 +365,24 @@ serve(async (req) => {
 
     console.log(`Merged ${mergedRecords.length} email accounts (Email Bison + Calculated Pricing)`);
 
-    return new Response(JSON.stringify({ records: mergedRecords }), {
+    // Step 6: DEDUPLICATE by email address (same account may appear in multiple workspaces)
+    // Keep the first occurrence of each email address
+    const deduplicatedRecords = [];
+    const seenEmails = new Set();
+
+    for (const record of mergedRecords) {
+      const email = record.fields['Email Account'];
+      if (!seenEmails.has(email)) {
+        seenEmails.add(email);
+        deduplicatedRecords.push(record);
+      }
+    }
+
+    const duplicateCount = mergedRecords.length - deduplicatedRecords.length;
+    console.log(`🔧 Deduplication: Removed ${duplicateCount} duplicate accounts`);
+    console.log(`✅ Final unique email accounts: ${deduplicatedRecords.length}`);
+
+    return new Response(JSON.stringify({ records: deduplicatedRecords }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

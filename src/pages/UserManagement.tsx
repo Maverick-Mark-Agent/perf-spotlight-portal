@@ -130,25 +130,35 @@ const UserManagement = () => {
   };
 
   const handleAddWorkspace = async () => {
-    if (!selectedUser || !newWorkspace) return;
+    if (!selectedUser) return;
+
+    // Validate: client role requires workspace selection, admin role doesn't
+    if (newRole === "client" && !newWorkspace) return;
 
     try {
       setActionLoading(true);
+
+      // For admin role, use "admin" as the workspace name
+      const workspaceName = newRole === "admin" ? "admin" : newWorkspace;
 
       // Add workspace access directly to database
       const { error } = await supabase
         .from('user_workspace_access')
         .insert({
           user_id: selectedUser.id,
-          workspace_name: newWorkspace,
+          workspace_name: workspaceName,
           role: newRole,
         });
 
       if (error) throw error;
 
+      const successMessage = newRole === "admin"
+        ? `${selectedUser.email} is now an admin with access to all workspaces`
+        : `${selectedUser.email} now has access to ${newWorkspace}`;
+
       toast({
-        title: "Workspace added",
-        description: `${selectedUser.email} now has access to ${newWorkspace}`,
+        title: "Access granted",
+        description: successMessage,
       });
 
       setShowAddWorkspaceDialog(false);
@@ -158,7 +168,7 @@ const UserManagement = () => {
     } catch (error: any) {
       console.error("Error adding workspace:", error);
       toast({
-        title: "Failed to add workspace",
+        title: "Failed to add access",
         description: error.message,
         variant: "destructive",
       });
@@ -233,6 +243,11 @@ const UserManagement = () => {
           <CardDescription>
             {users.length} {users.length === 1 ? 'user' : 'users'} registered
           </CardDescription>
+          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-sm text-blue-900">
+              <strong>Tip:</strong> Users can have multiple workspace access. Click "Add Workspace Access" multiple times to grant access to multiple client portals.
+            </p>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -289,7 +304,7 @@ const UserManagement = () => {
                       }}
                     >
                       <Plus className="w-4 h-4 mr-1" />
-                      Add Workspace
+                      Add Workspace Access
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -310,22 +325,6 @@ const UserManagement = () => {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="workspace">Workspace</Label>
-              <Select value={newWorkspace} onValueChange={setNewWorkspace}>
-                <SelectTrigger id="workspace">
-                  <SelectValue placeholder="Select a workspace" />
-                </SelectTrigger>
-                <SelectContent>
-                  {workspaces.map((ws) => (
-                    <SelectItem key={ws.workspace_name} value={ws.workspace_name}>
-                      {ws.workspace_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="role">Role</Label>
               <Select value={newRole} onValueChange={(val) => setNewRole(val as "client" | "admin")}>
@@ -348,6 +347,39 @@ const UserManagement = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            {newRole === "admin" ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Admin Access</p>
+                    <p className="text-sm text-blue-700 mt-1">
+                      Admin users have access to all workspaces and the admin dashboard. No workspace selection needed.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="workspace">Workspace</Label>
+                <Select value={newWorkspace} onValueChange={setNewWorkspace}>
+                  <SelectTrigger id="workspace">
+                    <SelectValue placeholder="Select a workspace" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workspaces.map((ws) => (
+                      <SelectItem key={ws.workspace_name} value={ws.workspace_name}>
+                        {ws.workspace_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Tip: You can add multiple workspace access for the same user by clicking "Add Workspace Access" multiple times.
+                </p>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -361,7 +393,7 @@ const UserManagement = () => {
             >
               Cancel
             </Button>
-            <Button onClick={handleAddWorkspace} disabled={actionLoading || !newWorkspace}>
+            <Button onClick={handleAddWorkspace} disabled={actionLoading || (newRole === "client" && !newWorkspace)}>
               {actionLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />

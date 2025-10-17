@@ -73,18 +73,69 @@ export default function ClientPortalHub() {
       let workspacesWithCounts: Workspace[];
 
       if (session?.user) {
-        // AUTHENTICATED: Use secure Edge Function (no exposed API keys)
+        // AUTHENTICATED: Check if user is admin
         console.log('[ClientPortalHub] Fetching workspaces for authenticated user:', session.user.email);
-        const userWorkspacesData = await getUserWorkspaces();
 
-        console.log('[ClientPortalHub] User workspace data:', userWorkspacesData);
+        // Check if user is admin
+        const { data: adminCheck } = await supabase
+          .from('user_workspace_access')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .eq('role', 'admin')
+          .maybeSingle();
 
-        workspacesWithCounts = userWorkspacesData.map((w: any) => ({
-          id: w.workspace_id || 0, // We may not have workspace_id, that's ok
-          name: w.workspace_name,
-          leadsCount: Number(w.leads_count) || 0,
-          wonLeadsCount: Number(w.won_leads_count) || 0,
-        }));
+        const isAdmin = !!adminCheck || session.user.id === '09322929-6078-4b08-bd55-e3e1ff773028';
+
+        if (isAdmin) {
+          // ADMIN: Show ALL workspaces from client_registry
+          console.log('[ClientPortalHub] Admin user - showing all workspaces');
+
+          const { data: allWorkspaces, error: workspacesError } = await supabase
+            .from('client_registry')
+            .select('workspace_name')
+            .order('workspace_name');
+
+          if (workspacesError) throw workspacesError;
+
+          // Get lead counts for all workspaces
+          const { data: leadCounts, error: leadsError } = await supabase
+            .from('client_leads')
+            .select('workspace_name, pipeline_stage');
+
+          if (leadsError) throw leadsError;
+
+          // Aggregate counts by workspace
+          const countsByWorkspace = leadCounts?.reduce((acc: any, lead: any) => {
+            if (!acc[lead.workspace_name]) {
+              acc[lead.workspace_name] = { total: 0, won: 0 };
+            }
+            acc[lead.workspace_name].total++;
+            if (lead.pipeline_stage === 'won') {
+              acc[lead.workspace_name].won++;
+            }
+            return acc;
+          }, {});
+
+          workspacesWithCounts = (allWorkspaces || []).map((w, idx) => ({
+            id: idx,
+            name: w.workspace_name,
+            leadsCount: countsByWorkspace?.[w.workspace_name]?.total || 0,
+            wonLeadsCount: countsByWorkspace?.[w.workspace_name]?.won || 0,
+          }));
+        } else {
+          // REGULAR USER: Only show their assigned workspaces
+          console.log('[ClientPortalHub] Regular user - showing assigned workspaces only');
+          const userWorkspacesData = await getUserWorkspaces();
+
+          console.log('[ClientPortalHub] User workspace data:', userWorkspacesData);
+
+          workspacesWithCounts = userWorkspacesData.map((w: any) => ({
+            id: w.workspace_id || 0,
+            name: w.workspace_name,
+            leadsCount: Number(w.leads_count) || 0,
+            wonLeadsCount: Number(w.won_leads_count) || 0,
+          }));
+        }
       } else {
         // UNAUTHENTICATED: Direct API call (for internal admin dashboard)
         // TODO: Eventually migrate admin dashboard to use authentication too

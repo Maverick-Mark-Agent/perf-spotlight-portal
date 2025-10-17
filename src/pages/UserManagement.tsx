@@ -30,7 +30,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, UserPlus, Shield, User, Trash2, Plus } from "lucide-react";
-import { listUsers, addWorkspaceAccess, removeWorkspaceAccess } from "@/services/userManagementService";
 
 interface User {
   id: string;
@@ -66,9 +65,35 @@ const UserManagement = () => {
     try {
       setLoading(true);
 
-      // Use Edge Function to securely fetch all users (requires admin role)
-      const usersData = await listUsers();
-      setUsers(usersData);
+      // Get all workspace access entries
+      const { data: accessData, error: accessError } = await supabase
+        .from('user_workspace_access')
+        .select('user_id, workspace_name, role, created_at')
+        .order('created_at', { ascending: false });
+
+      if (accessError) throw accessError;
+
+      // Group by user_id
+      const usersMap = new Map<string, User>();
+
+      for (const access of accessData || []) {
+        if (!usersMap.has(access.user_id)) {
+          usersMap.set(access.user_id, {
+            id: access.user_id,
+            email: `User ${access.user_id.substring(0, 8)}...`,
+            created_at: access.created_at,
+            workspaces: [],
+          });
+        }
+
+        const user = usersMap.get(access.user_id)!;
+        user.workspaces.push({
+          workspace_name: access.workspace_name,
+          role: access.role,
+        });
+      }
+
+      setUsers(Array.from(usersMap.values()));
     } catch (error: any) {
       console.error("Error fetching users:", error);
       toast({
@@ -103,8 +128,16 @@ const UserManagement = () => {
     try {
       setActionLoading(true);
 
-      // Use Edge Function to securely add workspace access
-      await addWorkspaceAccess(selectedUser.id, newWorkspace, newRole);
+      // Add workspace access directly to database
+      const { error } = await supabase
+        .from('user_workspace_access')
+        .insert({
+          user_id: selectedUser.id,
+          workspace_name: newWorkspace,
+          role: newRole,
+        });
+
+      if (error) throw error;
 
       toast({
         title: "Workspace added",
@@ -129,8 +162,14 @@ const UserManagement = () => {
 
   const handleRemoveWorkspace = async (userId: string, workspaceName: string) => {
     try {
-      // Use Edge Function to securely remove workspace access
-      await removeWorkspaceAccess(userId, workspaceName);
+      // Remove workspace access directly from database
+      const { error } = await supabase
+        .from('user_workspace_access')
+        .delete()
+        .eq('user_id', userId)
+        .eq('workspace_name', workspaceName);
+
+      if (error) throw error;
 
       toast({
         title: "Workspace removed",

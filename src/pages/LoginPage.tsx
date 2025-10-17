@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,6 @@ import { FcGoogle } from "react-icons/fc";
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { toast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,38 +31,23 @@ const LoginPage = () => {
 
       if (data.user) {
         // Check if user is admin
-        const { data: adminCheck, error: adminError } = await supabase
+        const { data: adminCheck } = await supabase
           .from('user_workspace_access')
           .select('role')
           .eq('user_id', data.user.id)
           .eq('role', 'admin')
-          .maybeSingle();
-
-        // Log for debugging
-        console.log('[LoginPage] Admin check result:', { adminCheck, adminError });
-
-        const isAdmin = !!adminCheck && !adminError;
+          .single();
 
         toast({
           title: "Welcome back!",
           description: "Successfully logged in",
         });
 
-        // Get the intended destination from location state (where user was trying to go)
-        const from = (location.state as any)?.from?.pathname;
-
-        // Redirect logic:
-        // 1. If there's a previous location they were trying to access, go there
-        // 2. Otherwise, redirect based on role (admin -> /admin, client -> /client-portal)
-        if (from && from !== "/login") {
-          console.log('[LoginPage] Redirecting to previous location:', from);
-          navigate(from, { replace: true });
-        } else if (isAdmin) {
-          console.log('[LoginPage] Redirecting admin to /admin');
-          navigate("/admin", { replace: true });
+        // Redirect based on role
+        if (adminCheck) {
+          navigate("/admin");
         } else {
-          console.log('[LoginPage] Redirecting client to /client-portal');
-          navigate("/client-portal", { replace: true });
+          navigate("/client-portal");
         }
       }
     } catch (error: any) {
@@ -109,16 +93,10 @@ const LoginPage = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      // Store intended destination in sessionStorage for OAuth callback
-      const from = (location.state as any)?.from?.pathname;
-      if (from && from !== "/login") {
-        sessionStorage.setItem('auth_redirect', from);
-      }
-
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/client-portal`,
         }
       });
 

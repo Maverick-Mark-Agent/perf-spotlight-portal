@@ -66,24 +66,14 @@ const UserManagement = () => {
     try {
       setLoading(true);
 
-      console.log('[UserManagement] Fetching users...');
-
       // Use Edge Function to securely fetch all users (requires admin role)
       const usersData = await listUsers();
-
-      console.log('[UserManagement] Users fetched successfully:', usersData.length);
       setUsers(usersData);
     } catch (error: any) {
-      console.error("[UserManagement] Error fetching users:", error);
-      console.error("[UserManagement] Error details:", {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      });
-
+      console.error("Error fetching users:", error);
       toast({
         title: "Error loading users",
-        description: error.message || "Failed to fetch users. Check console for details.",
+        description: error.message,
         variant: "destructive",
       });
     } finally {

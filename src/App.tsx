@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { DashboardProvider } from "@/contexts/DashboardContext";
-import { AuthProvider } from "@/contexts/AuthContext";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminProtectedRoute } from "@/components/auth/AdminProtectedRoute";
@@ -42,13 +41,12 @@ const queryClient = new QueryClient();
 const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <DashboardProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Routes>
+      <DashboardProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
               {/* ========================================= */}
               {/* PUBLIC ROUTES (No authentication needed) */}
               {/* ========================================= */}
@@ -229,11 +227,10 @@ const App = () => (
 
               {/* 404 - Catch all unknown routes */}
               <Route path="*" element={<NotFoundPage />} />
-              </Routes>
-            </BrowserRouter>
-          </TooltipProvider>
-        </DashboardProvider>
-      </AuthProvider>
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </DashboardProvider>
     </QueryClientProvider>
   </ErrorBoundary>
 );

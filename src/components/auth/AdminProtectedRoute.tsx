@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
@@ -12,16 +13,86 @@ interface AdminProtectedRouteProps {
  * AdminProtectedRoute component that checks if user is authenticated AND has admin role.
  * Redirects to login if not authenticated, shows access denied if not admin.
  *
- * Uses centralized AuthContext to avoid duplicate auth checks and infinite loading.
- *
  * Usage:
  * <AdminProtectedRoute>
  *   <AdminDashboard />
  * </AdminProtectedRoute>
  */
 export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
-  const { user, isAdmin, loading, signOut } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const location = useLocation();
+
+  useEffect(() => {
+    checkAuthAndAdmin();
+
+    // Listen for auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session) {
+          await checkAdminRole(session.user.id);
+        } else {
+          setAuthenticated(false);
+          setIsAdmin(false);
+        }
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const checkAuthAndAdmin = async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error) throw error;
+
+      if (session) {
+        setAuthenticated(true);
+        await checkAdminRole(session.user.id);
+      } else {
+        setAuthenticated(false);
+        setIsAdmin(false);
+      }
+    } catch (error) {
+      console.error("Auth check error:", error);
+      setAuthenticated(false);
+      setIsAdmin(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkAdminRole = async (userId: string) => {
+    try {
+      // TEMPORARY: Hardcode Tommy as admin
+      if (userId === '09322929-6078-4b08-bd55-e3e1ff773028') {
+        console.log('[AdminProtectedRoute] Hardcoded admin for Tommy');
+        setIsAdmin(true);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('user_workspace_access')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', 'admin')
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+        console.error("Error checking admin role:", error);
+      }
+
+      setIsAdmin(!!data);
+    } catch (error) {
+      console.error("Admin check error:", error);
+      setIsAdmin(false);
+    }
+  };
 
   // Show loading spinner while checking authentication
   if (loading) {
@@ -36,7 +107,7 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
   }
 
   // If not authenticated, redirect to login
-  if (!user) {
+  if (!authenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -64,7 +135,7 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
             <Button
               variant="default"
               onClick={async () => {
-                await signOut();
+                await supabase.auth.signOut();
                 window.location.href = "/login";
               }}
             >
@@ -82,9 +153,44 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
 
 /**
  * Hook to check if current user is admin
- * Uses centralized AuthContext to avoid duplicate admin checks
  */
 export const useIsAdmin = () => {
-  const { isAdmin, loading } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    checkAdmin();
+  }, []);
+
+  const checkAdmin = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        setIsAdmin(false);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('user_workspace_access')
+        .select('role')
+        .eq('user_id', session.user.id)
+        .eq('role', 'admin')
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error("Error checking admin role:", error);
+      }
+
+      setIsAdmin(!!data);
+    } catch (error) {
+      console.error("Admin check error:", error);
+      setIsAdmin(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return { isAdmin, loading };
 };

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Users, TrendingUp, MapPin, ArrowLeft, PieChart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/components/auth/ProtectedRoute";
 import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 
 interface Workspace {
@@ -60,7 +60,7 @@ export default function ClientPortalHub() {
     }
   }, [searchTerm, workspaces]);
 
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const { getUserWorkspaces } = useSecureWorkspaceData();
 
   const fetchWorkspaces = async () => {
@@ -187,7 +187,7 @@ export default function ClientPortalHub() {
       <div className="container mx-auto px-4 py-8">
         {/* Back Button */}
         <div className="mb-6">
-          <Link to={isAdmin ? "/admin" : "/"}>
+          <Link to="/">
             <Button variant="ghost" className="text-white hover:bg-white/10">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Dashboard

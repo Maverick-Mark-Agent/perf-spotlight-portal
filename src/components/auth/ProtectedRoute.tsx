@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requireAuth?: boolean;
+  requireAuth?: boolean; // If false, allows both authenticated and unauthenticated access
 }
 
 /**
- * ProtectedRoute component that checks authentication status using AuthContext
+ * ProtectedRoute component that checks authentication status
  * and redirects to login if user is not authenticated.
  *
  * Usage:
@@ -22,8 +21,40 @@ export const ProtectedRoute = ({
   children,
   requireAuth = true
 }: ProtectedRouteProps) => {
-  const { user, loading } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
   const location = useLocation();
+
+  useEffect(() => {
+    checkAuth();
+
+    // Listen for auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setAuthenticated(!!session);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const checkAuth = async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+
+      if (error) throw error;
+
+      setAuthenticated(!!session);
+    } catch (error) {
+      console.error("Auth check error:", error);
+      setAuthenticated(false);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Show loading spinner while checking authentication
   if (loading) {
@@ -31,19 +62,48 @@ export const ProtectedRoute = ({
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 text-purple-400 animate-spin mx-auto mb-4" />
-          <p className="text-white/70">Loading...</p>
+          <p className="text-white/70">Checking authentication...</p>
         </div>
       </div>
     );
   }
 
   // If auth is required but user is not authenticated, redirect to login
-  if (requireAuth && !user) {
+  if (requireAuth && !authenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // User is authenticated or auth is not required, render children
+  // If auth is NOT required (public route), render children
+  // If authenticated, render children
   return <>{children}</>;
+};
+
+/**
+ * Hook to get current user and authentication state
+ */
+export const useAuth = () => {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return { user, loading };
 };
 
 /**
@@ -68,8 +128,9 @@ export const useUserWorkspaces = () => {
     try {
       setLoading(true);
 
+      // Call the PostgreSQL function we created
       const { data, error } = await supabase.rpc('get_user_workspaces', {
-        p_user_id: user!.id
+        p_user_id: user.id
       });
 
       if (error) throw error;

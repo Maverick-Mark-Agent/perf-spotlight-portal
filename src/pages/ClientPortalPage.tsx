@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ClientKPIStats } from "@/components/dashboard/ClientKPIStats";
 import { LeadDetailModal } from "@/components/client-portal/LeadDetailModal";
 import { PremiumInputDialog } from "@/components/client-portal/PremiumInputDialog";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/components/auth/ProtectedRoute";
 import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 import {
   Select,
@@ -384,7 +384,7 @@ const ClientPortalPage = () => {
     fetchWorkspaces();
   }, [workspace]);
 
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const { listWorkspaces } = useSecureWorkspaceData();
 
   const fetchWorkspaces = async () => {
@@ -680,7 +680,7 @@ const ClientPortalPage = () => {
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-4 mb-6">
-          <Link to="/client-portal">
+          <Link to="/client-portal-hub">
             <Button variant="ghost" className="text-white hover:bg-white/10">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Client Portal Hub

@@ -28,8 +28,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, UserPlus, Shield, User, Trash2, Plus } from "lucide-react";
+import { Loader2, UserPlus, Shield, User, Trash2, Plus, Mail } from "lucide-react";
 
 interface User {
   id: string;
@@ -55,6 +56,14 @@ const UserManagement = () => {
   const [newWorkspace, setNewWorkspace] = useState("");
   const [newRole, setNewRole] = useState<"client" | "admin">("client");
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Invite user dialog state
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePassword, setInvitePassword] = useState("123456");
+  const [inviteWorkspaces, setInviteWorkspaces] = useState<string[]>([]);
+  const [inviteRole, setInviteRole] = useState<"client" | "admin">("client");
+  const [inviteLoading, setInviteLoading] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -205,11 +214,139 @@ const UserManagement = () => {
   };
 
   const handleInviteUser = async () => {
-    // TODO: Implement user invitation
-    toast({
-      title: "Coming soon",
-      description: "User invitation feature will be available soon",
-    });
+    // Validate email
+    if (!inviteEmail || !inviteEmail.includes('@')) {
+      toast({
+        title: "Invalid email",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate password
+    if (!invitePassword || invitePassword.length < 6) {
+      toast({
+        title: "Invalid password",
+        description: "Password must be at least 6 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate workspace selection for client role
+    if (inviteRole === "client" && inviteWorkspaces.length === 0) {
+      toast({
+        title: "No workspace selected",
+        description: "Please select at least one workspace for client users",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setInviteLoading(true);
+
+      console.log("Creating user:", inviteEmail);
+
+      // Create user in Supabase Auth (email confirmation is now disabled in settings)
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: inviteEmail,
+        password: invitePassword,
+        options: {
+          emailRedirectTo: window.location.origin,
+        }
+      });
+
+      console.log("SignUp response:", { authData, authError });
+
+      if (authError) {
+        console.error("Auth error:", authError);
+        throw authError;
+      }
+
+      if (!authData.user) {
+        throw new Error("User creation failed - no user returned");
+      }
+
+      const userId = authData.user.id;
+      console.log("User created successfully, ID:", userId);
+
+      // Add workspace access
+      const workspacesToAdd = inviteRole === "admin" ? ["admin"] : inviteWorkspaces;
+
+      const workspaceInserts = workspacesToAdd.map(workspace => ({
+        user_id: userId,
+        workspace_name: workspace,
+        role: inviteRole,
+      }));
+
+      const { error: workspaceError } = await supabase
+        .from('user_workspace_access')
+        .insert(workspaceInserts);
+
+      if (workspaceError) {
+        console.error("Workspace assignment error:", workspaceError);
+
+        // Check if it's a duplicate key error (user already has this workspace)
+        if (workspaceError.code === '23505') {
+          // Duplicate workspace assignment - this is okay, user already has access
+          toast({
+            title: "User created successfully",
+            description: `${inviteEmail} can now login with password: ${invitePassword}. Workspace was already assigned.`,
+          });
+        } else {
+          // Different error - warn the user
+          toast({
+            title: "User created, but workspace assignment failed",
+            description: "Please manually assign workspace access from the user list",
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "User created successfully",
+          description: `${inviteEmail} can now login with password: ${invitePassword}`,
+        });
+      }
+
+      // Refresh user list and close dialog
+      fetchUsers();
+      handleCloseInviteDialog();
+
+    } catch (error: any) {
+      console.error("Error creating user:", error);
+
+      let errorMessage = error.message;
+      if (error.message?.includes('already registered') || error.message?.includes('already exists') || error.message?.includes('User already registered')) {
+        errorMessage = "A user with this email already exists";
+      }
+
+      toast({
+        title: "Failed to create user",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleCloseInviteDialog = () => {
+    setShowInviteDialog(false);
+    setInviteEmail("");
+    setInvitePassword("123456");
+    setInviteWorkspaces([]);
+    setInviteRole("client");
+    setInviteLoading(false);
+  };
+
+  const toggleWorkspace = (workspaceName: string) => {
+    setInviteWorkspaces(prev =>
+      prev.includes(workspaceName)
+        ? prev.filter(w => w !== workspaceName)
+        : [...prev, workspaceName]
+    );
   };
 
   if (loading) {
@@ -230,7 +367,7 @@ const UserManagement = () => {
               Manage user access to client portals and admin dashboard
             </p>
           </div>
-          <Button onClick={handleInviteUser}>
+          <Button onClick={() => setShowInviteDialog(true)}>
             <UserPlus className="w-4 h-4 mr-2" />
             Invite User
           </Button>
@@ -401,6 +538,154 @@ const UserManagement = () => {
                 </>
               ) : (
                 'Add Access'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite User Dialog */}
+      <Dialog open={showInviteDialog} onOpenChange={handleCloseInviteDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Invite New User</DialogTitle>
+            <DialogDescription>
+              Create a new user account and assign workspace access immediately
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Email Input */}
+            <div className="space-y-2">
+              <Label htmlFor="invite-email">Email Address</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="user@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="pl-10"
+                  disabled={inviteLoading}
+                />
+              </div>
+            </div>
+
+            {/* Password Input */}
+            <div className="space-y-2">
+              <Label htmlFor="invite-password">Password</Label>
+              <Input
+                id="invite-password"
+                type="text"
+                placeholder="Enter a simple password"
+                value={invitePassword}
+                onChange={(e) => setInvitePassword(e.target.value)}
+                disabled={inviteLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Default is "123456". You can change it to something else if needed (minimum 6 characters).
+              </p>
+            </div>
+
+            {/* Role Selection */}
+            <div className="space-y-2">
+              <Label htmlFor="invite-role">Role</Label>
+              <Select value={inviteRole} onValueChange={(val) => setInviteRole(val as "client" | "admin")}>
+                <SelectTrigger id="invite-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="client">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      Client - Access to selected workspaces only
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-4 h-4" />
+                      Admin - Full access to all workspaces
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Workspace Selection (only for client role) */}
+            {inviteRole === "admin" ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">Admin Access</p>
+                    <p className="text-sm text-blue-700 mt-1">
+                      This user will have full access to all workspaces and the admin dashboard.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Select Workspaces</Label>
+                <div className="border rounded-lg p-4 max-h-60 overflow-y-auto space-y-2">
+                  {workspaces.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No workspaces available</p>
+                  ) : (
+                    workspaces.map((ws) => (
+                      <div key={ws.workspace_name} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`ws-${ws.workspace_name}`}
+                          checked={inviteWorkspaces.includes(ws.workspace_name)}
+                          onCheckedChange={() => toggleWorkspace(ws.workspace_name)}
+                          disabled={inviteLoading}
+                        />
+                        <label
+                          htmlFor={`ws-${ws.workspace_name}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {ws.workspace_name}
+                        </label>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Select one or more workspaces. You can select multiple by checking multiple boxes.
+                </p>
+                {inviteWorkspaces.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {inviteWorkspaces.map(ws => (
+                      <Badge key={ws} variant="secondary">{ws}</Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCloseInviteDialog}
+              disabled={inviteLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleInviteUser}
+              disabled={inviteLoading || !inviteEmail || !invitePassword}
+            >
+              {inviteLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating User...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Create User
+                </>
               )}
             </Button>
           </DialogFooter>

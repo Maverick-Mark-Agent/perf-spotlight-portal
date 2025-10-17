@@ -65,35 +65,42 @@ const UserManagement = () => {
     try {
       setLoading(true);
 
-      // Get all workspace access entries
+      // Get all users from user_profiles (this has all 38 users)
+      const { data: profiles, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('id, email, full_name, created_at')
+        .order('created_at', { ascending: false });
+
+      if (profileError) throw profileError;
+
+      // Get workspace access for all users
       const { data: accessData, error: accessError } = await supabase
         .from('user_workspace_access')
-        .select('user_id, workspace_name, role, created_at')
-        .order('created_at', { ascending: false });
+        .select('user_id, workspace_name, role');
 
       if (accessError) throw accessError;
 
-      // Group by user_id
-      const usersMap = new Map<string, User>();
-
+      // Create a map of user_id to workspace access
+      const accessMap = new Map<string, Array<{ workspace_name: string; role: string }>>();
       for (const access of accessData || []) {
-        if (!usersMap.has(access.user_id)) {
-          usersMap.set(access.user_id, {
-            id: access.user_id,
-            email: `User ${access.user_id.substring(0, 8)}...`,
-            created_at: access.created_at,
-            workspaces: [],
-          });
+        if (!accessMap.has(access.user_id)) {
+          accessMap.set(access.user_id, []);
         }
-
-        const user = usersMap.get(access.user_id)!;
-        user.workspaces.push({
+        accessMap.get(access.user_id)!.push({
           workspace_name: access.workspace_name,
           role: access.role,
         });
       }
 
-      setUsers(Array.from(usersMap.values()));
+      // Combine profiles with their workspace access
+      const users: User[] = (profiles || []).map((profile) => ({
+        id: profile.id,
+        email: profile.email || profile.full_name || `User ${profile.id.substring(0, 8)}...`,
+        created_at: profile.created_at,
+        workspaces: accessMap.get(profile.id) || [],
+      }));
+
+      setUsers(users);
     } catch (error: any) {
       console.error("Error fetching users:", error);
       toast({

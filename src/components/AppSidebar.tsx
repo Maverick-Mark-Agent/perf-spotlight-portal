@@ -14,6 +14,7 @@ import {
   CreditCard,
   Activity,
   UserCog,
+  LogOut,
 } from "lucide-react";
 import {
   Sidebar,
@@ -29,6 +30,8 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Navigation items organized by category
 const navigationItems = {
@@ -36,7 +39,7 @@ const navigationItems = {
     {
       title: "Home",
       icon: Home,
-      url: "/",
+      url: "/admin",
     },
   ],
   analytics: [
@@ -96,13 +99,23 @@ const navigationItems = {
 
 export function AppSidebar() {
   const location = useLocation();
+  const { user, signOut } = useAuth();
 
   // Check if current route is active
   const isActive = (url: string) => {
-    if (url === "/") {
-      return location.pathname === "/";
+    if (url === "/admin") {
+      return location.pathname === "/admin" || location.pathname === "/";
     }
     return location.pathname.startsWith(url);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      window.location.href = "/login";
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
   };
 
   return (
@@ -221,6 +234,7 @@ export function AppSidebar() {
 
       {/* Footer */}
       <SidebarFooter className="border-t border-border">
+        {/* Live Data Status */}
         <div className="flex items-center gap-2 px-2 py-2 group-data-[collapsible=icon]:justify-center">
           <div className="flex h-2 w-2 items-center justify-center">
             <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
@@ -228,6 +242,34 @@ export function AppSidebar() {
           <span className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
             Live Data
           </span>
+        </div>
+
+        {/* User Info & Logout */}
+        <div className="px-2 pb-2">
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-muted/50 p-2 group-data-[collapsible=icon]:justify-center">
+            <div className="flex items-center gap-2 min-w-0 group-data-[collapsible=icon]:hidden">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 flex-shrink-0">
+                <UserCog className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-medium truncate">
+                  {user?.email?.split('@')[0] || 'Admin'}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  Admin
+                </span>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+              title="Logout"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </SidebarFooter>
     </Sidebar>

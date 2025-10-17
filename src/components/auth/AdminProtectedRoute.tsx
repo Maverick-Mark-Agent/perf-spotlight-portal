@@ -81,9 +81,9 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
         .select('role')
         .eq('user_id', userId)
         .eq('role', 'admin')
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+      if (error) {
         console.error("Error checking admin role:", error);
       }
 
@@ -177,9 +177,9 @@ export const useIsAdmin = () => {
         .select('role')
         .eq('user_id', session.user.id)
         .eq('role', 'admin')
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error("Error checking admin role:", error);
       }
 

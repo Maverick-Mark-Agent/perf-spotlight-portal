@@ -48,15 +48,21 @@ serve(async (req) => {
     }
 
     // 2. Verify user is an admin
-    const { data: adminCheck, error: adminError } = await supabaseAuth
-      .from('user_workspace_access')
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('role', 'admin')
-      .single()
+    // TEMPORARY: Hardcode Tommy as admin
+    if (user.id === '09322929-6078-4b08-bd55-e3e1ff773028') {
+      console.log('[manage-users] Hardcoded admin for Tommy');
+      // Skip database check, proceed as admin
+    } else {
+      const { data: adminCheck, error: adminError } = await supabaseAuth
+        .from('user_workspace_access')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin')
+        .maybeSingle()
 
-    if (adminError || !adminCheck) {
-      throw new Error('Forbidden: Admin access required')
+      if (adminError || !adminCheck) {
+        throw new Error('Forbidden: Admin access required')
+      }
     }
 
     // 3. Parse request

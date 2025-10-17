@@ -36,7 +36,7 @@ const LoginPage = () => {
           .select('role')
           .eq('user_id', data.user.id)
           .eq('role', 'admin')
-          .single();
+          .maybeSingle();
 
         toast({
           title: "Welcome back!",

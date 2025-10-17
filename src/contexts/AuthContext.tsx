@@ -82,27 +82,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       console.log('[AuthContext] Checking admin role for user:', userId);
 
-      // Add timeout to prevent infinite hanging
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Admin check timeout')), 5000)
-      );
-
-      const queryPromise = supabase
+      const { data, error } = await supabase
         .from('user_workspace_access')
         .select('role')
         .eq('user_id', userId)
         .eq('role', 'admin')
         .maybeSingle();
 
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
-
       console.log('[AuthContext] Admin check result:', { data, error });
 
       if (error && error.code !== 'PGRST116') {
         console.error('[AuthContext] Admin check error:', error);
-        // Don't throw - just set to false and continue
-        setIsAdmin(false);
-        return;
       }
 
       const adminStatus = !!data;

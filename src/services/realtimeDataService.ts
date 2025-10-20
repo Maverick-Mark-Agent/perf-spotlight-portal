@@ -332,6 +332,7 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
   const startTime = Date.now();
 
   try {
+    console.log('🚀🚀🚀 [REALTIME SERVICE] fetchInfrastructureDataRealtime() called!');
     console.log('[Infrastructure Realtime] Fetching from sender_emails_cache...');
 
     // Get total count of accounts first (to bypass Supabase's 1000-row default limit)
@@ -347,7 +348,7 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
       .from('sender_emails_cache')
       .select('*')
       .order('last_synced_at', { ascending: false })
-      .limit(totalCount || 10000); // Fetch ALL accounts, not just first 1000
+      .limit(totalCount || 50000); // Fetch ALL accounts, increased from 10k to 50k for safety
 
     if (error) {
       console.error('[Infrastructure Realtime] Database error:', error);
@@ -379,6 +380,8 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     // Transform database rows to EmailAccount interface
     const transformedData = accounts.map(row => transformToEmailAccount(row));
 
+    console.log(`🔧🔧🔧 [DEDUPLICATION] Starting with ${transformedData.length} raw accounts`);
+
     // CRITICAL FIX: Deduplicate by (email_address + workspace_name) instead of just email_address
     // The Edge Function deduplicates GLOBALLY, but that's WRONG for our use case!
     // The same email can legitimately belong to different clients (workspaces)
@@ -398,8 +401,8 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     }
 
     const duplicateCount = transformedData.length - deduplicatedData.length;
-    console.log(`[Infrastructure Realtime] Deduplication: Removed ${duplicateCount} duplicates (same email+workspace, different instance)`);
-    console.log(`[Infrastructure Realtime] Total accounts after deduplication: ${deduplicatedData.length}`);
+    console.log(`✅✅✅ [DEDUPLICATION COMPLETE] Removed ${duplicateCount} duplicates (same email+workspace, different instance)`);
+    console.log(`✅✅✅ [FINAL COUNT] ${deduplicatedData.length} unique accounts`);
 
     // Validate deduplicated data
     const validation = validateEmailAccounts(deduplicatedData);

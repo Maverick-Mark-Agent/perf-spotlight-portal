@@ -512,13 +512,13 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   const fetchInfrastructureDataInternal = useCallback(async (force: boolean = false) => {
     try {
-      // Check if we have recent data (< 10 minutes old) and skip refresh
+      // Check if we have recent data (< 5 minutes old) and skip refresh
       const now = Date.now();
       const lastUpdate = infrastructureDashboard.lastUpdated?.getTime() || 0;
       const age = now - lastUpdate;
-      const TEN_MINUTES = 10 * 60 * 1000;
+      const FIVE_MINUTES = 5 * 60 * 1000;
 
-      if (!force && age < TEN_MINUTES && infrastructureDashboard.emailAccounts.length > 0) {
+      if (!force && age < FIVE_MINUTES && infrastructureDashboard.emailAccounts.length > 0) {
         console.log(`[Infrastructure] Skipping fetch - data is only ${Math.round(age / 1000 / 60)} minutes old`);
         return; // Use existing cached data
       }

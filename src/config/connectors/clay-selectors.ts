@@ -6,7 +6,7 @@ export const claySelectors = {
     successIndicator: ".workspace-nav, .folder-tree"
   },
   navigation: {
-    folderLinkTemplate: "a:has-text(\"{name}\")",
+    folderLink: "a:has-text(\"{name}\")",
     newButton: "button:has-text(\"New\")",
     newFolderOption: "[role=\"menuitem\"]:has-text(\"Folder\")",
     newWorkbookOption: "[role=\"menuitem\"]:has-text(\"Workbook\")"
@@ -52,6 +52,6 @@ export const claySelectors = {
 
 // Helper functions for dynamic selectors
 export const clayDynamicSelectors = {
-  folderLink: (name: string) => claySelectors.navigation.folderLinkTemplate.replace('{name}', name),
-  columnHeader: (name: string) => claySelectors.formulas.columnHeaderTemplate.replace('{name}', name)
+  folderLink: (name: string) => `a:has-text("${name}")`,
+  columnHeader: (name: string) => `th:has-text("${name}")`
 };

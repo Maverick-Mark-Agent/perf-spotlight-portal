@@ -73,14 +73,14 @@ export const RevenueClientSchema = z.object({
   monthly_kpi: z.number().nonnegative(),
   kpi_progress: z.number(),
   leads_remaining: z.number().int().nonnegative(),
-  // Email Performance Metrics
-  emails_sent_mtd: z.number().int().nonnegative(),
-  replies_mtd: z.number().int().nonnegative(),
-  interested_mtd: z.number().int().nonnegative(),
-  bounces_mtd: z.number().int().nonnegative(),
-  unsubscribes_mtd: z.number().int().nonnegative(),
-  reply_rate: z.number(),
-  interested_rate: z.number(),
+  // Email Performance Metrics (optional - may not be available for all clients)
+  emails_sent_mtd: z.number().int().nonnegative().optional(),
+  replies_mtd: z.number().int().nonnegative().optional(),
+  interested_mtd: z.number().int().nonnegative().optional(),
+  bounces_mtd: z.number().int().nonnegative().optional(),
+  unsubscribes_mtd: z.number().int().nonnegative().optional(),
+  reply_rate: z.number().optional(),
+  interested_rate: z.number().optional(),
   rank: z.number().int().positive().optional(),
 });
 

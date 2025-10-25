@@ -73,7 +73,7 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
       console.log('[KPI Realtime] Fetching most recent MTD data...');
 
       // Get the most recent metric_date
-      const { data: recentDate } = await supabase
+      const { data: recentDateData } = await supabase
         .from('client_metrics')
         .select('metric_date')
         .eq('metric_type', 'mtd')
@@ -81,8 +81,10 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
         .limit(1)
         .single();
 
+      const recentDate = (recentDateData as any)?.metric_date;
+
       if (recentDate) {
-        console.log('[KPI Realtime] Using most recent date:', recentDate.metric_date);
+        console.log('[KPI Realtime] Using most recent date:', recentDate);
 
         // Query again with the most recent date
         const fallbackQuery = await supabase
@@ -99,7 +101,7 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
             )
           `)
           .eq('metric_type', 'mtd')
-          .eq('metric_date', recentDate.metric_date)
+          .eq('metric_date', recentDate)
           .eq('client_registry.is_active', true)
           .order('positive_replies_mtd', { ascending: false });
 
@@ -218,7 +220,7 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
       console.log('[Volume Realtime] Fetching most recent MTD data...');
 
       // Get the most recent metric_date
-      const { data: recentDate } = await supabase
+      const { data: recentDateData } = await supabase
         .from('client_metrics')
         .select('metric_date')
         .eq('metric_type', 'mtd')
@@ -226,8 +228,10 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
         .limit(1)
         .single();
 
+      const recentDate = (recentDateData as any)?.metric_date;
+
       if (recentDate) {
-        console.log('[Volume Realtime] Using most recent date:', recentDate.metric_date);
+        console.log('[Volume Realtime] Using most recent date:', recentDate);
 
         // Query again with the most recent date
         const fallbackQuery = await supabase
@@ -243,7 +247,7 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
             )
           `)
           .eq('metric_type', 'mtd')
-          .eq('metric_date', recentDate.metric_date)
+          .eq('metric_date', recentDate)
           .eq('client_registry.is_active', true)
           .order('emails_sent_mtd', { ascending: false});
 
@@ -368,7 +372,7 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     }
 
     // Check data freshness (last_synced_at from polling job)
-    const mostRecentSync = new Date(accounts[0].last_synced_at);
+    const mostRecentSync = new Date((accounts as any[])[0].last_synced_at);
     const ageMinutes = (Date.now() - mostRecentSync.getTime()) / 1000 / 60;
     const ageHours = ageMinutes / 60;
 
@@ -531,24 +535,28 @@ export async function checkSystemHealth(): Promise<{
 }> {
   try {
     // Check email account sync status (email_account_metadata)
-    const { data: latestEmail } = await supabase
+    const { data: latestEmailData } = await supabase
       .from('email_account_metadata')
       .select('updated_at')
       .order('updated_at', { ascending: false })
       .limit(1)
       .single();
 
+    const latestEmail = latestEmailData as any;
+
     const pollingAge = latestEmail
       ? (Date.now() - new Date(latestEmail.updated_at).getTime()) / 1000 / 60
       : 999;
 
     // Check webhook status (webhook_delivery_log)
-    const { data: latestWebhook } = await supabase
+    const { data: latestWebhookData } = await supabase
       .from('webhook_delivery_log')
       .select('created_at')
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
+
+    const latestWebhook = latestWebhookData as any;
 
     const webhookAge = latestWebhook
       ? (Date.now() - new Date(latestWebhook.created_at).getTime()) / 1000 / 60

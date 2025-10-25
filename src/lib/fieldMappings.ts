@@ -179,7 +179,7 @@ export function transformToEmailAccount(dbRow: any): any {
     email: dbRow.email_address, // For convenience
     workspace_name: dbRow.workspace_name, // For filtering
     status: dbRow.status, // For filtering
-    provider: dbRow.email_provider, // For filtering
+    provider: dbRow.email_provider || undefined, // Convert null to undefined for Zod validation
     fields: {
       'Email': dbRow.email_address,
       'Name': dbRow.account_name || '',

@@ -16,7 +16,13 @@ const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://gjqbbgrfhijescaou
 const SUPABASE_KEY = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqcWJiZ3JmaGlqZXNjYW91cWt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2MTc1MzAsImV4cCI6MjA3MzE5MzUzMH0.P1CMjUt2VA5Q6d8z82XbyWHAUVWqlluL--Zihs8TzC0';
 
 // Maverick Email Bison instance
-const MAVERICK_BISON_API_KEY = process.env.EMAIL_BISON_API_KEY || '77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d';
+const MAVERICK_BISON_API_KEY = process.env.EMAIL_BISON_API_KEY;
+
+if (!MAVERICK_BISON_API_KEY) {
+  console.error('❌ EMAIL_BISON_API_KEY environment variable is required');
+  process.exit(1);
+}
+
 const MAVERICK_BISON_BASE_URL = 'https://send.maverickmarketingllc.com/api';
 
 // Long Run Email Bison instance
@@ -44,7 +50,7 @@ async function fetchAllBisonWorkspaces(): Promise<BisonWorkspace[]> {
     {
       name: 'Maverick',
       baseUrl: MAVERICK_BISON_BASE_URL,
-      apiKey: MAVERICK_BISON_API_KEY,
+      apiKey: MAVERICK_BISON_API_KEY!,
     },
     {
       name: 'Long Run',

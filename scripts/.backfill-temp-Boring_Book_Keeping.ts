@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL = 'https://gjqbbgrfhijescaouqkx.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqcWJiZ3JmaGlqZXNjYW91cWt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2MTc1MzAsImV4cCI6MjA3MzE5MzUzMH0.P1CMjUt2VA5Q6d8z82XbyWHAUVWqlluL--Zihs8TzC0';
 
-const MAVERICK_API_KEY = '77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d';
+const MAVERICK_API_KEY = process.env.EMAIL_BISON_API_KEY;
 const MAVERICK_BASE_URL = 'https://send.maverickmarketingllc.com/api';
 
 const LONGRUN_API_KEY = '32|MiBV8URxMy8jnGZUq5SVBD5V0jaPbwKmtime9YXxca69e009';

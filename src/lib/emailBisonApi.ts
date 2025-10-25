@@ -4,7 +4,6 @@
  */
 
 const EMAIL_BISON_BASE_URL = 'https://send.maverickmarketingllc.com/api';
-const EMAIL_BISON_API_KEY = '77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d';
 
 export interface EmailBisonWorkspace {
   id: number;
@@ -92,7 +91,11 @@ class EmailBisonAPIClient {
 
   constructor(apiKey?: string) {
     this.baseUrl = EMAIL_BISON_BASE_URL;
-    this.apiKey = apiKey || EMAIL_BISON_API_KEY;
+    this.apiKey = apiKey || import.meta.env.VITE_EMAIL_BISON_API_KEY;
+
+    if (!this.apiKey) {
+      throw new Error('EMAIL_BISON_API_KEY environment variable is required');
+    }
   }
 
   private async makeRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

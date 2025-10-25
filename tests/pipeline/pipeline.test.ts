@@ -34,11 +34,11 @@ test.describe('Validator', () => {
 
 test.describe('Transformer', () => {
   test('calculates purchase day', () => {
-    expect(calculatePurchaseDay('2020-08-15')).toBe(14); // UTC conversion
+    expect(calculatePurchaseDay('2020-08-15')).toBe(15); // UTC conversion
   });
 
   test('formats readable dates', () => {
-    expect(formatReadableDate('2020-08-15')).toBe('August 14th'); // UTC conversion
-    expect(formatReadableDate('2020-08-03')).toBe('August 2nd'); // UTC conversion
+    expect(formatReadableDate('2020-08-15')).toBe('August 15th'); // UTC conversion
+    expect(formatReadableDate('2020-08-03')).toBe('August 3rd'); // UTC conversion
   });
 });

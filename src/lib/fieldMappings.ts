@@ -192,6 +192,7 @@ export function transformToEmailAccount(dbRow: any): any {
       'Interested Leads': dbRow.interested_leads_count || 0,
       'Tag - Email Provider': dbRow.email_provider || '',
       'Tag - Reseller': dbRow.reseller || '',
+      'Client': [dbRow.workspace_name], // CRITICAL: UI expects 'Client' field as array
       'Client Name (from Client)': [dbRow.workspace_name], // Array for compatibility
       'Daily Limit': dbRow.daily_limit || 0,
       'Domain': dbRow.domain || '',

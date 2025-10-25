@@ -29,7 +29,8 @@
     "test:clay-workflow": "tsx tests/connectors/clay-test.ts",
     "test:bison-login": "tsx tests/connectors/bison-test.ts",
     "test:bison-import": "tsx tests/connectors/bison-test.ts",
-    "test:pt1": "tsx tests/workflows/pt1-test.ts"
+    "test:pt1": "tsx tests/workflows/pt1-test.ts",
+    "test:realtime": "tsx tests/services/realtimeDataService-test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

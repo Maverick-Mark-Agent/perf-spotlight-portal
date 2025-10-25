@@ -15,6 +15,7 @@
     "types:generate": "supabase gen types typescript --local > src/types/supabase.ts",
     "test:connectors": "playwright test tests/connectors",
     "test:pipeline": "tsx tests/pipeline/pipeline-test.ts",
+    "test:context": "playwright test tests/contexts",
     "test:all": "playwright test",
     "workflow:monthly": "tsx src/workflows/monthly.ts",
     "workflow:weekly": "tsx src/workflows/weekly.ts",

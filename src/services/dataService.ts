@@ -35,7 +35,7 @@ const CACHE_TTL = {
   KPI: 2 * 60 * 1000,            // 2 minutes for high-priority KPI data
   VOLUME: 30 * 1000,             // 30 seconds for volume data (reduced for debugging)
   REVENUE: 10 * 1000,            // 10 seconds for revenue data (reduced for real-time updates)
-  INFRASTRUCTURE: 60 * 60 * 1000, // 60 minutes (1 hour) - prevents constant refreshing & data inconsistency
+  INFRASTRUCTURE: 10 * 60 * 1000, // 10 minutes - reduced from 60 for fresher data while preventing excessive refreshing
 } as const;
 
 const RETRY_CONFIG = {

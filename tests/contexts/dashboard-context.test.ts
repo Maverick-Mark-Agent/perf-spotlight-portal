@@ -8,7 +8,7 @@
  * - Data validation
  * - Error handling
  * 
- * Run with: npx playwright test tests/contexts/dashboard-context.test.tsx
+ * Run with: npx playwright test tests/contexts/dashboard-context.test.ts
  */
 
 import { test, expect } from '@playwright/test';
@@ -460,4 +460,4 @@ test.describe('DashboardContext - Business Logic', () => {
 });
 
 console.log('✅ DashboardContext unit tests suite created');
-console.log('📝 Run with: npx playwright test tests/contexts/dashboard-context.test.tsx');
+console.log('📝 Run with: npx playwright test tests/contexts/dashboard-context.test.ts');

@@ -1,15 +1,13 @@
 import { useState, useEffect } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
-import { DndContext, DragEndEvent, DragOverEvent, closestCenter, closestCorners, PointerSensor, useSensor, useSensors, DragOverlay, useDroppable, useDraggable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
+import { DndContext, DragEndEvent, DragOverEvent, closestCorners, PointerSensor, useSensor, useSensors, useDroppable, useDraggable } from "@dnd-kit/core";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Search, Calendar, ExternalLink, ChevronDown, Star, RefreshCw } from "lucide-react";
+import { ArrowLeft, Search, Calendar, ExternalLink, RefreshCw } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ClientKPIStats } from "@/components/dashboard/ClientKPIStats";
 import { LeadDetailModal } from "@/components/client-portal/LeadDetailModal";
 import { PremiumInputDialog } from "@/components/client-portal/PremiumInputDialog";
@@ -254,6 +252,7 @@ const DroppableColumn = ({ stage, leads, onToggleInterested, onLeadClick, format
 const ClientPortalPage = () => {
   const { workspace } = useParams<{ workspace: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [leads, setLeads] = useState<ClientLead[]>([]);
   const [workspaces, setWorkspaces] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -385,16 +384,56 @@ const ClientPortalPage = () => {
   }, [workspace]);
 
   const { user } = useAuth();
-  const { listWorkspaces } = useSecureWorkspaceData();
+  const { getUserWorkspaces } = useSecureWorkspaceData();
 
   const fetchWorkspaces = async () => {
     try {
-      // Use secure Edge Function if authenticated, otherwise fallback
-      let workspaceData: any[] = [];
+      // First check if workspaces were passed via navigation state from ClientPortalHub
+      const navigationState = location.state as { availableWorkspaces?: string[], isAdmin?: boolean } | null;
 
-      if (user) {
-        // AUTHENTICATED: Use secure API
-        workspaceData = await listWorkspaces();
+      if (navigationState?.availableWorkspaces) {
+        setWorkspaces(navigationState.availableWorkspaces);
+        return;
+      }
+
+      // Fallback: Check if we have a valid session (for direct navigation)
+      const { data: { session } } = await supabase.auth.getSession();
+
+      let workspaceNames: string[];
+
+      if (session?.user) {
+        // AUTHENTICATED: Check if user is admin
+
+        // Check if user is admin
+        const { data: adminCheck } = await (supabase as any)
+          .from('user_workspace_access')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .eq('role', 'admin')
+          .maybeSingle();
+
+        const isAdmin = !!adminCheck || session.user.id === '09322929-6078-4b08-bd55-e3e1ff773028';
+
+        if (isAdmin) {
+          // ADMIN: Show ALL workspaces from client_registry
+
+          const { data: allWorkspaces, error: workspacesError } = await (supabase as any)
+            .from('client_registry')
+            .select('workspace_name')
+            .order('workspace_name');
+
+          if (workspacesError) {
+            console.error('[ClientPortalPage] Error fetching workspaces:', workspacesError);
+            throw workspacesError;
+          }
+
+          workspaceNames = (allWorkspaces || []).map((w: any) => w.workspace_name);
+        } else {
+          // REGULAR USER: Only show their assigned workspaces
+          const userWorkspacesData = await getUserWorkspaces();
+
+          workspaceNames = userWorkspacesData.map((w: any) => w.workspace_name);
+        }
       } else {
         // UNAUTHENTICATED: Direct call (for admin dashboard)
         const BISON_API_KEY = "77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d";
@@ -410,12 +449,11 @@ const ClientPortalPage = () => {
         if (!response.ok) throw new Error('Failed to fetch workspaces');
 
         const data = await response.json();
-        workspaceData = data.data;
+        const workspaceData = data.data;
+        workspaceNames = workspaceData
+          .map((w: any) => w.name)
+          .sort((a: string, b: string) => a.localeCompare(b));
       }
-
-      const workspaceNames = workspaceData
-        .map((w: any) => w.name)
-        .sort((a: string, b: string) => a.localeCompare(b));
 
       setWorkspaces(workspaceNames);
     } catch (error) {
@@ -424,7 +462,12 @@ const ClientPortalPage = () => {
   };
 
   const handleWorkspaceChange = (newWorkspace: string) => {
-    navigate(`/client-portal/${encodeURIComponent(newWorkspace)}`);
+    navigate(`/client-portal/${encodeURIComponent(newWorkspace)}`, {
+      state: {
+        availableWorkspaces: workspaces,
+        isAdmin: location.state?.isAdmin
+      }
+    });
   };
 
   const fetchLeads = async () => {

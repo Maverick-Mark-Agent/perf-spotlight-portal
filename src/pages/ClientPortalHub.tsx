@@ -173,7 +173,12 @@ export default function ClientPortalHub() {
   };
 
   const handleWorkspaceClick = (workspaceName: string) => {
-    navigate(`/client-portal/${encodeURIComponent(workspaceName)}`);
+    navigate(`/client-portal/${encodeURIComponent(workspaceName)}`, {
+      state: {
+        availableWorkspaces: workspaces.map(w => w.name),
+        isAdmin
+      }
+    });
   };
 
   return (

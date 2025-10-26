@@ -25,47 +25,37 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
   const location = useLocation();
 
   useEffect(() => {
-    checkAuthAndAdmin();
-
-    // Listen for auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+    let isMounted = true;
+    const check = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
         if (session) {
+          if (isMounted) setAuthenticated(true);
           await checkAdminRole(session.user.id);
         } else {
+          if (isMounted) {
+            setAuthenticated(false);
+            setIsAdmin(false);
+          }
+        }
+      } catch (error) {
+        console.error("Auth check error:", error);
+        if (isMounted) {
           setAuthenticated(false);
           setIsAdmin(false);
         }
-        setLoading(false);
+      } finally {
+        if (isMounted) setLoading(false);
       }
-    );
-
+    };
+    check();
     return () => {
-      authListener.subscription.unsubscribe();
+      isMounted = false;
     };
   }, []);
 
-  const checkAuthAndAdmin = async () => {
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-
-      if (error) throw error;
-
-      if (session) {
-        setAuthenticated(true);
-        await checkAdminRole(session.user.id);
-      } else {
-        setAuthenticated(false);
-        setIsAdmin(false);
-      }
-    } catch (error) {
-      console.error("Auth check error:", error);
-      setAuthenticated(false);
-      setIsAdmin(false);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // checkAuthAndAdmin removed, logic in useEffect
 
   const checkAdminRole = async (userId: string) => {
     try {
@@ -76,7 +66,7 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('user_workspace_access')
         .select('role')
         .eq('user_id', userId)
@@ -85,9 +75,10 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
 
       if (error) {
         console.error("Error checking admin role:", error);
+        setIsAdmin(false);
+      } else {
+        setIsAdmin(!!data);
       }
-
-      setIsAdmin(!!data);
     } catch (error) {
       console.error("Admin check error:", error);
       setIsAdmin(false);
@@ -172,7 +163,7 @@ export const useIsAdmin = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('user_workspace_access')
         .select('role')
         .eq('user_id', session.user.id)

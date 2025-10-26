@@ -55,7 +55,7 @@ export const VolumeClientSchema = z.object({
 
 /**
  * Revenue Client Data Schema (MTD-focused)
- * Validates data from revenue-billing-unified Edge Function
+ * Validates data from revenue-analytics Edge Function
  */
 export const RevenueClientSchema = z.object({
   workspace_name: z.string().min(1, "Workspace name is required"),
@@ -355,22 +355,21 @@ export function validate<T>(
 }
 
 /**
- * Log validation errors to console and optionally to Supabase
+ * Log validation errors to console
  */
 export function logValidationErrors(
   source: string,
-  errors: ValidationResult<any>['errors'],
-  logToSupabase: boolean = false
+  errors: ValidationResult<any>['errors']
 ): void {
   if (!errors || errors.length === 0) return;
 
-  console.error(`[Data Validation Error] Source: ${source}`);
-  errors.forEach(error => {
-    console.error(`  - Field: ${error.field}, Message: ${error.message}`);
+  console.group(`🔴 [Data Validation Error] Source: ${source}`);
+  console.error(`Total Errors: ${errors.length}`);
+  errors.forEach((error, index) => {
+    console.error(`\n  Error ${index + 1}:`);
+    console.error(`    Field: ${error.field || 'unknown'}`);
+    console.error(`    Message: ${error.message}`);
+    console.error(`    Value: ${error.value}`);
   });
-
-  // TODO: Phase 2 - Log to Supabase data_validation_errors table
-  if (logToSupabase) {
-    // Will be implemented in Phase 2
-  }
+  console.groupEnd();
 }

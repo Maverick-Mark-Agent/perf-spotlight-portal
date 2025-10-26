@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
 import {
   TrendingUp,
   Users,
@@ -24,6 +26,36 @@ import {
  * and clear calls-to-action for lead generation services.
  */
 const MarketingHomePage = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      setIsAuthenticated(true);
+      // Check if admin - simplified check
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+      if (profile && (profile as any).role === 'admin') {
+        setIsAdmin(true);
+      }
+    }
+  };
+
+  const getPortalLink = () => {
+    if (isAuthenticated) {
+      return isAdmin ? "/admin" : "/client-portal";
+    }
+    return "/login";
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header/Navigation */}
@@ -75,7 +107,7 @@ const MarketingHomePage = () => {
               powerful client portal.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/login">
+              <Link to={getPortalLink()}>
                 <Button size="lg" className="bg-[#5B8FF9] hover:bg-[#4A7FE8] text-white text-lg px-8 py-6">
                   Access Your Portal
                   <ArrowRight className="ml-2 h-5 w-5" />

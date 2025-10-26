@@ -36,7 +36,7 @@ const navigationItems = {
     {
       title: "Home",
       icon: Home,
-      url: "/",
+      url: "/admin",
     },
   ],
   analytics: [

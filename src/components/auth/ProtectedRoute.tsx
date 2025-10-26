@@ -26,11 +26,12 @@ export const ProtectedRoute = ({
   const location = useLocation();
 
   useEffect(() => {
+    // Initial check first
     checkAuth();
 
     // Listen for auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (_event, session) => {
         setAuthenticated(!!session);
         setLoading(false);
       }
@@ -45,11 +46,14 @@ export const ProtectedRoute = ({
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[ProtectedRoute] Session error:', error);
+        throw error;
+      }
 
       setAuthenticated(!!session);
     } catch (error) {
-      console.error("Auth check error:", error);
+      console.error("[ProtectedRoute] Auth check error:", error);
       setAuthenticated(false);
     } finally {
       setLoading(false);
@@ -129,7 +133,7 @@ export const useUserWorkspaces = () => {
       setLoading(true);
 
       // Call the PostgreSQL function we created
-      const { data, error } = await supabase.rpc('get_user_workspaces', {
+      const { data, error } = await (supabase as any).rpc('get_user_workspaces', {
         p_user_id: user.id
       });
 

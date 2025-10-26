@@ -394,7 +394,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       if (result.success && result.data) {
         setKPIDashboard(prev => ({
           ...prev,
-          clients: (result.data! as ClientData[]).filter(client => !!client.id),
+          clients: result.data!,
           lastUpdated: result.timestamp,
           loading: false,
           isUsingCache: result.cached,
@@ -407,7 +407,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
         // Handle error case - may still have stale data
         setKPIDashboard(prev => ({
           ...prev,
-          clients: (result.data ? (result.data as ClientData[]).filter(client => !!client.id) : prev.clients),
+          clients: result.data || prev.clients, // Keep old data if fetch failed
           lastUpdated: result.timestamp,
           loading: false,
           isUsingCache: result.cached,
@@ -466,7 +466,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
 
       if (result.success && result.data) {
         setVolumeDashboard({
-          clients: (result.data as VolumeClientData[]).filter(client => !!client.name),
+          clients: result.data,
           lastUpdated: result.timestamp,
           loading: false,
           isUsingCache: result.cached,
@@ -478,7 +478,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       } else {
         setVolumeDashboard(prev => ({
           ...prev,
-          clients: (result.data ? (result.data as VolumeClientData[]).filter(client => !!client.name) : prev.clients),
+          clients: result.data || prev.clients,
           lastUpdated: result.timestamp,
           loading: false,
           isUsingCache: result.cached,
@@ -512,15 +512,16 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   const fetchInfrastructureDataInternal = useCallback(async (force: boolean = false) => {
     try {
-      // Check if we have recent data (< 5 minutes old) and skip refresh
+      // FIXED: Removed confusing 10-minute cache that prevented users from seeing fresh data
+      // Database queries are fast (<2s), so we can fetch on every page load
+      // Only prevent rapid-fire spam clicking with 5-second cooldown
       const now = Date.now();
-      const lastUpdate = infrastructureDashboard.lastUpdated?.getTime() || 0;
-      const age = now - lastUpdate;
-      const FIVE_MINUTES = 5 * 60 * 1000;
+      const timeSinceLastFetch = now - lastRefreshTime;
+      const COOLDOWN_MS = 5000; // 5 seconds
 
-      if (!force && age < FIVE_MINUTES && infrastructureDashboard.emailAccounts.length > 0) {
-        console.log(`[Infrastructure] Skipping fetch - data is only ${Math.round(age / 1000 / 60)} minutes old`);
-        return; // Use existing cached data
+      if (!force && timeSinceLastFetch < COOLDOWN_MS) {
+        console.log(`[Infrastructure] Rate limited - please wait ${Math.ceil((COOLDOWN_MS - timeSinceLastFetch) / 1000)}s`);
+        return;
       }
 
       if (!force && infrastructureDashboard.emailAccounts.length > 0) {
@@ -605,6 +606,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
+    setLastRefreshTime(now); // Update refresh timestamp
 
     // When forcing refresh, clear cache first to ensure fresh data
     if (force) {
@@ -612,7 +614,6 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       clearDashboardCache('infrastructure');
     }
 
-    setLastRefreshTime(now);
     await fetchInfrastructureDataInternal(force);
   }, [fetchInfrastructureDataInternal, lastRefreshTime]);
 
@@ -631,8 +632,8 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
 
       if (result.success && result.data) {
         setRevenueDashboard({
-          clients: result.data.clients as RevenueClientData[],
-          totals: result.data.totals as RevenueTotals,
+          clients: result.data.clients,
+          totals: result.data.totals,
           lastUpdated: result.timestamp,
           loading: false,
           isUsingCache: result.cached,
@@ -642,27 +643,17 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
           fetchDurationMs: result.fetchDurationMs,
         });
       } else {
-        setRevenueDashboard(prev => {
-          // Ensure we assign correctly-typed values to state
-          const clients: RevenueClientData[] = result.data?.clients
-            ? (result.data.clients as RevenueClientData[]).filter(c => !!c.workspace_name)
-            : prev.clients;
-          const totals: RevenueTotals = result.data?.totals
-            ? (result.data.totals as RevenueTotals)
-            : prev.totals;
-
-          return {
-            ...prev,
-            clients,
-            totals,
-            lastUpdated: result.timestamp,
-            loading: false,
-            isUsingCache: result.cached,
-            isFresh: result.fresh,
-            error: result.error || 'Failed to fetch revenue data',
-            warnings: result.warnings || [],
-          };
-        });
+        setRevenueDashboard(prev => ({
+          ...prev,
+          clients: result.data?.clients || prev.clients,
+          totals: result.data?.totals || prev.totals,
+          lastUpdated: result.timestamp,
+          loading: false,
+          isUsingCache: result.cached,
+          isFresh: result.fresh,
+          error: result.error || 'Failed to fetch revenue data',
+          warnings: result.warnings || [],
+        }));
       }
     } catch (error) {
       console.error('Error fetching Revenue data:', error);
@@ -724,13 +715,6 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     const cachedSelectedClient = localStorage.getItem(CACHE_KEYS.KPI_SELECTED_CLIENT);
     const cachedViewMode = localStorage.getItem(CACHE_KEYS.KPI_VIEW_MODE) as 'overview' | 'detail' || 'overview';
 
-    // Load Volume & Revenue caches
-    const volumeCache = loadFromCache<VolumeClientData[]>(CACHE_KEYS.VOLUME_DATA, CACHE_KEYS.VOLUME_TIMESTAMP);
-    const revenueCache = loadFromCache<{ clients: RevenueClientData[]; totals: RevenueTotals }>(
-      CACHE_KEYS.REVENUE_DATA,
-      CACHE_KEYS.REVENUE_TIMESTAMP
-    );
-
     if (kpiCache.data) {
       setKPIDashboard({
         clients: kpiCache.data,
@@ -739,24 +723,24 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
         lastUpdated: kpiCache.timestamp,
         loading: false,
         isUsingCache: true,
-        isFresh: false,
-        error: null,
-        warnings: [],
       });
       console.log('Loaded KPI dashboard from cache:', kpiCache.timestamp);
     }
+
+    // Load Volume Dashboard from cache
+    const volumeCache = loadFromCache<VolumeClientData[]>(CACHE_KEYS.VOLUME_DATA, CACHE_KEYS.VOLUME_TIMESTAMP);
     if (volumeCache.data) {
       setVolumeDashboard({
         clients: volumeCache.data,
         lastUpdated: volumeCache.timestamp,
         loading: false,
         isUsingCache: true,
-        isFresh: false,
-        error: null,
-        warnings: [],
       });
       console.log('Loaded Volume dashboard from cache:', volumeCache.timestamp);
     }
+
+    // Load Revenue Dashboard from cache
+    const revenueCache = loadFromCache<{ clients: RevenueClientData[], totals: RevenueTotals }>(CACHE_KEYS.REVENUE_DATA, CACHE_KEYS.REVENUE_TIMESTAMP);
     if (revenueCache.data) {
       setRevenueDashboard({
         clients: revenueCache.data.clients,
@@ -764,9 +748,6 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
         lastUpdated: revenueCache.timestamp,
         loading: false,
         isUsingCache: true,
-        isFresh: false,
-        error: null,
-        warnings: [],
       });
       console.log('Loaded Revenue dashboard from cache:', revenueCache.timestamp);
     }

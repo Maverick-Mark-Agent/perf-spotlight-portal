@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { supabase } from "@/integrations/supabase/client";
+import { SyncProgressBar } from "@/components/SyncProgressBar";
 
 // Removed localStorage caching due to quota limits with large dataset (4000+ accounts)
 // Data is now fetched fresh on each page load for real-time accuracy
@@ -64,6 +65,9 @@ const SendingAccountsInfrastructure = () => {
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
+
+  // ✅ NEW: Track active sync job for progress bar
+  const [activeSyncJobId, setActiveSyncJobId] = useState<string | null>(null);
 
   const formatLastUpdated = () => {
     if (!lastUpdated) return '';
@@ -200,16 +204,21 @@ const SendingAccountsInfrastructure = () => {
       setLoadingMessage('Triggering email sync job...');
 
       // Trigger the polling job via Edge Function
-      const { supabase } = await import('@/integrations/supabase/client');
       const { data, error } = await supabase.functions.invoke('poll-sender-emails');
 
       if (error) {
         console.error('Error triggering manual refresh:', error);
         alert('Failed to trigger refresh: ' + error.message);
+        setIsManualRefreshing(false);
         return;
       }
 
       console.log('Manual refresh triggered successfully:', data);
+
+      // ✅ Track the job ID for progress bar
+      if (data?.job_id) {
+        setActiveSyncJobId(data.job_id);
+      }
 
       // Set cooldown (5 minutes)
       const COOLDOWN_SECONDS = 300; // 5 minutes
@@ -226,21 +235,28 @@ const SendingAccountsInfrastructure = () => {
         });
       }, 1000);
 
-      // Wait a bit, then refresh the dashboard data
-      setLoadingMessage('Waiting for sync to complete...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Don't wait - let the progress bar handle UI updates
+      setLoadingMessage('Sync in progress - see progress bar below');
 
-      setLoadingMessage('Fetching updated data...');
-      await fetchEmailAccounts(true);
-
-      alert(`Sync completed successfully!\n\n${data.workspaces_processed}/${data.total_workspaces} workspaces synced\n${data.total_accounts_synced} accounts updated`);
     } catch (error) {
       console.error('Error during manual refresh:', error);
       alert('An error occurred during refresh: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    } finally {
       setIsManualRefreshing(false);
-      setLoadingMessage('Fetching all records...');
+      setActiveSyncJobId(null);
     }
+  };
+
+  // ✅ NEW: Handle sync completion from progress bar
+  const handleSyncComplete = async () => {
+    console.log('Sync completed! Refreshing dashboard...');
+    setIsManualRefreshing(false);
+    setActiveSyncJobId(null);
+    setLoadingMessage('Fetching updated data...');
+
+    // Refresh dashboard data
+    await refreshInfrastructure(true);
+
+    alert('Sync completed successfully! Dashboard has been refreshed with latest data.');
   };
 
   const formatCooldownTime = () => {
@@ -978,6 +994,16 @@ const SendingAccountsInfrastructure = () => {
           </div>
         </div>
       </div>
+
+      {/* ✅ NEW: Real-time Sync Progress Bar */}
+      {activeSyncJobId && (
+        <div className="max-w-7xl mx-auto px-6 pt-4">
+          <SyncProgressBar
+            jobId={activeSyncJobId}
+            onComplete={handleSyncComplete}
+          />
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Data Freshness Banner */}

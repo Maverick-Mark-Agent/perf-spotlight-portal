@@ -231,12 +231,10 @@ function isCacheFresh(timestamp: number): boolean {
 export async function fetchKPIData(force: boolean = false): Promise<DataFetchResult<KPIClient[]>> {
   // Use real-time database query (20x faster)
   if (FEATURE_FLAGS.useRealtimeKPI) {
-    console.log('[KPI] Using real-time database query');
     return fetchKPIDataRealtime();
   }
 
   // Fallback to old Edge Function (for rollback)
-  console.log('[KPI] Using Edge Function (fallback mode)');
 
   const cacheKey = 'kpi-dashboard-data';
   const startTime = Date.now();
@@ -245,14 +243,12 @@ export async function fetchKPIData(force: boolean = false): Promise<DataFetchRes
   if (!force) {
     const pending = cache.getPendingRequest<KPIClient[]>(cacheKey);
     if (pending) {
-      console.log('[KPI] Using existing pending request');
       return pending.promise;
     }
 
     // Check cache
     const cached = cache.get<KPIClient[]>(cacheKey, CACHE_TTL.KPI);
     if (cached) {
-      console.log('[KPI] Using cached data', { age: Date.now() - cached.timestamp });
       return {
         data: cached.data,
         success: true,
@@ -267,8 +263,6 @@ export async function fetchKPIData(force: boolean = false): Promise<DataFetchRes
   // Create new fetch promise
   const fetchPromise = (async (): Promise<DataFetchResult<KPIClient[]>> => {
     try {
-      console.log('[KPI] Fetching fresh data from Edge Function');
-
       const { data, error } = await fetchWithRetry(
         () => supabase.functions.invoke('hybrid-workspace-analytics', {
           body: { timestamp: Date.now(), force }
@@ -292,7 +286,6 @@ export async function fetchKPIData(force: boolean = false): Promise<DataFetchRes
       cache.set(cacheKey, validation.data!, validation.warnings);
 
       const fetchDurationMs = Date.now() - startTime;
-      console.log('[KPI] Fetch completed', { durationMs: fetchDurationMs, clientCount: validation.data!.length });
 
       return {
         data: validation.data!,
@@ -348,12 +341,10 @@ export async function fetchKPIData(force: boolean = false): Promise<DataFetchRes
 export async function fetchVolumeData(force: boolean = false): Promise<DataFetchResult<VolumeClient[]>> {
   // Use real-time database query (15x faster)
   if (FEATURE_FLAGS.useRealtimeVolume) {
-    console.log('[Volume] Using real-time database query');
     return fetchVolumeDataRealtime();
   }
 
   // Fallback to old Edge Function (for rollback)
-  console.log('[Volume] Using Edge Function (fallback mode)');
 
   const cacheKey = 'volume-dashboard-data';
   const startTime = Date.now();
@@ -361,13 +352,11 @@ export async function fetchVolumeData(force: boolean = false): Promise<DataFetch
   if (!force) {
     const pending = cache.getPendingRequest<VolumeClient[]>(cacheKey);
     if (pending) {
-      console.log('[Volume] Using existing pending request');
       return pending.promise;
     }
 
     const cached = cache.get<VolumeClient[]>(cacheKey, CACHE_TTL.VOLUME);
     if (cached) {
-      console.log('[Volume] Using cached data', { age: Date.now() - cached.timestamp });
       return {
         data: cached.data,
         success: true,
@@ -381,8 +370,6 @@ export async function fetchVolumeData(force: boolean = false): Promise<DataFetch
 
   const fetchPromise = (async (): Promise<DataFetchResult<VolumeClient[]>> => {
     try {
-      console.log('[Volume] Fetching fresh data from Edge Function');
-
       const { data, error } = await fetchWithRetry(
         () => supabase.functions.invoke('volume-dashboard-data'),
         'Volume Data Fetch'
@@ -402,7 +389,6 @@ export async function fetchVolumeData(force: boolean = false): Promise<DataFetch
       cache.set(cacheKey, validation.data!, validation.warnings);
 
       const fetchDurationMs = Date.now() - startTime;
-      console.log('[Volume] Fetch completed', { durationMs: fetchDurationMs, clientCount: validation.data!.length });
 
       return {
         data: validation.data!,
@@ -459,13 +445,11 @@ export async function fetchRevenueData(force: boolean = false): Promise<DataFetc
   if (!force) {
     const pending = cache.getPendingRequest<{ clients: RevenueClient[], totals: any }>(cacheKey);
     if (pending) {
-      console.log('[Revenue] Using existing pending request');
       return pending.promise;
     }
 
     const cached = cache.get<{ clients: RevenueClient[], totals: any }>(cacheKey, CACHE_TTL.REVENUE);
     if (cached) {
-      console.log('[Revenue] Using cached data', { age: Date.now() - cached.timestamp });
       return {
         data: cached.data,
         success: true,
@@ -479,8 +463,6 @@ export async function fetchRevenueData(force: boolean = false): Promise<DataFetc
 
   const fetchPromise = (async (): Promise<DataFetchResult<{ clients: RevenueClient[], totals: any }>> => {
     try {
-      console.log('[Revenue] Fetching fresh data from Edge Function');
-
       const { data, error } = await fetchWithRetry(
         () => supabase.functions.invoke('revenue-analytics'),
         'Revenue Data Fetch'
@@ -505,7 +487,6 @@ export async function fetchRevenueData(force: boolean = false): Promise<DataFetc
       cache.set(cacheKey, result, validation.warnings);
 
       const fetchDurationMs = Date.now() - startTime;
-      console.log('[Revenue] Fetch completed', { durationMs: fetchDurationMs, clientCount: validation.data!.length });
 
       return {
         data: result,
@@ -556,16 +537,12 @@ export async function fetchRevenueData(force: boolean = false): Promise<DataFetc
  * Routes to real-time database or Edge Function based on feature flag
  */
 export async function fetchInfrastructureData(force: boolean = false): Promise<DataFetchResult<EmailAccount[]>> {
-  console.log('🔍 [Infrastructure] fetchInfrastructureData called, force:', force, 'useRealtime:', FEATURE_FLAGS.useRealtimeInfrastructure);
-
   // Use real-time database query (60x faster)
   if (FEATURE_FLAGS.useRealtimeInfrastructure) {
-    console.log('[Infrastructure] Using real-time database query');
     return fetchInfrastructureDataRealtime();
   }
 
   // Fallback to old Edge Function (for rollback)
-  console.log('✅ [Infrastructure] Using Edge Function (fallback mode)');
 
   const cacheKey = 'infrastructure-dashboard-data';
   const startTime = Date.now();
@@ -573,16 +550,11 @@ export async function fetchInfrastructureData(force: boolean = false): Promise<D
   if (!force) {
     const pending = cache.getPendingRequest<EmailAccount[]>(cacheKey);
     if (pending) {
-      console.log('[Infrastructure] Using existing pending request');
       return pending.promise;
     }
 
     const cached = cache.get<EmailAccount[]>(cacheKey, CACHE_TTL.INFRASTRUCTURE);
     if (cached) {
-      const ageMs = Date.now() - cached.timestamp;
-      const ageMinutes = Math.round(ageMs / 60000);
-      console.log(`✅ [Infrastructure] Using cached data (age: ${ageMinutes}m, expires in: ${60 - ageMinutes}m)`);
-      console.log(`   📊 Cached ${cached.data.length} accounts - no API call needed!`);
       return {
         data: cached.data,
         success: true,
@@ -596,14 +568,10 @@ export async function fetchInfrastructureData(force: boolean = false): Promise<D
 
   const fetchPromise = (async (): Promise<DataFetchResult<EmailAccount[]>> => {
     try {
-      console.log('📡 [Infrastructure] Fetching fresh data from Edge Function...');
-
       const { data, error} = await fetchWithRetry(
         () => supabase.functions.invoke('hybrid-email-accounts-v2'),
         'Infrastructure Data Fetch'
       );
-
-      console.log('📦 [Infrastructure] Edge Function response received', { hasData: !!data, hasError: !!error, recordCount: data?.records?.length || 0 });
 
       if (error) {
         console.error('❌ [Infrastructure] Edge Function error:', error);
@@ -618,15 +586,12 @@ export async function fetchInfrastructureData(force: boolean = false): Promise<D
         return hasEmail && hasWorkspace && hasStatus;
       });
 
-      console.log('🔄 [Infrastructure] Filtered', validRecords.length, 'valid accounts (from', data?.records?.length || 0, 'total)');
-
       // Skip validation - Edge Function data structure doesn't match validation schema
       // The data is already validated by the Edge Function itself
       const finalData = validRecords;
       cache.set(cacheKey, finalData, []);
 
       const fetchDurationMs = Date.now() - startTime;
-      console.log('✅ [Infrastructure] Fetch completed successfully!', { durationMs: fetchDurationMs, accountCount: finalData.length });
 
       return {
         data: finalData,
@@ -679,7 +644,6 @@ export async function fetchInfrastructureData(force: boolean = false): Promise<D
  */
 export function clearAllCache(): void {
   cache.clearAll();
-  console.log('[DataService] All cache cleared');
 }
 
 /**
@@ -694,7 +658,6 @@ export function clearDashboardCache(dashboard: 'kpi' | 'volume' | 'revenue' | 'i
   };
 
   cache.clear(cacheKeys[dashboard]);
-  console.log(`[DataService] ${dashboard} cache cleared`);
 }
 
 /**
@@ -708,14 +671,10 @@ export function getCacheStats() {
  * Prefetch all dashboards (useful for initial load)
  */
 export async function prefetchAllDashboards(): Promise<void> {
-  console.log('[DataService] Prefetching all dashboards...');
-
   await Promise.allSettled([
     fetchKPIData(false),
     fetchVolumeData(false),
     fetchRevenueData(false),
     fetchInfrastructureData(false),
   ]);
-
-  console.log('[DataService] Prefetch completed');
 }

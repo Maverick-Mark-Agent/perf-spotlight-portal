@@ -38,8 +38,6 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
   const startTime = Date.now();
 
   try {
-    console.log('[KPI Realtime] Fetching from database...');
-
     // Get today's date for MTD query
     const { todayStr } = getCurrentDateInfo();
 
@@ -70,7 +68,6 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
     // If no data for today, fall back to most recent date
     if (!metrics || metrics.length === 0) {
       console.warn('[KPI Realtime] No MTD data found for today:', todayStr);
-      console.log('[KPI Realtime] Fetching most recent MTD data...');
 
       // Get the most recent metric_date
       const { data: recentDateData } = await supabase
@@ -84,8 +81,6 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
       const recentDate = (recentDateData as any)?.metric_date;
 
       if (recentDate) {
-        console.log('[KPI Realtime] Using most recent date:', recentDate);
-
         // Query again with the most recent date
         const fallbackQuery = await supabase
           .from('client_metrics')
@@ -150,7 +145,6 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
     }
 
     const fetchDuration = Date.now() - startTime;
-    console.log(`[KPI Realtime] ✅ Fetched ${validation.data!.length} clients in ${fetchDuration}ms`);
 
     return {
       data: validation.data!,
@@ -187,8 +181,6 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
   const startTime = Date.now();
 
   try {
-    console.log('[Volume Realtime] Fetching from database...');
-
     const { todayStr, daysInMonth, daysElapsed } = getCurrentDateInfo();
 
     // Query client_metrics with client_registry JOIN
@@ -217,7 +209,6 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
     // If no data for today, fall back to most recent date
     if (!metrics || metrics.length === 0) {
       console.warn('[Volume Realtime] No MTD data found for today:', todayStr);
-      console.log('[Volume Realtime] Fetching most recent MTD data...');
 
       // Get the most recent metric_date
       const { data: recentDateData } = await supabase
@@ -231,8 +222,6 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
       const recentDate = (recentDateData as any)?.metric_date;
 
       if (recentDate) {
-        console.log('[Volume Realtime] Using most recent date:', recentDate);
-
         // Query again with the most recent date
         const fallbackQuery = await supabase
           .from('client_metrics')
@@ -296,7 +285,6 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
     }
 
     const fetchDuration = Date.now() - startTime;
-    console.log(`[Volume Realtime] ✅ Fetched ${validation.data!.length} clients in ${fetchDuration}ms`);
 
     return {
       data: validation.data!,
@@ -336,15 +324,10 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
   const startTime = Date.now();
 
   try {
-    console.log('🚀🚀🚀 [REALTIME SERVICE] fetchInfrastructureDataRealtime() called!');
-    console.log('[Infrastructure Realtime] Fetching from sender_emails_cache...');
-
     // Get total count of accounts first (to bypass Supabase's 1000-row default limit)
     const { count: totalCount } = await supabase
       .from('sender_emails_cache')
       .select('*', { count: 'exact', head: true });
-
-    console.log(`[Infrastructure Realtime] Found ${totalCount || 0} total accounts in cache`);
 
     // Query sender_emails_cache (synced by poll-sender-emails cron job)
     // IMPORTANT: Set explicit limit to fetch ALL accounts (Supabase defaults to 1000 max)
@@ -384,8 +367,6 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     // Transform database rows to EmailAccount interface
     const transformedData = accounts.map(row => transformToEmailAccount(row));
 
-    console.log(`🔧🔧🔧 [DEDUPLICATION] Starting with ${transformedData.length} raw accounts`);
-
     // CRITICAL FIX: Deduplicate by (email_address + workspace_name) instead of just email_address
     // The Edge Function deduplicates GLOBALLY, but that's WRONG for our use case!
     // The same email can legitimately belong to different clients (workspaces)
@@ -405,8 +386,6 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     }
 
     const duplicateCount = transformedData.length - deduplicatedData.length;
-    console.log(`✅✅✅ [DEDUPLICATION COMPLETE] Removed ${duplicateCount} duplicates (same email+workspace, different instance)`);
-    console.log(`✅✅✅ [FINAL COUNT] ${deduplicatedData.length} unique accounts`);
 
     // Validate deduplicated data
     const validation = validateEmailAccounts(deduplicatedData);
@@ -430,7 +409,6 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     }
 
     const fetchDuration = Date.now() - startTime;
-    console.log(`[Infrastructure Realtime] ✅ Fetched ${validation.data!.length} unique accounts in ${fetchDuration}ms`);
 
     // Determine freshness (< 24 hours = fresh)
     const isFresh = ageHours < 24;
@@ -480,8 +458,6 @@ export async function fetchClientLeadsRealtime(
   const startTime = Date.now();
 
   try {
-    console.log('[Client Leads Realtime] Fetching from database...');
-
     // Build query
     let query = supabase
       .from('client_leads')
@@ -502,7 +478,6 @@ export async function fetchClientLeadsRealtime(
     }
 
     const fetchDuration = Date.now() - startTime;
-    console.log(`[Client Leads Realtime] ✅ Fetched ${leads?.length || 0} leads in ${fetchDuration}ms`);
 
     return {
       data: leads || [],

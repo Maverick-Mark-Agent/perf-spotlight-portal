@@ -76,7 +76,7 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('user_workspace_access')
         .select('role')
         .eq('user_id', userId)
@@ -172,7 +172,7 @@ export const useIsAdmin = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('user_workspace_access')
         .select('role')
         .eq('user_id', session.user.id)

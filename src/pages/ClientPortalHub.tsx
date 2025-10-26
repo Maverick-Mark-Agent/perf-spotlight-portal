@@ -44,6 +44,7 @@ export default function ClientPortalHub() {
   const [filteredWorkspaces, setFilteredWorkspaces] = useState<Workspace[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     fetchWorkspaces();
@@ -77,7 +78,7 @@ export default function ClientPortalHub() {
         console.log('[ClientPortalHub] Fetching workspaces for authenticated user:', session.user.email);
 
         // Check if user is admin
-        const { data: adminCheck } = await supabase
+        const { data: adminCheck } = await (supabase as any)
           .from('user_workspace_access')
           .select('role')
           .eq('user_id', session.user.id)
@@ -85,24 +86,32 @@ export default function ClientPortalHub() {
           .maybeSingle();
 
         const isAdmin = !!adminCheck || session.user.id === '09322929-6078-4b08-bd55-e3e1ff773028';
+        setIsAdmin(isAdmin);
+        console.log('[ClientPortalHub] User is admin:', isAdmin);
 
         if (isAdmin) {
           // ADMIN: Show ALL workspaces from client_registry
           console.log('[ClientPortalHub] Admin user - showing all workspaces');
 
-          const { data: allWorkspaces, error: workspacesError } = await supabase
+          const { data: allWorkspaces, error: workspacesError } = await (supabase as any)
             .from('client_registry')
             .select('workspace_name')
             .order('workspace_name');
 
-          if (workspacesError) throw workspacesError;
+          if (workspacesError) {
+            console.error('[ClientPortalHub] Error fetching workspaces:', workspacesError);
+            throw workspacesError;
+          }
 
           // Get lead counts for all workspaces
-          const { data: leadCounts, error: leadsError } = await supabase
+          const { data: leadCounts, error: leadsError } = await (supabase as any)
             .from('client_leads')
             .select('workspace_name, pipeline_stage');
 
-          if (leadsError) throw leadsError;
+          if (leadsError) {
+            console.error('[ClientPortalHub] Error fetching lead counts:', leadsError);
+            // Don't throw, just continue with empty counts
+          }
 
           // Aggregate counts by workspace
           const countsByWorkspace = leadCounts?.reduce((acc: any, lead: any) => {
@@ -137,79 +146,9 @@ export default function ClientPortalHub() {
           }));
         }
       } else {
-        // UNAUTHENTICATED: Direct API call (for internal admin dashboard)
-        // TODO: Eventually migrate admin dashboard to use authentication too
-        const BISON_API_KEY = "77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d";
-        const BISON_BASE_URL = "https://send.maverickmarketingllc.com/api";
-
-        const workspacesResponse = await fetch(`${BISON_BASE_URL}/workspaces`, {
-          headers: {
-            'Authorization': `Bearer ${BISON_API_KEY}`,
-            'Accept': 'application/json',
-          },
-        });
-
-        if (!workspacesResponse.ok) {
-          throw new Error('Failed to fetch workspaces');
-        }
-
-        const workspacesData = await workspacesResponse.json();
-        const bisonWorkspaces: Workspace[] = workspacesData.data.map((w: any) => ({
-          id: w.id,
-          name: w.name,
-        }));
-
-        // Fetch ALL lead counts from database using pagination (Supabase has 1000 row limit per request)
-        let allLeads: any[] = [];
-        let from = 0;
-        const pageSize = 1000;
-        let hasMore = true;
-
-        while (hasMore) {
-          const { data, error } = await supabase
-            .from('client_leads')
-            .select('workspace_name, pipeline_stage')
-            .range(from, from + pageSize - 1);
-
-          if (error) {
-            console.error('Error fetching leads:', error);
-            break;
-          }
-
-          if (data && data.length > 0) {
-            allLeads = [...allLeads, ...data];
-            from += pageSize;
-            hasMore = data.length === pageSize;
-          } else {
-            hasMore = false;
-          }
-        }
-
-        const leadCounts = allLeads;
-
-        // Aggregate counts by workspace
-        const countsByWorkspace = leadCounts?.reduce((acc: any, lead: any) => {
-          if (!acc[lead.workspace_name]) {
-            acc[lead.workspace_name] = { total: 0, won: 0 };
-          }
-          acc[lead.workspace_name].total++;
-          if (lead.pipeline_stage === 'won') {
-            acc[lead.workspace_name].won++;
-          }
-          return acc;
-        }, {});
-
-        // Merge counts into workspaces
-        workspacesWithCounts = bisonWorkspaces.map(w => ({
-          ...w,
-          leadsCount: countsByWorkspace?.[w.name]?.total || 0,
-          wonLeadsCount: countsByWorkspace?.[w.name]?.won || 0,
-        }));
-
-        // Filter to only show clients with webhooks deployed
-        workspacesWithCounts = workspacesWithCounts.filter(w =>
-          ALLOWED_WORKSPACES.includes(w.name)
-        );
+        // This shouldn't happen since the route is protected
+        console.error('[ClientPortalHub] No session found - this should not happen');
+        workspacesWithCounts = [];
       }
 
       // Sort by leads count (descending), then by name
@@ -222,8 +161,12 @@ export default function ClientPortalHub() {
 
       setWorkspaces(workspacesWithCounts);
       setFilteredWorkspaces(workspacesWithCounts);
+      console.log('[ClientPortalHub] Successfully loaded workspaces:', workspacesWithCounts.length);
     } catch (error) {
-      console.error('Error fetching workspaces:', error);
+      console.error('[ClientPortalHub] Error fetching workspaces:', error);
+      // Set empty state on error
+      setWorkspaces([]);
+      setFilteredWorkspaces([]);
     } finally {
       setLoading(false);
     }
@@ -236,14 +179,32 @@ export default function ClientPortalHub() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
       <div className="container mx-auto px-4 py-8">
-        {/* Back Button */}
-        <div className="mb-6">
-          <Link to="/">
-            <Button variant="ghost" className="text-white hover:bg-white/10">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Dashboard
+
+        {/* Admin Back Button and Logout */}
+        <div className="mb-6 flex items-center justify-between w-full">
+          <div>
+            {isAdmin && (
+              <Link to="/admin">
+                <Button variant="ghost" className="text-white hover:bg-white/10">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to Dashboard
+                </Button>
+              </Link>
+            )}
+          </div>
+          <div className="ml-auto">
+            <Button
+              variant="outline"
+              className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                window.location.href = "/";
+              }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h4a2 2 0 012 2v1" /></svg>
+              Logout
             </Button>
-          </Link>
+          </div>
         </div>
 
         {/* Header */}
@@ -256,20 +217,22 @@ export default function ClientPortalHub() {
               Select a workspace to view their lead pipeline and performance metrics
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button asChild variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
-              <Link to="/zip-dashboard">
-                <MapPin className="h-4 w-4 mr-2" />
-                ZIP Dashboard
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
-              <Link to="/roi-dashboard">
-                <PieChart className="h-4 w-4 mr-2" />
-                ROI Dashboard
-              </Link>
-            </Button>
-          </div>
+          {isAdmin && (
+            <div className="flex gap-2">
+              <Button asChild variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+                <Link to="/zip-dashboard">
+                  <MapPin className="h-4 w-4 mr-2" />
+                  ZIP Dashboard
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+                <Link to="/roi-dashboard">
+                  <PieChart className="h-4 w-4 mr-2" />
+                  ROI Dashboard
+                </Link>
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Search */}

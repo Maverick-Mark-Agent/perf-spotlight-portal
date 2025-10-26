@@ -337,7 +337,7 @@ const ClientPortalPage = () => {
 
     try {
       // Update lead with premium, policy type, and move to won
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('client_leads')
         .update({
           premium_amount: premiumAmount,
@@ -568,7 +568,7 @@ const ClientPortalPage = () => {
 
     // Update in database
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('client_leads')
         .update({ pipeline_stage: newStage })
         .eq('id', leadId);
@@ -605,7 +605,7 @@ const ClientPortalPage = () => {
 
     // Update in database
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('client_leads')
         .update({ interested: newValue })
         .eq('id', leadId);
@@ -680,7 +680,7 @@ const ClientPortalPage = () => {
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-4 mb-6">
-          <Link to="/client-portal-hub">
+          <Link to="/client-portal">
             <Button variant="ghost" className="text-white hover:bg-white/10">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Client Portal Hub

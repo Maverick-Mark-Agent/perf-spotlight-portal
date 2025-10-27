@@ -7,6 +7,7 @@ import { Search, Users, TrendingUp, MapPin, ArrowLeft, PieChart } from "lucide-r
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/auth/ProtectedRoute";
 import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 interface Workspace {
   id: number;
@@ -182,25 +183,26 @@ export default function ClientPortalHub() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
 
-        {/* Admin Back Button and Logout */}
+        {/* Admin Back Button, Logout, and Theme Toggle */}
         <div className="mb-6 flex items-center justify-between w-full">
           <div>
             {isAdmin && (
               <Link to="/admin">
-                <Button variant="ghost" className="text-white hover:bg-white/10">
+                <Button variant="ghost">
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Back to Dashboard
                 </Button>
               </Link>
             )}
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            {/* Theme Toggle */}
+            <ThemeToggle />
             <Button
               variant="outline"
-              className="bg-white/10 border-white/20 text-white hover:bg-white/20"
               onClick={async () => {
                 await supabase.auth.signOut();
                 window.location.href = "/";
@@ -215,22 +217,22 @@ export default function ClientPortalHub() {
         {/* Header */}
         <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               Client Portal Hub
             </h1>
-            <p className="text-gray-400">
+            <p className="text-muted-foreground">
               Select a workspace to view their lead pipeline and performance metrics
             </p>
           </div>
           {isAdmin && (
             <div className="flex gap-2">
-              <Button asChild variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+              <Button asChild variant="outline">
                 <Link to="/zip-dashboard">
                   <MapPin className="h-4 w-4 mr-2" />
                   ZIP Dashboard
                 </Link>
               </Button>
-              <Button asChild variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+              <Button asChild variant="outline">
                 <Link to="/roi-dashboard">
                   <PieChart className="h-4 w-4 mr-2" />
                   ROI Dashboard
@@ -243,13 +245,13 @@ export default function ClientPortalHub() {
         {/* Search */}
         <div className="mb-6">
           <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
               placeholder="Search workspaces..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-gray-400"
+              className="pl-10"
             />
           </div>
         </div>
@@ -258,13 +260,13 @@ export default function ClientPortalHub() {
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-              <div key={i} className="h-32 bg-white/5 border border-white/10 rounded-xl animate-pulse" />
+              <div key={i} className="h-32 bg-muted/80 border border-border rounded-xl relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-foreground/10 before:to-transparent" />
             ))}
           </div>
         ) : filteredWorkspaces.length === 0 ? (
           <div className="text-center py-12">
-            <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-400">No workspaces found</p>
+            <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No workspaces found</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -272,13 +274,13 @@ export default function ClientPortalHub() {
               <Card
                 key={workspace.id}
                 onClick={() => handleWorkspaceClick(workspace.name)}
-                className="bg-white/10 border-white/20 hover:bg-white/20 cursor-pointer transition-all hover:scale-105 p-4"
+                className="group hover:bg-accent cursor-pointer transition-all hover:scale-105 p-4"
               >
                 <div className="flex flex-col gap-3">
                   {/* Workspace Name */}
                   <div className="flex items-start gap-2">
-                    <Users className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                    <h3 className="font-semibold text-white line-clamp-2">
+                    <Users className="h-5 w-5 text-primary group-hover:text-accent-foreground flex-shrink-0 mt-0.5" />
+                    <h3 className="font-semibold line-clamp-2 group-hover:text-accent-foreground">
                       {workspace.name}
                     </h3>
                   </div>
@@ -286,12 +288,12 @@ export default function ClientPortalHub() {
                   {/* Stats */}
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-1.5">
-                      <TrendingUp className="h-4 w-4 text-green-400" />
-                      <span className="text-gray-400">Leads:</span>
-                      <span className="text-white font-medium">{workspace.leadsCount || 0}</span>
+                      <TrendingUp className="h-4 w-4 text-success group-hover:text-accent-foreground" />
+                      <span className="text-muted-foreground group-hover:text-accent-foreground/80">Leads:</span>
+                      <span className="font-medium group-hover:text-accent-foreground">{workspace.leadsCount || 0}</span>
                     </div>
                     {(workspace.wonLeadsCount || 0) > 0 && (
-                      <div className="text-green-400 font-medium">
+                      <div className="text-success group-hover:text-accent-foreground font-medium">
                         {workspace.wonLeadsCount} Won
                       </div>
                     )}
@@ -303,19 +305,19 @@ export default function ClientPortalHub() {
         )}
 
         {/* Summary */}
-        <div className="mt-8 pt-6 border-t border-white/10">
-          <div className="flex items-center gap-6 text-sm text-gray-400">
+        <div className="mt-8 pt-6 border-t border-border">
+          <div className="flex items-center gap-6 text-sm text-muted-foreground">
             <div>
-              <span className="font-medium text-white">{filteredWorkspaces.length}</span> workspaces
+              <span className="font-medium text-foreground">{filteredWorkspaces.length}</span> workspaces
               {searchTerm && ` matching "${searchTerm}"`}
             </div>
             <div>
-              <span className="font-medium text-white">
+              <span className="font-medium text-foreground">
                 {filteredWorkspaces.reduce((sum, w) => sum + (w.leadsCount || 0), 0)}
               </span> total leads
             </div>
             <div>
-              <span className="font-medium text-white">
+              <span className="font-medium text-foreground">
                 {filteredWorkspaces.reduce((sum, w) => sum + (w.wonLeadsCount || 0), 0)}
               </span> won leads
             </div>

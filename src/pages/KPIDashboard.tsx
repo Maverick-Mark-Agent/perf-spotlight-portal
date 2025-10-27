@@ -348,7 +348,7 @@ const MonthlyKPIProgress = () => {
           loading || volumeDashboard.loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className="h-64 bg-card rounded-2xl animate-pulse shadow-md" />
+                <div key={i} className="h-64 bg-muted/80 rounded-2xl shadow-md relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-foreground/10 before:to-transparent" />
               ))}
             </div>
           ) : (

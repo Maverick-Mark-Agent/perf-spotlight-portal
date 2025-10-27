@@ -76,7 +76,7 @@ export const ClientKPIStats = ({ workspaceName, totalLeads, wonLeads, newLeads }
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[1, 2, 3, 4].map(i => (
-          <div key={i} className="h-40 bg-white/5 border border-white/10 rounded-2xl animate-pulse" />
+          <div key={i} className="h-40 bg-muted/80 border border-border rounded-2xl relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-foreground/10 before:to-transparent" />
         ))}
       </div>
     );

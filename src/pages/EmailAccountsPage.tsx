@@ -1723,7 +1723,7 @@ const SendingAccountsInfrastructure = () => {
                                     return (
                                       <div key={idx} className="bg-white/5 rounded p-3 text-sm">
                                         <div className="flex justify-between items-start mb-2">
-                                          <span className="text-white font-medium">{account.fields['Account Name'] || account.fields['Email Account']}</span>
+                                          <span className="text-white font-medium">{account.fields['Email'] || account.fields['Name'] || 'No email'}</span>
                                           <Badge
                                             variant={account.fields['Status'] === 'Connected' ? 'default' : 'destructive'}
                                             className="text-xs"
@@ -1832,7 +1832,7 @@ const SendingAccountsInfrastructure = () => {
                                     return (
                                       <div key={idx} className="bg-white/5 rounded p-3 text-sm">
                                         <div className="flex justify-between items-start mb-2">
-                                          <span className="text-white font-medium">{account.fields['Account Name'] || account.fields['Email Account']}</span>
+                                          <span className="text-white font-medium">{account.fields['Email'] || account.fields['Name'] || 'No email'}</span>
                                           <Badge
                                             variant={account.fields['Status'] === 'Connected' ? 'default' : 'destructive'}
                                             className="text-xs"
@@ -1938,7 +1938,7 @@ const SendingAccountsInfrastructure = () => {
                                       <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40">
                                         #{idx + 1}
                                       </Badge>
-                                      <span className="text-white font-medium">{account.fields['Account Name'] || account.fields['Email Account']}</span>
+                                      <span className="text-white font-medium">{account.fields['Email'] || account.fields['Name'] || 'No email'}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <span className="text-dashboard-success font-semibold">{account.calculatedReplyRate.toFixed(2)}% reply rate</span>

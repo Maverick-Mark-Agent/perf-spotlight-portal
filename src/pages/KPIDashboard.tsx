@@ -261,7 +261,7 @@ const MonthlyKPIProgress = () => {
               <div className="flex items-center gap-2">
                 {viewMode === 'overview' ? (
                   <Button asChild variant="ghost" size="sm" className="hover:bg-accent mr-2">
-                    <Link to="/">
+                    <Link to="/admin">
                       <ArrowLeft className="h-4 w-4 mr-2" />
                       Back to Portal
                     </Link>

@@ -65,11 +65,11 @@ export default function ZipVisualization({ zipData, onZipClick }: ZipVisualizati
   }, [groupedByState]);
 
   return (
-    <div className="w-full h-full flex flex-col bg-white/10 backdrop-blur-md rounded-xl border border-white/20">
+    <div className="w-full h-full flex flex-col bg-card backdrop-blur-md rounded-xl border border-border">
       {/* Header */}
-      <div className="p-4 border-b border-white/20">
-        <h2 className="font-semibold text-lg text-white">ZIP Code Coverage by State</h2>
-        <p className="text-sm text-gray-300 mt-1">
+      <div className="p-4 border-b border-border">
+        <h2 className="font-semibold text-lg">ZIP Code Coverage by State</h2>
+        <p className="text-sm text-muted-foreground mt-1">
           {zipData.length.toLocaleString()} total ZIPs across {sortedStates.length} states
         </p>
       </div>
@@ -98,7 +98,7 @@ export default function ZipVisualization({ zipData, onZipClick }: ZipVisualizati
             return (
               <Card
                 key={state}
-                className="p-4 bg-white/5 border-white/10 hover:bg-white/10 hover:shadow-xl transition-all cursor-pointer backdrop-blur-sm"
+                className="p-4 hover:bg-accent/50 hover:shadow-xl transition-all cursor-pointer backdrop-blur-sm"
                 style={{
                   borderLeft: `4px solid ${dominantColor}`,
                 }}
@@ -111,11 +111,11 @@ export default function ZipVisualization({ zipData, onZipClick }: ZipVisualizati
               >
                 <div className="flex justify-between items-start mb-3">
                   <div>
-                    <h3 className="text-xl font-bold text-white">{state}</h3>
-                    <p className="text-sm text-gray-300">{stats.total} ZIPs</p>
+                    <h3 className="text-xl font-bold">{state}</h3>
+                    <p className="text-sm text-muted-foreground">{stats.total} ZIPs</p>
                   </div>
                   <div
-                    className="w-8 h-8 rounded-full border-2 border-white/30 shadow-lg"
+                    className="w-8 h-8 rounded-full border-2 border-border shadow-lg"
                     style={{ backgroundColor: dominantColor }}
                   />
                 </div>
@@ -131,15 +131,15 @@ export default function ZipVisualization({ zipData, onZipClick }: ZipVisualizati
                       return (
                         <div key={agency} className="flex items-center gap-2">
                           <div
-                            className="w-3 h-3 rounded-sm flex-shrink-0 ring-1 ring-white/20"
+                            className="w-3 h-3 rounded-sm flex-shrink-0 ring-1 ring-border"
                             style={{ backgroundColor: color }}
                           />
                           <div className="flex-1 min-w-0">
                             <div className="flex justify-between text-xs">
-                              <span className="truncate font-medium text-gray-200">{agency}</span>
-                              <span className="text-gray-400 ml-2">{percentage}%</span>
+                              <span className="truncate font-medium">{agency}</span>
+                              <span className="text-muted-foreground ml-2">{percentage}%</span>
                             </div>
-                            <div className="text-xs text-gray-500">{zips.length} ZIPs</div>
+                            <div className="text-xs text-muted-foreground">{zips.length} ZIPs</div>
                           </div>
                         </div>
                       );
@@ -151,7 +151,7 @@ export default function ZipVisualization({ zipData, onZipClick }: ZipVisualizati
         </div>
 
         {sortedStates.length === 0 && (
-          <div className="flex items-center justify-center h-64 text-gray-400">
+          <div className="flex items-center justify-center h-64 text-muted-foreground">
             No ZIP code data available
           </div>
         )}

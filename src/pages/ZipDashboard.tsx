@@ -153,7 +153,7 @@ export default function ZipDashboard() {
   // Handle color change for agency
   async function handleColorChange(clientName: string, newColor: string) {
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("client_zipcodes")
         .update({ agency_color: newColor })
         .eq("client_name", clientName)
@@ -195,32 +195,32 @@ export default function ZipDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+    <div className="min-h-screen bg-background">
       {/* Sticky Header */}
-      <div className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-md border-b border-white/10 shadow-lg">
+      <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-md border-b border-border shadow-lg">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-4">
-              <Button asChild variant="ghost" size="sm" className="text-gray-300 hover:text-white hover:bg-white/10">
+              <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <Link to="/">
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to Portal
                 </Link>
               </Button>
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500/20 rounded-lg">
-                  <MapPin className="h-6 w-6 text-blue-400" />
+                <div className="p-2 bg-primary/20 rounded-lg">
+                  <MapPin className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                  <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                     ZIP Code Dashboard
                   </h1>
-                  <p className="text-sm text-gray-400">Territory Management & Analytics</p>
+                  <p className="text-sm text-muted-foreground">Territory Management & Analytics</p>
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <p className="text-sm text-gray-400">Staging Area - Assign ZIPs to agencies and commit to months</p>
+              <p className="text-sm text-muted-foreground">Staging Area - Assign ZIPs to agencies and commit to months</p>
             </div>
           </div>
         </div>
@@ -229,51 +229,51 @@ export default function ZipDashboard() {
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6 hover:bg-white/15 transition-all">
+          <div className="bg-card backdrop-blur-md rounded-xl border border-border p-6 hover:bg-accent/5 transition-all">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-blue-500/20 rounded-lg">
-                <MapPin className="h-5 w-5 text-blue-400" />
+              <div className="p-2 bg-primary/20 rounded-lg">
+                <MapPin className="h-5 w-5 text-primary" />
               </div>
-              <p className="text-sm text-gray-300 font-medium">Total ZIPs</p>
+              <p className="text-sm text-muted-foreground font-medium">Total ZIPs</p>
             </div>
-            <p className="text-4xl font-bold text-white">{stats.total.toLocaleString()}</p>
+            <p className="text-4xl font-bold">{stats.total.toLocaleString()}</p>
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-green-500/30 p-6 hover:bg-white/15 transition-all">
+          <div className="bg-card backdrop-blur-md rounded-xl border border-success/30 p-6 hover:bg-accent/5 transition-all">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-green-500/20 rounded-lg">
-                <MapPin className="h-5 w-5 text-green-400" />
+              <div className="p-2 bg-success/20 rounded-lg">
+                <MapPin className="h-5 w-5 text-success" />
               </div>
-              <p className="text-sm text-gray-300 font-medium">Assigned</p>
+              <p className="text-sm text-muted-foreground font-medium">Assigned</p>
             </div>
-            <p className="text-4xl font-bold text-green-400">
+            <p className="text-4xl font-bold text-success">
               {stats.assigned.toLocaleString()}
             </p>
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-orange-500/30 p-6 hover:bg-white/15 transition-all">
+          <div className="bg-card backdrop-blur-md rounded-xl border border-warning/30 p-6 hover:bg-accent/5 transition-all">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-orange-500/20 rounded-lg">
-                <MapPin className="h-5 w-5 text-orange-400" />
+              <div className="p-2 bg-warning/20 rounded-lg">
+                <MapPin className="h-5 w-5 text-warning" />
               </div>
-              <p className="text-sm text-gray-300 font-medium">Unassigned</p>
+              <p className="text-sm text-muted-foreground font-medium">Unassigned</p>
             </div>
-            <p className="text-4xl font-bold text-orange-400">
+            <p className="text-4xl font-bold text-warning">
               {stats.unassigned.toLocaleString()}
             </p>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-3 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-4 mb-6">
-          <Filter className="w-4 h-4 text-gray-400" />
+        <div className="flex flex-wrap items-center gap-3 bg-card backdrop-blur-md rounded-xl border border-border p-4 mb-6">
+          <Filter className="w-4 h-4 text-muted-foreground" />
           <Input
             type="text"
             placeholder="Search ZIP or agency..."
             value={searchFilter}
             onChange={(e) => setSearchFilter(e.target.value)}
-            className="w-64 bg-white/10 border-white/20 text-white placeholder:text-gray-400"
+            className="w-64"
           />
           <Select value={stateFilter} onValueChange={setStateFilter}>
-            <SelectTrigger className="w-40 bg-white/10 border-white/20 text-white">
+            <SelectTrigger className="w-40">
               <SelectValue placeholder="All States" />
             </SelectTrigger>
             <SelectContent>
@@ -286,7 +286,7 @@ export default function ZipDashboard() {
             </SelectContent>
           </Select>
           <Select value={agencyFilter} onValueChange={setAgencyFilter}>
-            <SelectTrigger className="w-48 bg-white/10 border-white/20 text-white">
+            <SelectTrigger className="w-48">
               <SelectValue placeholder="All Agencies" />
             </SelectTrigger>
             <SelectContent>
@@ -299,14 +299,14 @@ export default function ZipDashboard() {
             </SelectContent>
           </Select>
           <div className="flex-1"></div>
-          <Button onClick={exportToCSV} variant="outline" size="sm" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+          <Button onClick={exportToCSV} variant="outline" size="sm">
             <Download className="w-4 h-4 mr-2" />
             Export CSV
           </Button>
         </div>
 
-        {loading && <div className="text-sm text-gray-300">Loading...</div>}
-        {error && <div className="text-sm text-red-400">Error: {error}</div>}
+        {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
+        {error && <div className="text-sm text-destructive">Error: {error}</div>}
 
         {/* Choropleth Map */}
         {!loading && !error && filteredZipData.length > 0 && (
@@ -331,34 +331,34 @@ export default function ZipDashboard() {
             </div>
 
             {/* Agencies Table */}
-            <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 overflow-hidden">
-              <div className="p-4 border-b border-white/20">
-                <h2 className="font-semibold text-white">Agency Assignments</h2>
+            <div className="bg-card backdrop-blur-md rounded-xl border border-border overflow-hidden">
+              <div className="p-4 border-b border-border">
+                <h2 className="font-semibold">Agency Assignments</h2>
               </div>
               <div className="overflow-auto max-h-[600px]">
                 <table className="w-full text-sm">
-                  <thead className="bg-white/5 sticky top-0">
-                    <tr className="text-left border-b border-white/20">
-                      <th className="py-3 px-4 text-gray-300 font-medium">Agency</th>
-                      <th className="py-3 px-4 text-gray-300 font-medium">ZIPs</th>
-                      <th className="py-3 px-4 text-gray-300 font-medium">Color</th>
-                      <th className="py-3 px-4 text-gray-300 font-medium">Actions</th>
+                  <thead className="bg-muted sticky top-0">
+                    <tr className="text-left border-b border-border">
+                      <th className="py-3 px-4 text-muted-foreground font-medium">Agency</th>
+                      <th className="py-3 px-4 text-muted-foreground font-medium">ZIPs</th>
+                      <th className="py-3 px-4 text-muted-foreground font-medium">Color</th>
+                      <th className="py-3 px-4 text-muted-foreground font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {stats.agencies.map((agency) => (
-                      <tr key={agency.client_name} className="border-b border-white/10 hover:bg-white/5 transition-colors">
+                      <tr key={agency.client_name} className="border-b border-border hover:bg-accent/50 transition-colors">
                         <td className="py-3 px-4">
                           <div>
-                            <p className="font-medium text-white">{agency.client_name}</p>
+                            <p className="font-medium">{agency.client_name}</p>
                             {agency.workspace_name && (
-                              <p className="text-xs text-gray-400">
+                              <p className="text-xs text-muted-foreground">
                                 {agency.workspace_name}
                               </p>
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-4 font-semibold text-blue-400">
+                        <td className="py-3 px-4 font-semibold text-primary">
                           {agency.zipCount.toLocaleString()}
                         </td>
                         <td className="py-3 px-4">
@@ -383,7 +383,7 @@ export default function ZipDashboard() {
                                 });
                                 setManageZipsModalOpen(true);
                               }}
-                              className="bg-blue-500/20 border-blue-500/50 text-blue-300 hover:bg-blue-500/30 text-xs"
+                              className="text-xs"
                             >
                               <Settings className="h-3 w-3 mr-1" />
                               Manage ZIPs
@@ -399,7 +399,7 @@ export default function ZipDashboard() {
                                 });
                                 setCommitClientModalOpen(true);
                               }}
-                              className="bg-purple-500/20 border-purple-500/50 text-purple-300 hover:bg-purple-500/30 text-xs"
+                              className="text-xs"
                             >
                               <Calendar className="h-3 w-3 mr-1" />
                               Commit
@@ -410,7 +410,7 @@ export default function ZipDashboard() {
                     ))}
                     {stats.agencies.length === 0 && (
                       <tr>
-                        <td className="py-8 px-4 text-center text-gray-400" colSpan={4}>
+                        <td className="py-8 px-4 text-center text-muted-foreground" colSpan={4}>
                           No agencies with assigned ZIPs in staging area
                         </td>
                       </tr>

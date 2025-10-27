@@ -184,10 +184,10 @@ export default function ZipChoroplethMap({ zipData, loading, onZipClick }: ZipCh
 
   if (loading || loadingGeo) {
     return (
-      <div className="w-full h-[600px] bg-white/10 backdrop-blur-md rounded-xl border border-white/20 flex items-center justify-center">
+      <div className="w-full h-[600px] bg-card backdrop-blur-md rounded-xl border border-border flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
-          <p className="text-gray-300">Loading map data...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading map data...</p>
         </div>
       </div>
     );
@@ -195,10 +195,10 @@ export default function ZipChoroplethMap({ zipData, loading, onZipClick }: ZipCh
 
   if (error) {
     return (
-      <div className="w-full h-[600px] bg-white/10 backdrop-blur-md rounded-xl border border-white/20 flex items-center justify-center">
+      <div className="w-full h-[600px] bg-card backdrop-blur-md rounded-xl border border-border flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-400 mb-2">Failed to load map</p>
-          <p className="text-gray-400 text-sm">{error}</p>
+          <p className="text-destructive mb-2">Failed to load map</p>
+          <p className="text-muted-foreground text-sm">{error}</p>
         </div>
       </div>
     );
@@ -206,18 +206,18 @@ export default function ZipChoroplethMap({ zipData, loading, onZipClick }: ZipCh
 
   if (!geoJsonData || plotData.length === 0) {
     return (
-      <div className="w-full h-[600px] bg-white/10 backdrop-blur-md rounded-xl border border-white/20 flex items-center justify-center">
-        <p className="text-gray-400">No map data available</p>
+      <div className="w-full h-[600px] bg-card backdrop-blur-md rounded-xl border border-border flex items-center justify-center">
+        <p className="text-muted-foreground">No map data available</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full bg-white/10 backdrop-blur-md rounded-xl border border-white/20 overflow-hidden">
+    <div className="w-full bg-card backdrop-blur-md rounded-xl border border-border overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-white/20">
-        <h2 className="font-semibold text-lg text-white">Color-Coded ZIP Map</h2>
-        <p className="text-sm text-gray-300 mt-1">
+      <div className="p-4 border-b border-border">
+        <h2 className="font-semibold text-lg">Color-Coded ZIP Map</h2>
+        <p className="text-sm text-muted-foreground mt-1">
           {zipData.length.toLocaleString()} ZIPs across {statesInData.length} states
         </p>
       </div>
@@ -271,16 +271,16 @@ export default function ZipChoroplethMap({ zipData, loading, onZipClick }: ZipCh
       </div>
 
       {/* Legend */}
-      <div className="p-4 border-t border-white/20 bg-white/5">
-        <h3 className="text-sm font-semibold text-white mb-3">Agency Legend</h3>
+      <div className="p-4 border-t border-border bg-muted/50">
+        <h3 className="text-sm font-semibold mb-3">Agency Legend</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {legend.map(({ agency, color }) => (
             <div key={agency} className="flex items-center gap-2">
               <div
-                className="w-4 h-4 rounded flex-shrink-0 border border-white/30"
+                className="w-4 h-4 rounded flex-shrink-0 border border-border"
                 style={{ backgroundColor: color }}
               />
-              <span className="text-sm text-gray-300 truncate">{agency}</span>
+              <span className="text-sm text-foreground truncate">{agency}</span>
             </div>
           ))}
         </div>

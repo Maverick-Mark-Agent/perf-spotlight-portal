@@ -13,6 +13,7 @@ import { LeadDetailModal } from "@/components/client-portal/LeadDetailModal";
 import { PremiumInputDialog } from "@/components/client-portal/PremiumInputDialog";
 import { useAuth } from "@/components/auth/ProtectedRoute";
 import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import {
   Select,
   SelectContent,
@@ -99,40 +100,40 @@ const DraggableLeadCard = ({ lead, onToggleInterested, onClick, formatDate }: Dr
     <Card
       ref={setNodeRef}
       style={style}
-      className="bg-white/10 border-white/20 hover:bg-white/20 transition-colors relative"
+      className="group hover:bg-accent transition-colors relative"
     >
       {/* Drag Handle - Top of card */}
       <div
         {...attributes}
         {...listeners}
-        className="absolute top-0 left-0 right-0 h-8 cursor-grab active:cursor-grabbing hover:bg-white/5 flex items-center justify-center z-10"
+        className="absolute top-0 left-0 right-0 h-8 cursor-grab active:cursor-grabbing hover:bg-accent/50 flex items-center justify-center z-10"
       >
-        <div className="w-8 h-1 bg-white/30 rounded-full"></div>
+        <div className="w-8 h-1 bg-border group-hover:bg-accent-foreground/50 rounded-full"></div>
       </div>
 
       <CardContent className="p-4 pt-10 cursor-pointer" onClick={() => onClick(lead)}>
         <div className="space-y-2">
           <div className="flex justify-between items-start gap-2">
             <div className="flex-1 min-w-0">
-              <div className="text-white font-semibold truncate">
+              <div className="font-semibold truncate group-hover:text-accent-foreground">
                 {lead.first_name} {lead.last_name}
               </div>
               {lead.title && (
-                <div className="text-blue-300 text-sm font-medium truncate">
+                <div className="text-primary group-hover:text-accent-foreground text-sm font-medium truncate">
                   {lead.title}
                 </div>
               )}
               {lead.company && (
-                <div className="text-white/60 text-sm truncate">
+                <div className="text-muted-foreground group-hover:text-accent-foreground/80 text-sm truncate">
                   {lead.company}
                 </div>
               )}
-              <div className="text-white/70 text-sm truncate">
+              <div className="text-muted-foreground group-hover:text-accent-foreground/80 text-sm truncate">
                 {lead.lead_email}
               </div>
             </div>
             {lead.icp && (
-              <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/40 flex-shrink-0">
+              <Badge variant="outline" className="bg-success/20 text-success border-success/40 group-hover:bg-accent-foreground/20 group-hover:text-accent-foreground group-hover:border-accent-foreground/40 flex-shrink-0">
                 ICP
               </Badge>
             )}
@@ -142,7 +143,7 @@ const DraggableLeadCard = ({ lead, onToggleInterested, onClick, formatDate }: Dr
           {lead.tags && lead.tags.length > 0 && (
             <div className="flex gap-1 flex-wrap">
               {lead.tags.slice(0, 3).map((tag) => (
-                <Badge key={tag.id} variant="outline" className="bg-purple-500/20 text-purple-300 border-purple-500/40 text-xs truncate max-w-full">
+                <Badge key={tag.id} variant="outline" className="bg-accent/20 text-accent-foreground border-accent/40 group-hover:bg-accent-foreground/20 group-hover:border-accent-foreground/40 text-xs truncate max-w-full">
                   {tag.name}
                 </Badge>
               ))}
@@ -153,32 +154,32 @@ const DraggableLeadCard = ({ lead, onToggleInterested, onClick, formatDate }: Dr
           {lead.custom_variables && lead.custom_variables.length > 0 && (
             <div className="space-y-1">
               {lead.custom_variables.slice(0, 2).map((cv, idx) => (
-                <div key={idx} className="text-white/60 text-xs truncate">
-                  <span className="text-white/40">{cv.name}:</span> {cv.value}
+                <div key={idx} className="text-muted-foreground group-hover:text-accent-foreground/80 text-xs truncate">
+                  <span className="text-muted-foreground/60 group-hover:text-accent-foreground/60">{cv.name}:</span> {cv.value}
                 </div>
               ))}
             </div>
           )}
 
           {lead.phone && (
-            <div className="text-white/60 text-sm truncate">{lead.phone}</div>
+            <div className="text-muted-foreground group-hover:text-accent-foreground/80 text-sm truncate">{lead.phone}</div>
           )}
 
           {lead.date_received && (
-            <div className="flex items-center gap-1 text-white/50 text-xs">
+            <div className="flex items-center gap-1 text-muted-foreground group-hover:text-accent-foreground/80 text-xs">
               <Calendar className="w-3 h-3 flex-shrink-0" />
               <span className="truncate">{formatDate(lead.date_received)}</span>
             </div>
           )}
 
           {lead.renewal_date && (
-            <div className="text-white/60 text-sm truncate">
+            <div className="text-muted-foreground group-hover:text-accent-foreground/80 text-sm truncate">
               Renewal: {lead.renewal_date}
             </div>
           )}
 
           {lead.notes && (
-            <div className="text-white/70 text-sm bg-white/5 p-2 rounded line-clamp-2">
+            <div className="text-muted-foreground group-hover:text-accent-foreground/80 text-sm bg-muted group-hover:bg-accent-foreground/10 p-2 rounded line-clamp-2">
               {lead.notes}
             </div>
           )}
@@ -188,7 +189,7 @@ const DraggableLeadCard = ({ lead, onToggleInterested, onClick, formatDate }: Dr
               href={lead.bison_conversation_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 text-dashboard-accent hover:text-dashboard-accent/80 text-sm truncate"
+              className="flex items-center gap-1 text-primary group-hover:text-accent-foreground hover:underline text-sm truncate"
               onClick={(e) => e.stopPropagation()}
             >
               <ExternalLink className="w-3 h-3 flex-shrink-0" />
@@ -219,15 +220,15 @@ const DroppableColumn = ({ stage, leads, onToggleInterested, onLeadClick, format
     <div className="flex flex-col h-full">
       {/* Column Header */}
       <div className={`${stage.color} border rounded-lg p-3 mb-3`}>
-        <h3 className="text-white font-semibold">{stage.label}</h3>
-        <p className="text-white/70 text-sm">{leads.length} leads</p>
+        <h3 className="font-semibold">{stage.label}</h3>
+        <p className="text-sm opacity-80">{leads.length} leads</p>
       </div>
 
       {/* Drop Zone */}
       <div
         ref={setNodeRef}
-        className={`flex-1 bg-white/5 border-2 rounded-lg p-2 min-h-[500px] space-y-2 transition-colors ${
-          isOver ? 'border-dashboard-accent bg-dashboard-accent/10' : 'border-white/10'
+        className={`flex-1 bg-muted border-2 rounded-lg p-2 min-h-[500px] space-y-2 transition-colors ${
+          isOver ? 'border-primary bg-primary/10' : 'border-border'
         }`}
       >
         {leads.map(lead => (
@@ -240,7 +241,7 @@ const DroppableColumn = ({ stage, leads, onToggleInterested, onLeadClick, format
           />
         ))}
         {leads.length === 0 && (
-          <div className="text-white/40 text-center py-8 text-sm">
+          <div className="text-muted-foreground text-center py-8 text-sm">
             Drop leads here
           </div>
         )}
@@ -710,48 +711,50 @@ const ClientPortalPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-dashboard-dark via-dashboard-slate to-dashboard-charcoal p-8">
+      <div className="min-h-screen bg-background p-8">
         <div className="flex items-center justify-center h-screen">
-          <div className="text-white text-xl">Loading leads...</div>
+          <div className="text-foreground text-xl">Loading leads...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-dashboard-dark via-dashboard-slate to-dashboard-charcoal p-8">
+    <div className="min-h-screen bg-background p-8">
       {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center gap-4 mb-6 justify-between">
           <Link to="/client-portal">
-            <Button variant="ghost" className="text-white hover:bg-white/10">
+            <Button variant="ghost">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Client Portal Hub
             </Button>
           </Link>
+          
+          {/* Theme Toggle */}
+          <ThemeToggle />
         </div>
 
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             <div>
-              <h1 className="text-4xl font-bold text-white mb-2">
+              <h1 className="text-4xl font-bold mb-2">
                 {workspace || 'All Leads'}
               </h1>
-              <p className="text-white/70">Manage your lead pipeline</p>
+              <p className="text-muted-foreground">Manage your lead pipeline</p>
             </div>
 
             {/* Workspace Switcher */}
             {workspaces.length > 0 && (
               <Select value={workspace} onValueChange={handleWorkspaceChange}>
-                <SelectTrigger className="w-[280px] bg-white/10 border-white/20 text-white">
+                <SelectTrigger className="w-[280px]">
                   <SelectValue placeholder="Switch workspace..." />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-white/20 text-white max-h-[400px]">
+                <SelectContent className="max-h-[400px]">
                   {workspaces.map((ws) => (
                     <SelectItem
                       key={ws}
                       value={ws}
-                      className="text-white hover:bg-white/10 focus:bg-white/20 cursor-pointer"
                     >
                       {ws}
                     </SelectItem>
@@ -766,7 +769,7 @@ const ClientPortalPage = () => {
             <Button
               onClick={handleRefreshData}
               disabled={isRefreshing}
-              className="bg-dashboard-accent hover:bg-dashboard-accent/90 text-white"
+              variant="default"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
@@ -776,13 +779,13 @@ const ClientPortalPage = () => {
 
         {/* Search and Filters */}
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/50 w-4 h-4" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <Input
             type="text"
             placeholder="Search by name, email, or phone..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/50"
+            className="pl-10"
           />
         </div>
       </div>

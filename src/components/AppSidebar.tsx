@@ -109,7 +109,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" variant="sidebar">
       {/* Header */}
       <SidebarHeader className="border-b border-border">
-        <div className="flex items-center gap-2 px-2 py-3">
+        <div className="flex items-center gap-2 px-2 group-data-[collapsible=icon]:px-0 py-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <BarChart3 className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -221,7 +221,7 @@ export function AppSidebar() {
 
       {/* Footer */}
       <SidebarFooter className="border-t border-border">
-        <div className="flex items-center gap-2 px-2 py-2 group-data-[collapsible=icon]:justify-center">
+        <div className="flex items-center gap-2 px-2 group-data-[collapsible=icon]:px-0 py-2 group-data-[collapsible=icon]:justify-center">
           <div className="flex h-2 w-2 items-center justify-center">
             <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
           </div>

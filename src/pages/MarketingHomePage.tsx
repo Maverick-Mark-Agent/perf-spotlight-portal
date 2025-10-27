@@ -63,11 +63,21 @@ const MarketingHomePage = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img
-                src="/images/maverick-logo-main.png"
-                alt="Maverick Marketing LLC"
-                className="h-12 w-auto"
-              />
+              <div className="bg-[#5B8FF9] rounded-xl p-2 flex items-center justify-center">
+                <img
+                  src="/maverick-icon.svg"
+                  alt="Maverick Marketing Icon"
+                  className="h-6 w-auto"
+                  style={{ filter: 'brightness(0) invert(1)' }}
+                />
+              </div>
+              <span className="text-2xl font-bold text-foreground">
+                <img
+                  src="/maverick-marketing-icon.svg"
+                  alt="Maverick Marketing LLC"
+                  className="h-8 w-auto"
+                />
+              </span>
             </div>
 
             <nav className="hidden md:flex items-center gap-6">
@@ -510,11 +520,23 @@ const MarketingHomePage = () => {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div className="col-span-2">
-              <img
-                src="/images/maverick-logo-main.png"
-                alt="Maverick Marketing LLC"
-                className="h-10 w-auto mb-4"
-              />
+              <div className="flex items-center gap-3 mb-4">
+                <div className="bg-[#5B8FF9] rounded-xl p-2 flex items-center justify-center">
+                  <img
+                    src="/maverick-icon.svg"
+                    alt="Maverick Marketing Icon"
+                    className="h-8 w-auto"
+                    style={{ filter: 'brightness(0) invert(1)' }}
+                  />
+                </div>
+                <span className="text-2xl font-bold text-foreground">
+                  <img
+                    src="/maverick-marketing-icon.svg"
+                    alt="Maverick Marketing LLC"
+                    className="h-10 w-auto"
+                  />
+                </span>
+            </div>
               <p className="text-foreground/70 mb-4 max-w-md leading-relaxed">
                 Data-driven email marketing campaigns that deliver qualified leads
                 directly to your pipeline.

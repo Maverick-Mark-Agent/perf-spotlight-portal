@@ -189,13 +189,31 @@ export default function ClientPortalHub() {
         {/* Admin Back Button, Logout, and Theme Toggle */}
         <div className="mb-6 flex items-center justify-between w-full">
           <div>
-            {isAdmin && (
+            {isAdmin ? (
               <Link to="/admin">
                 <Button variant="ghost">
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Back to Dashboard
                 </Button>
               </Link>
+            ) : (
+              <div className="flex items-center gap-3">
+              <div className="bg-[#5B8FF9] rounded-xl p-2 flex items-center justify-center">
+                <img
+                  src="/maverick-icon.svg"
+                  alt="Maverick Marketing Icon"
+                  className="h-6 w-auto"
+                  style={{ filter: 'brightness(0) invert(1)' }}
+                />
+              </div>
+              <span className="text-2xl font-bold text-foreground">
+                <img
+                  src="/maverick-marketing-icon.svg"
+                  alt="Maverick Marketing LLC"
+                  className="h-8 w-auto"
+                />
+              </span>
+            </div>
             )}
           </div>
           <div className="ml-auto flex items-center gap-2">

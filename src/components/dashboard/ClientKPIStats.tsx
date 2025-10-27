@@ -88,13 +88,13 @@ export const ClientKPIStats = ({ workspaceName, totalLeads, wonLeads, newLeads }
       <KPICard
         title="Monthly Target"
         value={analytics?.positiveRepliesCurrentMonth || 0}
-        subtitle="Goal: 100 replies"
+        subtitle={`Goal: ${analytics?.monthlyKPI || 0} replies`}
         type="progress"
-        progress={((analytics?.positiveRepliesCurrentMonth || 0) / 100) * 100}
+        progress={analytics?.monthlyKPI > 0 ? ((analytics.positiveRepliesCurrentMonth || 0) / analytics.monthlyKPI) * 100 : 0}
         status={
-          (analytics?.positiveRepliesCurrentMonth || 0) >= 100
+          analytics?.monthlyKPI > 0 && (analytics?.positiveRepliesCurrentMonth || 0) >= analytics.monthlyKPI
             ? "above-target"
-            : (analytics?.positiveRepliesCurrentMonth || 0) >= 80
+            : analytics?.monthlyKPI > 0 && (analytics?.positiveRepliesCurrentMonth || 0) >= (analytics.monthlyKPI * 0.8)
             ? "on-target"
             : "below-target"
         }

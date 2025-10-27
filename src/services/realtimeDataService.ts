@@ -38,6 +38,8 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
   const startTime = Date.now();
 
   try {
+    console.log('[KPI Realtime] Fetching from database...');
+
     // Get today's date for MTD query
     const { todayStr } = getCurrentDateInfo();
 
@@ -68,9 +70,10 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
     // If no data for today, fall back to most recent date
     if (!metrics || metrics.length === 0) {
       console.warn('[KPI Realtime] No MTD data found for today:', todayStr);
+      console.log('[KPI Realtime] Fetching most recent MTD data...');
 
       // Get the most recent metric_date
-      const { data: recentDateData } = await supabase
+      const { data: recentDate } = await supabase
         .from('client_metrics')
         .select('metric_date')
         .eq('metric_type', 'mtd')
@@ -78,9 +81,9 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
         .limit(1)
         .single();
 
-      const recentDate = (recentDateData as any)?.metric_date;
-
       if (recentDate) {
+        console.log('[KPI Realtime] Using most recent date:', recentDate.metric_date);
+
         // Query again with the most recent date
         const fallbackQuery = await supabase
           .from('client_metrics')
@@ -96,7 +99,7 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
             )
           `)
           .eq('metric_type', 'mtd')
-          .eq('metric_date', recentDate)
+          .eq('metric_date', recentDate.metric_date)
           .eq('client_registry.is_active', true)
           .order('positive_replies_mtd', { ascending: false });
 
@@ -145,6 +148,7 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
     }
 
     const fetchDuration = Date.now() - startTime;
+    console.log(`[KPI Realtime] ✅ Fetched ${validation.data!.length} clients in ${fetchDuration}ms`);
 
     return {
       data: validation.data!,
@@ -181,6 +185,8 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
   const startTime = Date.now();
 
   try {
+    console.log('[Volume Realtime] Fetching from database...');
+
     const { todayStr, daysInMonth, daysElapsed } = getCurrentDateInfo();
 
     // Query client_metrics with client_registry JOIN
@@ -209,9 +215,10 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
     // If no data for today, fall back to most recent date
     if (!metrics || metrics.length === 0) {
       console.warn('[Volume Realtime] No MTD data found for today:', todayStr);
+      console.log('[Volume Realtime] Fetching most recent MTD data...');
 
       // Get the most recent metric_date
-      const { data: recentDateData } = await supabase
+      const { data: recentDate } = await supabase
         .from('client_metrics')
         .select('metric_date')
         .eq('metric_type', 'mtd')
@@ -219,9 +226,9 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
         .limit(1)
         .single();
 
-      const recentDate = (recentDateData as any)?.metric_date;
-
       if (recentDate) {
+        console.log('[Volume Realtime] Using most recent date:', recentDate.metric_date);
+
         // Query again with the most recent date
         const fallbackQuery = await supabase
           .from('client_metrics')
@@ -236,7 +243,7 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
             )
           `)
           .eq('metric_type', 'mtd')
-          .eq('metric_date', recentDate)
+          .eq('metric_date', recentDate.metric_date)
           .eq('client_registry.is_active', true)
           .order('emails_sent_mtd', { ascending: false});
 
@@ -285,6 +292,7 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
     }
 
     const fetchDuration = Date.now() - startTime;
+    console.log(`[Volume Realtime] ✅ Fetched ${validation.data!.length} clients in ${fetchDuration}ms`);
 
     return {
       data: validation.data!,
@@ -324,18 +332,26 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
   const startTime = Date.now();
 
   try {
+    console.log('[Infrastructure Realtime] Fetching from email_accounts_view (materialized view)...');
+
+    // ✅ TWO-TABLE ARCHITECTURE: Query from materialized view for instant results (<100ms)
+    // This is MUCH faster than querying sender_emails_cache or hitting the API
+    // The view is auto-refreshed by poll-sender-emails after each sync completes
+
     // Get total count of accounts first (to bypass Supabase's 1000-row default limit)
     const { count: totalCount } = await supabase
-      .from('sender_emails_cache')
+      .from('email_accounts_view')
       .select('*', { count: 'exact', head: true });
 
-    // Query sender_emails_cache (synced by poll-sender-emails cron job)
+    console.log(`[Infrastructure Realtime] Found ${totalCount || 0} total accounts in materialized view`);
+
+    // Query email_accounts_view (refreshed after poll-sender-emails completes)
     // IMPORTANT: Set explicit limit to fetch ALL accounts (Supabase defaults to 1000 max)
     const { data: accounts, error } = await supabase
-      .from('sender_emails_cache')
+      .from('email_accounts_view')
       .select('*')
-      .order('last_synced_at', { ascending: false })
-      .limit(totalCount || 50000); // Fetch ALL accounts, increased from 10k to 50k for safety
+      .order('workspace_name', { ascending: true })
+      .limit(totalCount || 10000); // Fetch ALL accounts, not just first 1000
 
     if (error) {
       console.error('[Infrastructure Realtime] Database error:', error);
@@ -343,7 +359,7 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     }
 
     if (!accounts || accounts.length === 0) {
-      console.warn('[Infrastructure Realtime] No email accounts found in sender_emails_cache');
+      console.warn('[Infrastructure Realtime] No email accounts found in email_accounts_view');
       return {
         data: [],
         success: true,
@@ -356,12 +372,16 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     }
 
     // Check data freshness (last_synced_at from polling job)
-    const mostRecentSync = new Date((accounts as any[])[0].last_synced_at);
+    // CRITICAL FIX: Use actual sync time from database, not fetch time!
+    const mostRecentSync = new Date(accounts[0].last_synced_at);
     const ageMinutes = (Date.now() - mostRecentSync.getTime()) / 1000 / 60;
     const ageHours = ageMinutes / 60;
 
+    console.log(`[Infrastructure Realtime] Data was synced at: ${mostRecentSync.toISOString()}`);
+    console.log(`[Infrastructure Realtime] Data age: ${ageHours.toFixed(1)} hours`);
+
     if (ageHours > 24) {
-      console.warn(`[Infrastructure Realtime] Data is ${ageHours.toFixed(1)} hours old - polling job may have failed`);
+      console.warn(`[Infrastructure Realtime] ⚠️ Data is ${ageHours.toFixed(1)} hours old - polling job may have failed`);
     }
 
     // Transform database rows to EmailAccount interface
@@ -386,6 +406,8 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
     }
 
     const duplicateCount = transformedData.length - deduplicatedData.length;
+    console.log(`[Infrastructure Realtime] Deduplication: Removed ${duplicateCount} duplicates (same email+workspace, different instance)`);
+    console.log(`[Infrastructure Realtime] Total accounts after deduplication: ${deduplicatedData.length}`);
 
     // Validate deduplicated data
     const validation = validateEmailAccounts(deduplicatedData);
@@ -402,13 +424,14 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
         success: true,
         cached: false,
         fresh: false,
-        timestamp: new Date(),
+        timestamp: mostRecentSync, // FIXED: Use actual sync time, not fetch time!
         warnings: [`Validation issues found: ${validation.errors?.length} errors`],
         fetchDurationMs: Date.now() - startTime,
       };
     }
 
     const fetchDuration = Date.now() - startTime;
+    console.log(`[Infrastructure Realtime] ✅ Fetched ${validation.data!.length} unique accounts in ${fetchDuration}ms`);
 
     // Determine freshness (< 24 hours = fresh)
     const isFresh = ageHours < 24;
@@ -423,7 +446,7 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
       success: true,
       cached: false,
       fresh: isFresh,
-      timestamp: new Date(),
+      timestamp: mostRecentSync, // FIXED: Use actual sync time from database, not fetch time!
       warnings,
       fetchDurationMs: fetchDuration,
     };
@@ -458,6 +481,8 @@ export async function fetchClientLeadsRealtime(
   const startTime = Date.now();
 
   try {
+    console.log('[Client Leads Realtime] Fetching from database...');
+
     // Build query
     let query = supabase
       .from('client_leads')
@@ -478,6 +503,7 @@ export async function fetchClientLeadsRealtime(
     }
 
     const fetchDuration = Date.now() - startTime;
+    console.log(`[Client Leads Realtime] ✅ Fetched ${leads?.length || 0} leads in ${fetchDuration}ms`);
 
     return {
       data: leads || [],
@@ -513,28 +539,24 @@ export async function checkSystemHealth(): Promise<{
 }> {
   try {
     // Check email account sync status (email_account_metadata)
-    const { data: latestEmailData } = await supabase
+    const { data: latestEmail } = await supabase
       .from('email_account_metadata')
       .select('updated_at')
       .order('updated_at', { ascending: false })
       .limit(1)
       .single();
 
-    const latestEmail = latestEmailData as any;
-
     const pollingAge = latestEmail
       ? (Date.now() - new Date(latestEmail.updated_at).getTime()) / 1000 / 60
       : 999;
 
     // Check webhook status (webhook_delivery_log)
-    const { data: latestWebhookData } = await supabase
+    const { data: latestWebhook } = await supabase
       .from('webhook_delivery_log')
       .select('created_at')
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
-
-    const latestWebhook = latestWebhookData as any;
 
     const webhookAge = latestWebhook
       ? (Date.now() - new Date(latestWebhook.created_at).getTime()) / 1000 / 60

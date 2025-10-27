@@ -1,5 +1,8 @@
 project_id = "gjqbbgrfhijescaouqkx"
 
+[functions.universal-bison-webhook]
+verify_jwt = false
+
 [functions.airtable-clients]
 verify_jwt = false
 

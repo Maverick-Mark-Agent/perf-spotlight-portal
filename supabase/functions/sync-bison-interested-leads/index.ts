@@ -147,6 +147,14 @@ serve(async (req) => {
 
     // 5. Transform to Supabase format
     const transformedRecords = allLeads.map(lead => {
+      // Extract phone from custom variables (like webhook does)
+      const phoneVariable = lead.custom_variables?.find((v: any) =>
+        v.name?.toLowerCase() === 'phone' ||
+        v.name?.toLowerCase() === 'phone_number' ||
+        v.name?.toLowerCase() === 'cell phone'
+      );
+      const phone = phoneVariable?.value || lead.phone || null;
+
       return {
         bison_reply_id: `lead_${lead.id}`,
         bison_lead_id: lead.id.toString(),
@@ -156,7 +164,7 @@ serve(async (req) => {
         lead_email: lead.email,
         first_name: lead.first_name,
         last_name: lead.last_name,
-        phone: lead.phone || null,
+        phone: phone,  // FIXED: Extract from custom_variables
         address: lead.address || null,
         city: lead.city || null,
         state: lead.state || null,
@@ -183,11 +191,12 @@ serve(async (req) => {
         renewal_date: null,
         birthday: null,
 
-        // Email Bison link
-        bison_conversation_url: `https://send.maverickmarketingllc.com/leads/${lead.id}`,
+        // Email Bison link - FIXED: Use correct workspace URL format
+        bison_conversation_url: `https://send.maverickmarketingllc.com/workspaces/${workspaceId}/leads/${lead.id}`,
 
-        // Pipeline (default to new)
-        pipeline_stage: 'new',
+        // Pipeline - FIXED: Mark as interested since these leads have "Interested" tag
+        pipeline_stage: 'interested',
+        interested: true,  // ADDED: Mark as interested
         pipeline_position: 0,
 
         last_synced_at: new Date().toISOString(),

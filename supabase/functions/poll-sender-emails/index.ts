@@ -57,6 +57,16 @@ async function processInBackground(jobId: string) {
 
     console.log('🔄 Starting email account polling for all workspaces...')
 
+    // Fetch all active workspaces first (to know total count)
+    const { data: workspaces, error: workspacesError } = await supabase
+      .from('client_registry')
+      .select('workspace_name, bison_workspace_id, bison_instance, bison_api_key')
+      .eq('is_active', true)
+
+    if (workspacesError) throw workspacesError
+
+    console.log(`Found ${workspaces.length} active workspaces to sync`)
+
     // Create job status record
     const { data: jobStatus, error: jobStatusError } = await supabase
       .from('polling_job_status')
@@ -64,6 +74,7 @@ async function processInBackground(jobId: string) {
         id: jobId,
         job_name: 'poll-sender-emails',
         status: 'running',
+        total_workspaces: workspaces.length,
         started_at: new Date().toISOString()
       })
       .select()
@@ -75,15 +86,25 @@ async function processInBackground(jobId: string) {
       console.log('📊 Created job status record:', jobId)
     }
 
-    // Fetch all active workspaces
-    const { data: workspaces, error: workspacesError } = await supabase
-      .from('client_registry')
-      .select('workspace_name, bison_workspace_id, bison_instance, bison_api_key')
-      .eq('is_active', true)
+    // Create sync progress record for real-time tracking
+    const { data: progressRecord, error: progressError } = await supabase
+      .from('sync_progress')
+      .insert({
+        job_id: jobId,
+        job_name: 'poll-sender-emails',
+        total_workspaces: workspaces.length,
+        workspaces_completed: 0,
+        total_accounts: 0,
+        status: 'running'
+      })
+      .select()
+      .single()
 
-    if (workspacesError) throw workspacesError
-
-    console.log(`Found ${workspaces.length} active workspaces to sync`)
+    if (progressError) {
+      console.warn('⚠️ Failed to create progress record:', progressError.message)
+    } else {
+      console.log('📈 Created progress tracking record:', progressRecord.id)
+    }
 
     const results = []
     let totalAccountsSynced = 0
@@ -185,51 +206,67 @@ async function processInBackground(jobId: string) {
           // Calculate pricing with ALL workspace accounts for accurate domain counts
           const pricing = calculatePricing(provider, reseller, domain, allWorkspaceAccounts)
 
-          return {
-            email_address: account.email,
-            account_name: account.name,
-            workspace_name: workspace.workspace_name,
-            bison_workspace_id: workspace.bison_workspace_id,
-            bison_instance: workspace.bison_instance,
+          // Calculate reply rate
+          const replyRate = account.emails_sent_count > 0
+            ? Math.round((account.unique_replied_count / account.emails_sent_count) * 100 * 100) / 100
+            : 0
 
-            // Performance metrics
+          return {
+            // ✅ TWO-TABLE ARCHITECTURE: Write to email_accounts_raw (staging table)
+            bison_account_id: account.id,  // Email Bison sender_email.id
+            email_address: account.email,
+            workspace_name: workspace.workspace_name,
+            workspace_id: workspace.bison_workspace_id,
+            bison_instance: workspace.bison_instance === 'Long Run' ? 'longrun' : 'maverick',
+
+            // Account status
+            status: account.status || 'Not connected',
+            account_type: account.type,
+
+            // Performance metrics (from Email Bison API)
             emails_sent_count: account.emails_sent_count || 0,
             total_replied_count: account.total_replied_count || 0,
             unique_replied_count: account.unique_replied_count || 0,
             bounced_count: account.bounced_count || 0,
             unsubscribed_count: account.unsubscribed_count || 0,
             interested_leads_count: account.interested_leads_count || 0,
+            total_opened_count: account.total_opened_count || 0,
+            unique_opened_count: account.unique_opened_count || 0,
             total_leads_contacted_count: account.total_leads_contacted_count || 0,
 
-            // Status
-            status: account.status || 'Not connected',
+            // Configuration
             daily_limit: account.daily_limit || 0,
-            account_type: account.type,
+            warmup_enabled: account.warmup_enabled || false,
 
-            // Provider info
+            // Calculated fields
+            reply_rate_percentage: replyRate,
+
+            // Tags/categorization
             email_provider: provider,
             reseller: reseller,
             domain: domain,
 
             // Pricing (calculated)
             price: pricing.price,
-            volume_per_account: pricing.dailySendingLimit,
+            price_source: 'calculated',
+            pricing_needs_review: pricing.price === 0 && provider !== null,
 
-            // Tags
-            tags: account.tags || [],
+            // Metadata
+            notes: null,
 
             // Timestamps
             last_synced_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            deleted_at: null  // ✅ Clear deleted_at for active accounts (in case they were re-added)
           }
         })
 
-        // Step 3: Batch upsert all accounts at once (much faster!)
+        // Step 3: Batch upsert to email_accounts_raw (staging table)
         if (accountRecords.length > 0) {
           const { error: batchError, count } = await supabase
-            .from('sender_emails_cache')
+            .from('email_accounts_raw')  // ✅ CHANGED: Use staging table
             .upsert(accountRecords, {
-              onConflict: 'email_address,workspace_name',
+              onConflict: 'bison_account_id,bison_instance',  // ✅ CHANGED: Use correct unique constraint
               count: 'exact'
             })
 
@@ -238,7 +275,32 @@ async function processInBackground(jobId: string) {
             accountsFetched = 0
           } else {
             accountsFetched = accountRecords.length
-            console.log(`✓ Batch upsert complete: ${accountsFetched} accounts successfully synced`)
+            console.log(`✓ Batch upsert to email_accounts_raw complete: ${accountsFetched} accounts`)
+          }
+        }
+
+        // Step 4: Mark deleted accounts (accounts in DB but not in current Bison response)
+        // This implements soft-delete to preserve historical data while showing accurate counts
+        const currentBisonIds = allWorkspaceAccounts.map(acc => acc.id)
+        const instance = workspace.bison_instance === 'Long Run' ? 'longrun' : 'maverick'
+
+        if (currentBisonIds.length > 0) {
+          console.log(`Checking for deleted accounts in ${workspace.workspace_name}...`)
+          const { data: deletedAccounts, error: deleteError } = await supabase
+            .from('email_accounts_raw')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('workspace_id', workspace.bison_workspace_id)
+            .eq('bison_instance', instance)
+            .not('bison_account_id', 'in', `(${currentBisonIds.join(',')})`)
+            .is('deleted_at', null)  // Only mark previously active accounts
+            .select('bison_account_id')
+
+          if (deleteError) {
+            console.error(`  ⚠️ Failed to mark deleted accounts: ${deleteError.message}`)
+          } else if (deletedAccounts && deletedAccounts.length > 0) {
+            console.log(`  ✓ Marked ${deletedAccounts.length} accounts as deleted`)
+          } else {
+            console.log(`  ✓ No deleted accounts found`)
           }
         }
 
@@ -289,6 +351,23 @@ async function processInBackground(jobId: string) {
         workspacesProcessed++
       }
 
+      // ✅ Update progress after each batch for real-time tracking
+      if (progressRecord) {
+        await supabase
+          .from('sync_progress')
+          .update({
+            workspaces_completed: workspacesProcessed,
+            current_workspace: batchResults[batchResults.length - 1]?.workspace || null,
+            total_accounts: totalAccountsSynced,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', progressRecord.id)
+          .then(() => {
+            console.log(`📈 Progress updated: ${workspacesProcessed}/${workspaces.length} workspaces, ${totalAccountsSynced} accounts`)
+          })
+          .catch(err => console.warn('⚠️ Failed to update progress:', err.message))
+      }
+
       // Small delay between batches to avoid rate limiting
       if (i + PARALLEL_WORKSPACE_COUNT < workspaces.length) {
         await new Promise(resolve => setTimeout(resolve, WORKSPACE_BATCH_DELAY_MS))
@@ -301,6 +380,21 @@ async function processInBackground(jobId: string) {
     console.log(`✅ Poll complete: ${totalAccountsSynced} accounts synced across ${workspacesProcessed}/${workspaces.length} workspaces in ${totalDuration}ms`)
     if (workspacesSkipped > 0) {
       console.warn(`⚠️ Skipped ${workspacesSkipped} workspaces due to timeout - run again to complete`)
+    }
+
+    // ✅ Refresh materialized view (critical for two-table architecture!)
+    // Always refresh, even if partial - users should see updated data
+    console.log('🔄 Refreshing materialized view email_accounts_view...')
+    try {
+      const { error: viewError } = await supabase.rpc('refresh_email_accounts_view')
+
+      if (viewError) {
+        console.error('❌ Failed to refresh materialized view:', viewError.message)
+      } else {
+        console.log('✅ Materialized view refreshed successfully - frontend will see fresh data!')
+      }
+    } catch (viewErr) {
+      console.error('❌ Error refreshing view:', viewErr)
     }
 
     // Update job status record
@@ -317,6 +411,28 @@ async function processInBackground(jobId: string) {
         warnings: workspacesSkipped > 0 ? [`Skipped ${workspacesSkipped} workspaces due to timeout`] : []
       })
       .eq('id', jobId)
+
+    // ✅ Update progress record to completed
+    if (progressRecord?.id) {
+      console.log(`📊 Marking sync progress as completed (ID: ${progressRecord.id})`)
+      const { error: completeError } = await supabase
+        .from('sync_progress')
+        .update({
+          status: 'completed', // Always mark as 'completed' (sync_progress only accepts: 'running', 'completed', 'failed')
+          completed_at: new Date().toISOString(),
+          workspaces_completed: workspacesProcessed,
+          total_accounts: totalAccountsSynced
+        })
+        .eq('id', progressRecord.id)
+
+      if (completeError) {
+        console.error('❌ CRITICAL: Failed to mark progress as completed:', completeError)
+      } else {
+        console.log('✅ Successfully marked sync progress as completed!')
+      }
+    } else {
+      console.warn('⚠️ No progressRecord.id available - cannot mark as completed')
+    }
 
     console.log('📊 Background job completed successfully!')
 
@@ -335,6 +451,17 @@ async function processInBackground(jobId: string) {
       })
       .eq('id', jobId)
       .catch(err => console.error('Failed to update job status:', err))
+
+    // ✅ Update progress record to failed
+    await supabase
+      .from('sync_progress')
+      .update({
+        status: 'failed',
+        error_message: error.message,
+        completed_at: new Date().toISOString()
+      })
+      .eq('job_id', jobId)
+      .catch(err => console.warn('⚠️ Failed to mark progress as failed:', err.message))
 
     throw error // Re-throw to ensure error is logged
   }

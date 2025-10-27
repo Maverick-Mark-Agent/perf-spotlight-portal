@@ -3,8 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App.tsx";
 import "./index.css";
 
-// Apply dark mode to the root element
-document.documentElement.classList.add('dark');
+// Theme is now managed by ThemeProvider in App.tsx
+// The user's preference is automatically loaded from localStorage
+// Default theme follows system preference
 
 // Create a React Query client
 const queryClient = new QueryClient({

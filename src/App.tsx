@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { DashboardProvider } from "@/contexts/DashboardContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminProtectedRoute } from "@/components/auth/AdminProtectedRoute";
@@ -41,12 +42,13 @@ const queryClient = new QueryClient();
 const App = () => (
   <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
-      <DashboardProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
+      <ThemeProvider>
+        <DashboardProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
               {/* ========================================= */}
               {/* PUBLIC ROUTES (No authentication needed) */}
               {/* ========================================= */}
@@ -231,8 +233,9 @@ const App = () => (
           </BrowserRouter>
         </TooltipProvider>
       </DashboardProvider>
-    </QueryClientProvider>
-  </ErrorBoundary>
+    </ThemeProvider>
+  </QueryClientProvider>
+</ErrorBoundary>
 );
 
 export default App;

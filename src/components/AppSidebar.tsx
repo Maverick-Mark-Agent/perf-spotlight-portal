@@ -115,6 +115,7 @@ export function AppSidebar() {
               src="/maverick-icon.svg"
               alt="Maverick Marketing Logo"
               className="h-5 w-5"
+              style={{ filter: 'brightness(0) invert(1)' }}
             />
           </div>
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">

@@ -111,7 +111,11 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-border">
         <div className="flex items-center gap-2 px-2 group-data-[collapsible=icon]:px-0 py-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <BarChart3 className="h-5 w-5 text-primary-foreground" />
+            <img
+              src="/maverick-icon.svg"
+              alt="Maverick Marketing Logo"
+              className="h-5 w-5"
+            />
           </div>
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
             <span className="text-sm font-semibold">Maverick Marketing</span>

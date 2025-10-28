@@ -375,11 +375,15 @@ async function processInBackground(jobId: string) {
     }
 
     const totalDuration = Date.now() - startTime
-    const finalStatus = workspacesSkipped > 0 ? 'partial' : 'completed'
+    const failedCount = results.filter(r => !r.success).length
+    const finalStatus = workspacesSkipped > 0 ? 'partial' : (failedCount > 0 ? 'completed_with_errors' : 'completed')
 
     console.log(`✅ Poll complete: ${totalAccountsSynced} accounts synced across ${workspacesProcessed}/${workspaces.length} workspaces in ${totalDuration}ms`)
     if (workspacesSkipped > 0) {
       console.warn(`⚠️ Skipped ${workspacesSkipped} workspaces due to timeout - run again to complete`)
+    }
+    if (failedCount > 0) {
+      console.warn(`⚠️ ${failedCount} workspaces failed to sync`)
     }
 
     // ✅ Refresh materialized view (critical for two-table architecture!)

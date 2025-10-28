@@ -201,12 +201,6 @@ export default function ZipDashboard() {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-4">
-              <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                <Link to="/">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Portal
-                </Link>
-              </Button>
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-primary/20 rounded-lg">
                   <MapPin className="h-6 w-6 text-primary" />

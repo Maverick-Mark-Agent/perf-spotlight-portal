@@ -245,14 +245,6 @@ const ContactPipelineDashboard: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-4 mb-2">
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Home
-              </Link>
-            </Button>
-          </div>
           <h1 className="text-3xl font-bold">Contact Pipeline Dashboard</h1>
           <p className="text-muted-foreground">
             Automated list cleaning and weekly batch uploads

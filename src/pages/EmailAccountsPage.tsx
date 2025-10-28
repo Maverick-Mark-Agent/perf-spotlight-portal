@@ -1025,13 +1025,6 @@ const SendingAccountsInfrastructure = () => {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Button asChild variant="ghost" size="sm" className="hover:bg-accent">
-                <Link to="/">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Portal
-                </Link>
-              </Button>
-              <div className="h-6 w-px bg-border"></div>
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-primary/10 rounded-xl">
                   <Mail className="h-6 w-6 text-primary" />

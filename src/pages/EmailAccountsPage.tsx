@@ -11,6 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { supabase } from "@/integrations/supabase/client";
 import { SyncProgressBar } from "@/components/SyncProgressBar";
+import { TabNavigation, type TabValue } from "@/components/EmailInfrastructure/TabNavigation";
+import { OverviewTab } from "@/components/EmailInfrastructure/OverviewTab";
+import { PerformanceTab } from "@/components/EmailInfrastructure/PerformanceTab";
+import { HomeInsuranceTab } from "@/components/EmailInfrastructure/HomeInsuranceTab";
 
 // Removed localStorage caching due to quota limits with large dataset (4000+ accounts)
 // Data is now fetched fresh on each page load for real-time accuracy
@@ -68,6 +72,9 @@ const SendingAccountsInfrastructure = () => {
 
   // ✅ NEW: Track active sync job for progress bar
   const [activeSyncJobId, setActiveSyncJobId] = useState<string | null>(null);
+
+  // ✅ NEW: Tab navigation state
+  const [activeTab, setActiveTab] = useState<TabValue>('overview');
 
   // ✅ NEW: Email Provider Performance section state
   const [providerPerformanceView, setProviderPerformanceView] = useState('reseller');
@@ -1178,8 +1185,35 @@ const SendingAccountsInfrastructure = () => {
           return null;
         })()}
 
-        {/* Status Overview - 4 Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* ✅ NEW: Tab Navigation */}
+        <div className="mb-6">
+          <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'overview' && <OverviewTab />}
+        {activeTab === 'home-insurance' && <HomeInsuranceTab />}
+        {activeTab === 'performance' && (
+          <PerformanceTab
+            providerPerformanceView={providerPerformanceView}
+            setProviderPerformanceView={setProviderPerformanceView}
+            resellerStatsData={resellerStatsData}
+            espStatsData={espStatsData}
+            top100AccountsData={top100AccountsData}
+            loading={loading}
+            expandedProviders={expandedProviders}
+            toggleProvider={toggleProvider}
+          />
+        )}
+
+        {/* ==================================================================
+            ALL CLIENTS TAB CONTENT
+            ================================================================== */}
+
+        {activeTab === 'all-clients' && (
+          <>
+            {/* Status Overview - 4 Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Card 1: Total Email Accounts Owned */}
           <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader className="pb-3">
@@ -1247,11 +1281,14 @@ const SendingAccountsInfrastructure = () => {
               <p className="text-white/70 text-sm">Avg Cost per Client</p>
             </CardContent>
           </Card>
-        </div>
+            </div>
+          </>
+        )}
 
-        {/* Accounts Per Client Bar Chart */}
-        <div className="mt-8 mb-8">
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+        {/* Accounts Per Client Bar Chart - Overview Tab Only */}
+        {activeTab === 'overview' && (
+          <div className="mt-8 mb-8">
+            <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
                 <Users className="h-5 w-5 text-dashboard-primary" />
@@ -1344,188 +1381,13 @@ const SendingAccountsInfrastructure = () => {
               )}
             </CardContent>
           </Card>
-        </div>
+          </div>
+        )}
 
-        {/* Connection Status & Provider Distribution */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
-          {/* Connection Status Chart */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center space-x-2">
-                <CheckCircle className="h-5 w-5 text-dashboard-success" />
-                <span>Account Connection Status Breakdown</span>
-              </CardTitle>
-              <p className="text-white/60 text-sm mt-1">
-                Visual representation of connected accounts. The closer to 100%, the better.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="h-64 flex items-center justify-center">
-                  <div className="text-white/70">Loading chart data...</div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-6">
-                  <div className="relative h-64 flex-1">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: 'Connected', value: accountStats.connected, color: 'hsl(var(--dashboard-success))' },
-                            { name: 'Disconnected', value: accountStats.disconnected, color: 'hsl(var(--dashboard-warning))' }
-                          ]}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={90}
-                          dataKey="value"
-                        >
-                          {[
-                            { name: 'Connected', value: accountStats.connected, color: 'hsl(var(--dashboard-success))' },
-                            { name: 'Disconnected', value: accountStats.disconnected, color: 'hsl(var(--dashboard-warning))' }
-                          ].map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                    
-                    {/* Center Text */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="text-center">
-                        <div className="text-3xl font-bold text-white">
-                          {((accountStats.connected / accountStats.total) * 100).toFixed(1)}%
-                        </div>
-                        <div className="text-white/70 text-sm">Connected</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Legend */}
-                  <div className="flex flex-col space-y-3">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-4 h-4 rounded-full bg-dashboard-success"></div>
-                      <div className="text-white text-sm">
-                        <div className="font-medium">Connected</div>
-                        <div className="text-white/70">{accountStats.connected} accounts</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-4 h-4 rounded-full bg-dashboard-warning"></div>
-                      <div className="text-white text-sm">
-                        <div className="font-medium">Disconnected</div>
-                        <div className="text-white/70">{accountStats.disconnected} accounts</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Workspace Distribution */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center space-x-2">
-                <Users className="h-5 w-5 text-dashboard-primary" />
-                <span>Workspace Accounts Distribution Breakdown</span>
-              </CardTitle>
-              <p className="text-white/60 text-sm mt-1">
-                Visual representation of how many accounts each workspace owns.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="h-64 flex items-center justify-center">
-                  <div className="text-white/70">Loading chart data...</div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-6">
-                  <div className="relative h-64 flex-1">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={(() => {
-                            const maverickCount = emailAccounts.filter(account =>
-                              account.fields['Bison Instance'] === 'Maverick'
-                            ).length;
-                            const longrunCount = emailAccounts.filter(account =>
-                              account.fields['Bison Instance'] === 'Long Run'
-                            ).length;
-
-                            return [
-                              { name: 'Maverick', value: maverickCount, color: '#8B5CF6' },
-                              { name: 'Long Run', value: longrunCount, color: '#F59E0B' }
-                            ];
-                          })()}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={90}
-                          dataKey="value"
-                        >
-                          {(() => {
-                            const maverickCount = emailAccounts.filter(account =>
-                              account.fields['Bison Instance'] === 'Maverick'
-                            ).length;
-                            const longrunCount = emailAccounts.filter(account =>
-                              account.fields['Bison Instance'] === 'Long Run'
-                            ).length;
-
-                            return [
-                              { name: 'Maverick', value: maverickCount, color: '#8B5CF6' },
-                              { name: 'Long Run', value: longrunCount, color: '#F59E0B' }
-                            ];
-                          })().map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                    
-                    {/* Center Text */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="text-center">
-                        <div className="text-3xl font-bold text-white">
-                          {emailAccounts.length}
-                        </div>
-                        <div className="text-white/70 text-sm">
-                          Total Accounts
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Legend */}
-                  <div className="flex flex-col space-y-3">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#8B5CF6' }}></div>
-                      <div className="text-white text-sm">
-                        <div className="font-medium">Maverick Bison</div>
-                        <div className="text-white/70">
-                          {emailAccounts.filter(account => account.fields['Bison Instance'] === 'Maverick').length} accounts
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#F59E0B' }}></div>
-                      <div className="text-white text-sm">
-                        <div className="font-medium">Long Run Bison</div>
-                        <div className="text-white/70">
-                          {emailAccounts.filter(account => account.fields['Bison Instance'] === 'Long Run').length} accounts
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Simplified Price Analysis */}
-        <div className="mt-8">
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+        {/* Simplified Price Analysis - Performance Tab Only */}
+        {activeTab === 'performance' && (
+          <div className="mt-8">
+            <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
                 <Activity className="h-5 w-5 text-dashboard-primary" />
@@ -1616,641 +1478,14 @@ const SendingAccountsInfrastructure = () => {
               )}
             </CardContent>
           </Card>
-        </div>
+          </div>
+        )}
 
-        {/* ✅ NEW: Email Provider Performance (Reseller/ESP/Top 100) */}
-        <div className="mt-8">
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center space-x-2">
-                <Activity className="h-5 w-5 text-dashboard-accent" />
-                <span>Email Provider Performance Updates</span>
-              </CardTitle>
-              <div className="flex items-center space-x-4 mt-4">
-                <label className="text-white/70 text-sm">View:</label>
-                <Select value={providerPerformanceView} onValueChange={(value) => setProviderPerformanceView(value)}>
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white w-64">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="reseller">Stats by Reseller</SelectItem>
-                    <SelectItem value="esp">Stats by ESP</SelectItem>
-                    <SelectItem value="top100">Top 100 Performers (50+ sent)</SelectItem>
-                    <SelectItem value="accounts50">Accounts 50+ (Enhanced)</SelectItem>
-                    <SelectItem value="no-replies">100+ No Replies</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="h-96 flex items-center justify-center">
-                  <div className="text-white/70">Loading performance data...</div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* VIEW 1: Stats by Reseller */}
-                  {providerPerformanceView === 'reseller' && (
-                    <div className="space-y-4">
-                      {resellerStatsData.length === 0 ? (
-                        <div className="text-white/70 text-center py-8">No reseller data available</div>
-                      ) : (
-                        resellerStatsData.map((reseller: any) => (
-                          <Collapsible key={reseller.name} className="bg-white/5 rounded-lg border border-white/10">
-                            <div className="p-4">
-                              <div className="flex justify-between items-start mb-3">
-                                <div className="flex items-center gap-3 flex-1">
-                                  <CollapsibleTrigger
-                                    className="hover:bg-white/10 p-1 rounded transition-colors"
-                                    onClick={() => toggleProvider(reseller.name)}
-                                  >
-                                    {expandedProviders.has(reseller.name) ? (
-                                      <ChevronDown className="h-5 w-5 text-white" />
-                                    ) : (
-                                      <ChevronRight className="h-5 w-5 text-white" />
-                                    )}
-                                  </CollapsibleTrigger>
-                                  <h3 className="text-white font-semibold text-lg">{reseller.name}</h3>
-                                </div>
-                                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
-                                  {reseller.totalAccounts} accounts
-                                </Badge>
-                              </div>
-                              <div className="grid grid-cols-6 gap-4 mt-3">
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Sent</span>
-                                  <div className="text-white font-semibold">{reseller.totalSent.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Replies</span>
-                                  <div className="text-white font-semibold">{reseller.totalReplies.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Reply Rate</span>
-                                  <div className="text-white font-semibold">{reseller.replyRate}%</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Bounces</span>
-                                  <div className="text-white font-semibold">{reseller.totalBounces.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Group Bounce Rate</span>
-                                  <div className="text-white font-semibold">{reseller.groupBounceRate}%</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Avg Bounce/Acct</span>
-                                  <div className="text-white font-semibold">{reseller.avgBounceRatePerAccount}%</div>
-                                </div>
-                              </div>
-                            </div>
-                            <CollapsibleContent>
-                              <div className="border-t border-white/10 p-4 bg-white/5">
-                                <div className="space-y-2">
-                                  {reseller.accounts.map((account: any, idx: number) => {
-                                    const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-                                    const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-                                    const bounced = parseFloat(account.fields['Bounced']) || 0;
-                                    const replyRate = totalSent > 0 ? ((totalReplied / totalSent) * 100).toFixed(2) : '0.00';
-                                    const bounceRate = totalSent > 0 ? ((bounced / totalSent) * 100).toFixed(2) : '0.00';
 
-                                    return (
-                                      <div key={idx} className="bg-white/5 rounded p-3 text-sm">
-                                        <div className="flex justify-between items-start mb-2">
-                                          <span className="text-white font-medium">{account.fields['Email'] || account.fields['Name'] || 'No email'}</span>
-                                          <Badge
-                                            variant={account.fields['Status'] === 'Connected' ? 'default' : 'destructive'}
-                                            className="text-xs"
-                                          >
-                                            {account.fields['Status']}
-                                          </Badge>
-                                        </div>
-                                        <div className="grid grid-cols-5 gap-2 text-white/70">
-                                          <div>
-                                            <div className="text-xs">Sent</div>
-                                            <div className="text-white font-semibold">{totalSent.toLocaleString()}</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs">Replies</div>
-                                            <div className="text-white font-semibold">{totalReplied.toLocaleString()}</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs">Reply Rate</div>
-                                            <div className="text-white font-semibold">{replyRate}%</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs">Bounced</div>
-                                            <div className="text-white font-semibold">{bounced.toLocaleString()}</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs">Bounce Rate</div>
-                                            <div className="text-white font-semibold">{bounceRate}%</div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {/* VIEW 2: Stats by ESP */}
-                  {providerPerformanceView === 'esp' && (
-                    <div className="space-y-4">
-                      {espStatsData.length === 0 ? (
-                        <div className="text-white/70 text-center py-8">No ESP data available</div>
-                      ) : (
-                        espStatsData.map((esp: any) => (
-                          <Collapsible key={esp.name} className="bg-white/5 rounded-lg border border-white/10">
-                            <div className="p-4">
-                              <div className="flex justify-between items-start mb-3">
-                                <div className="flex items-center gap-3 flex-1">
-                                  <CollapsibleTrigger
-                                    className="hover:bg-white/10 p-1 rounded transition-colors"
-                                    onClick={() => toggleProvider(esp.name)}
-                                  >
-                                    {expandedProviders.has(esp.name) ? (
-                                      <ChevronDown className="h-5 w-5 text-white" />
-                                    ) : (
-                                      <ChevronRight className="h-5 w-5 text-white" />
-                                    )}
-                                  </CollapsibleTrigger>
-                                  <h3 className="text-white font-semibold text-lg">{esp.name}</h3>
-                                </div>
-                                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
-                                  {esp.totalAccounts} accounts
-                                </Badge>
-                              </div>
-                              <div className="grid grid-cols-6 gap-4 mt-3">
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Sent</span>
-                                  <div className="text-white font-semibold">{esp.totalSent.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Replies</span>
-                                  <div className="text-white font-semibold">{esp.totalReplies.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Reply Rate</span>
-                                  <div className="text-white font-semibold">{esp.replyRate}%</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Bounces</span>
-                                  <div className="text-white font-semibold">{esp.totalBounces.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Group Bounce Rate</span>
-                                  <div className="text-white font-semibold">{esp.groupBounceRate}%</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Avg Bounce/Acct</span>
-                                  <div className="text-white font-semibold">{esp.avgBounceRatePerAccount}%</div>
-                                </div>
-                              </div>
-                            </div>
-                            <CollapsibleContent>
-                              <div className="border-t border-white/10 p-4 bg-white/5">
-                                <div className="space-y-2">
-                                  {esp.accounts.map((account: any, idx: number) => {
-                                    const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-                                    const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-                                    const bounced = parseFloat(account.fields['Bounced']) || 0;
-                                    const replyRate = totalSent > 0 ? ((totalReplied / totalSent) * 100).toFixed(2) : '0.00';
-                                    const bounceRate = totalSent > 0 ? ((bounced / totalSent) * 100).toFixed(2) : '0.00';
-
-                                    return (
-                                      <div key={idx} className="bg-white/5 rounded p-3 text-sm">
-                                        <div className="flex justify-between items-start mb-2">
-                                          <span className="text-white font-medium">{account.fields['Email'] || account.fields['Name'] || 'No email'}</span>
-                                          <Badge
-                                            variant={account.fields['Status'] === 'Connected' ? 'default' : 'destructive'}
-                                            className="text-xs"
-                                          >
-                                            {account.fields['Status']}
-                                          </Badge>
-                                        </div>
-                                        <div className="grid grid-cols-5 gap-2 text-white/70">
-                                          <div>
-                                            <div className="text-xs">Sent</div>
-                                            <div className="text-white font-semibold">{totalSent.toLocaleString()}</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs">Replies</div>
-                                            <div className="text-white font-semibold">{totalReplied.toLocaleString()}</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs">Reply Rate</div>
-                                            <div className="text-white font-semibold">{replyRate}%</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs">Bounced</div>
-                                            <div className="text-white font-semibold">{bounced.toLocaleString()}</div>
-                                          </div>
-                                          <div>
-                                            <div className="text-xs">Bounce Rate</div>
-                                            <div className="text-white font-semibold">{bounceRate}%</div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        ))
-                      )}
-                    </div>
-                  )}
-
-                  {/* VIEW 3: Top 100 Performers */}
-                  {providerPerformanceView === 'top100' && (
-                    <div>
-                      {top100AccountsData.length === 0 ? (
-                        <div className="text-white/70 text-center py-8">No accounts with 50+ emails sent</div>
-                      ) : (
-                        <>
-                          {/* Summary metrics */}
-                          <div className="grid grid-cols-6 gap-4 mb-6 p-4 bg-white/10 rounded-lg">
-                            <div>
-                              <div className="text-white/70 text-xs mb-1">Total Accounts</div>
-                              <div className="text-white font-bold">{top100AccountsData.length}</div>
-                            </div>
-                            <div>
-                              <div className="text-white/70 text-xs mb-1">Total Sent</div>
-                              <div className="text-white font-bold">
-                                {top100AccountsData.reduce((sum, acc: any) => sum + (parseFloat(acc.fields['Total Sent']) || 0), 0).toLocaleString()}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-white/70 text-xs mb-1">Total Replies</div>
-                              <div className="text-white font-bold">
-                                {top100AccountsData.reduce((sum, acc: any) => sum + (parseFloat(acc.fields['Total Replied']) || 0), 0).toLocaleString()}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-white/70 text-xs mb-1">Avg Reply Rate</div>
-                              <div className="text-white font-bold">
-                                {(top100AccountsData.reduce((sum, acc: any) => sum + acc.calculatedReplyRate, 0) / top100AccountsData.length).toFixed(2)}%
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-white/70 text-xs mb-1">Total Bounces</div>
-                              <div className="text-white font-bold">
-                                {top100AccountsData.reduce((sum, acc: any) => sum + (parseFloat(acc.fields['Bounced']) || 0), 0).toLocaleString()}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-white/70 text-xs mb-1">Avg Bounce Rate</div>
-                              <div className="text-white font-bold">
-                                {(() => {
-                                  const totalSent = top100AccountsData.reduce((sum, acc: any) => sum + (parseFloat(acc.fields['Total Sent']) || 0), 0);
-                                  const totalBounced = top100AccountsData.reduce((sum, acc: any) => sum + (parseFloat(acc.fields['Bounced']) || 0), 0);
-                                  return totalSent > 0 ? ((totalBounced / totalSent) * 100).toFixed(2) : '0.00';
-                                })()}%
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Account list */}
-                          <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                            {top100AccountsData.map((account: any, idx: number) => {
-                              const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-                              const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-                              const bounced = parseFloat(account.fields['Bounced']) || 0;
-                              const bounceRate = totalSent > 0 ? ((bounced / totalSent) * 100).toFixed(2) : '0.00';
-
-                              return (
-                                <div key={idx} className="bg-white/5 rounded p-3 border border-white/10">
-                                  <div className="flex justify-between items-start mb-2">
-                                    <div className="flex items-center gap-2">
-                                      <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40">
-                                        #{idx + 1}
-                                      </Badge>
-                                      <span className="text-white font-medium">{account.fields['Email'] || account.fields['Name'] || 'No email'}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-dashboard-success font-semibold">{account.calculatedReplyRate.toFixed(2)}% reply rate</span>
-                                      <Badge
-                                        variant={account.fields['Status'] === 'Connected' ? 'default' : 'destructive'}
-                                        className="text-xs"
-                                      >
-                                        {account.fields['Status']}
-                                      </Badge>
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-6 gap-2 text-sm text-white/70">
-                                    <div>
-                                      <div className="text-xs">ESP</div>
-                                      <div className="text-white font-semibold">{account.fields['Tag - Email Provider'] || 'N/A'}</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-xs">Sent</div>
-                                      <div className="text-white font-semibold">{totalSent.toLocaleString()}</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-xs">Replies</div>
-                                      <div className="text-white font-semibold">{totalReplied.toLocaleString()}</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-xs">Bounced</div>
-                                      <div className="text-white font-semibold">{bounced.toLocaleString()}</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-xs">Bounce Rate</div>
-                                      <div className="text-white font-semibold">{bounceRate}%</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-xs">Client</div>
-                                      <div className="text-white font-semibold text-xs truncate">{account.fields['Client Name (from Client)']?.[0] || 'Unknown'}</div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* VIEW 4 & 5: Placeholder for now - will reuse existing logic */}
-                  {(providerPerformanceView === 'accounts50' || providerPerformanceView === 'no-replies') && (
-                    <div className="text-white/70 text-center py-8">
-                      This view will be implemented using enhanced version of existing functionality
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Email Provider Performance Analysis */}
-        <div className="mt-8">
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center space-x-2">
-                <Mail className="h-5 w-5 text-dashboard-primary" />
-                <span>Email Provider Performance</span>
-              </CardTitle>
-              <div className="flex items-center space-x-4 mt-4">
-                <label className="text-white/70 text-sm">Show:</label>
-                <Select value={selectedProviderView} onValueChange={(value) => setInfrastructureFilter('selectedProviderView', value)}>
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white w-64">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Total Email Sent">Total Email Sent by Provider</SelectItem>
-                    <SelectItem value="Accounts 50+">Accounts with ≥50 Emails Sent</SelectItem>
-                    <SelectItem value="100+ No Replies">100+ Sent, 0 Replies</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="h-96 flex items-center justify-center">
-                  <div className="text-white/70">Loading provider analysis...</div>
-                </div>
-              ) : (
-                emailProviderData.length === 0 ? (
-                  <div className="h-96 flex items-center justify-center">
-                    <div className="text-white/70">No Data Available</div>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4">
-                    {emailProviderData.map((provider: any, index) => (
-                      <Collapsible key={index} className="bg-white/5 rounded-lg border border-white/10">
-                        <div className="p-4">
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="flex items-center gap-3 flex-1">
-                              <CollapsibleTrigger
-                                className="hover:bg-white/10 p-1 rounded transition-colors"
-                                onClick={() => toggleProvider(provider.name)}
-                              >
-                                {expandedProviders.has(provider.name) ? (
-                                  <ChevronDown className="h-5 w-5 text-white" />
-                                ) : (
-                                  <ChevronRight className="h-5 w-5 text-white" />
-                                )}
-                              </CollapsibleTrigger>
-                              <h4 className="text-white font-medium text-lg">{provider.name}</h4>
-                              <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40">
-                                {selectedProviderView === 'Accounts 50+'
-                                  ? provider.qualifyingAccountCount
-                                  : selectedProviderView === '100+ No Replies'
-                                  ? provider.noReplyAccountCount
-                                  : provider.totalAccountCount} accounts
-                              </Badge>
-                            </div>
-                            {(selectedProviderView === 'Accounts 50+' || selectedProviderView === 'Total Email Sent' || selectedProviderView === '100+ No Replies') && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => downloadProviderAccounts(provider, selectedProviderView)}
-                                className="bg-white/10 border-white/20 text-white hover:bg-white/20"
-                              >
-                                <Download className="h-4 w-4 mr-2" />
-                                Download CSV
-                              </Button>
-                            )}
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
-
-                            {/* MODE 1: Total Email Sent by Provider */}
-                            {selectedProviderView === 'Total Email Sent' && (
-                              <>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Sent</span>
-                                  <div className="text-white font-semibold">{provider.totalSent.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Replies</span>
-                                  <div className="text-white font-semibold">{provider.totalReplies.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Reply Rate</span>
-                                  <div className="text-white font-semibold">{provider.overallReplyRate.toFixed(2)}%</div>
-                                </div>
-                              </>
-                            )}
-
-                            {/* MODE 2: Accounts with ≥50 Emails Sent */}
-                            {selectedProviderView === 'Accounts 50+' && (
-                              <>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Sent (≥50)</span>
-                                  <div className="text-white font-semibold">{provider.totalSentQualifying.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Replies (≥50)</span>
-                                  <div className="text-white font-semibold">{provider.totalRepliesQualifying.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Avg Reply Rate</span>
-                                  <div className="text-white font-semibold">{provider.avgReplyRate.toFixed(2)}%</div>
-                                </div>
-                              </>
-                            )}
-
-                            {/* MODE 3: 100+ Sent, 0 Replies */}
-                            {selectedProviderView === '100+ No Replies' && (
-                              <>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Problem Accounts</span>
-                                  <div className="text-dashboard-warning font-semibold">{provider.noReplyAccountCount}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Total Sent (No Replies)</span>
-                                  <div className="text-white font-semibold">{provider.totalSentNoReply.toLocaleString()}</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Wasted Volume</span>
-                                  <div className="text-dashboard-warning font-semibold">{provider.totalSentNoReply.toLocaleString()} emails</div>
-                                </div>
-                              </>
-                            )}
-
-                            {/* MODE 4: Daily Sending Availability */}
-                            {selectedProviderView === 'Daily Availability' && (
-                              <>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Theoretical Limit</span>
-                                  <div className="text-white font-semibold">{provider.totalDailyLimit.toLocaleString()}/day</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Current Limit</span>
-                                  <div className="text-white font-semibold">{provider.currentDailyLimit.toLocaleString()}/day</div>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-white/70 text-xs mb-1">Warmup Progress</span>
-                                  <div className="text-white font-semibold">{provider.utilizationRate.toFixed(1)}%</div>
-                                </div>
-                              </>
-                            )}
-
-                          </div>
-                        </div>
-
-                        {/* Expandable Account List for Accounts 50+, Total Email Sent, and 100+ No Replies */}
-                        {(selectedProviderView === 'Accounts 50+' || selectedProviderView === 'Total Email Sent' || selectedProviderView === '100+ No Replies') && (
-                          <CollapsibleContent>
-                            <div className="border-t border-white/10 p-4 bg-white/5">
-                              {(() => {
-                                // Filter accounts based on view
-                                let filteredAccounts;
-                                if (selectedProviderView === 'Accounts 50+') {
-                                  filteredAccounts = provider.accounts.filter(account => {
-                                    const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-                                    return totalSent >= 50;
-                                  });
-                                } else if (selectedProviderView === '100+ No Replies') {
-                                  filteredAccounts = provider.accounts.filter(account => {
-                                    const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-                                    const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-                                    return totalSent >= 100 && totalReplied === 0;
-                                  });
-                                } else {
-                                  filteredAccounts = provider.accounts; // Show all accounts for Total Email Sent
-                                }
-
-                                // Group by client
-                                const clientGroups = {};
-                                filteredAccounts.forEach(account => {
-                                  const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
-                                  if (!clientGroups[clientName]) {
-                                    clientGroups[clientName] = [];
-                                  }
-                                  clientGroups[clientName].push(account);
-                                });
-
-                                // Sort accounts by reply rate (highest to lowest) for Accounts 50+ view
-                                if (selectedProviderView === 'Accounts 50+') {
-                                  Object.keys(clientGroups).forEach(clientName => {
-                                    clientGroups[clientName].sort((a, b) => {
-                                      const totalSentA = parseFloat(a.fields['Total Sent']) || 0;
-                                      const totalRepliedA = parseFloat(a.fields['Total Replied']) || 0;
-                                      const replyRateA = totalSentA > 0 ? (totalRepliedA / totalSentA) * 100 : 0;
-
-                                      const totalSentB = parseFloat(b.fields['Total Sent']) || 0;
-                                      const totalRepliedB = parseFloat(b.fields['Total Replied']) || 0;
-                                      const replyRateB = totalSentB > 0 ? (totalRepliedB / totalSentB) * 100 : 0;
-
-                                      return replyRateB - replyRateA; // Highest to lowest
-                                    });
-                                  });
-                                }
-
-                                return (
-                                  <div className="space-y-4">
-                                    {Object.entries(clientGroups).map(([clientName, accounts]: [string, any[]]) => (
-                                      <div key={clientName}>
-                                        <h5 className="text-white font-medium mb-2 flex items-center gap-2">
-                                          {clientName}
-                                          <Badge variant="secondary" className="text-xs">
-                                            {accounts.length} accounts
-                                          </Badge>
-                                        </h5>
-                                        <div className="space-y-2 max-h-64 overflow-y-auto">
-                                          {accounts.map((account, idx) => {
-                                            const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-                                            const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-                                            const replyRate = totalSent > 0 ? ((totalReplied / totalSent) * 100).toFixed(2) : '0.00';
-
-                                            return (
-                                              <div key={idx} className="bg-white/5 rounded p-3 text-sm">
-                                                <div className="flex justify-between items-start mb-2">
-                                                  <span className="text-white font-medium">{account.fields['Account Name']}</span>
-                                                  <Badge
-                                                    variant={account.fields['Status'] === 'Connected' ? 'default' : 'destructive'}
-                                                    className="text-xs"
-                                                  >
-                                                    {account.fields['Status']}
-                                                  </Badge>
-                                                </div>
-                                                <div className="grid grid-cols-3 gap-2 text-white/70">
-                                                  <div>
-                                                    <div className="text-xs">Sent</div>
-                                                    <div className="text-white font-semibold">{totalSent.toLocaleString()}</div>
-                                                  </div>
-                                                  <div>
-                                                    <div className="text-xs">Replies</div>
-                                                    <div className="text-white font-semibold">{totalReplied.toLocaleString()}</div>
-                                                  </div>
-                                                  <div>
-                                                    <div className="text-xs">Reply Rate</div>
-                                                    <div className="text-white font-semibold">{replyRate}%</div>
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          </CollapsibleContent>
-                        )}
-                      </Collapsible>
-                    ))}
-                  </div>
-                )
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Client Sending Capacity Comparison */}
-        <div className="mt-8">
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+        {/* Client Sending Capacity Comparison - All Clients Tab Only */}
+        {activeTab === 'all-clients' && (
+          <div className="mt-8">
+            <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
                 <Users className="h-5 w-5 text-dashboard-accent" />
@@ -2393,11 +1628,14 @@ const SendingAccountsInfrastructure = () => {
               )}
             </CardContent>
           </Card>
-        </div>
+          </div>
+        )}
 
-        {/* Client Accounts View */}
-        <div className="mt-8">
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+        {/* Client Accounts View - All Clients Tab Only */}
+        {activeTab === 'all-clients' && (
+          <>
+            <div className="mt-8">
+              <Card className="bg-white/5 backdrop-blur-sm border-white/10">
             <CardHeader>
               <CardTitle className="text-white flex items-center space-x-2">
                 <Users className="h-5 w-5 text-dashboard-accent" />
@@ -2464,38 +1702,40 @@ const SendingAccountsInfrastructure = () => {
                 </div>
               )}
             </CardContent>
-          </Card>
-        </div>
-
-        {/* Client Detail Modal */}
-        <Dialog open={isClientModalOpen} onOpenChange={setInfrastructureModalOpen}>
-          <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden bg-gray-900 border-white/20 flex flex-col">
-            <DialogHeader className="flex-shrink-0">
-              <DialogTitle className="text-white flex items-center space-x-2">
-                <Users className="h-5 w-5 text-dashboard-accent" />
-                <span>{selectedClient?.clientName} - Email Accounts</span>
-                {clientAccountFilter === 'zeroReplyRate' && (
-                  <Badge variant="outline" className="bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40 ml-2">
-                    0% Reply Rate Filter
-                  </Badge>
-                )}
-              </DialogTitle>
-            </DialogHeader>
-            
-            <div className="overflow-y-auto flex-1 pr-2 space-y-4">
-              {selectedClient && (
-                <ClientAccountsModal 
-                  client={selectedClient}
-                  expandedAccountTypes={expandedAccountTypes}
-                  expandedStatuses={expandedStatuses}
-                  toggleAccountType={toggleAccountType}
-                  toggleStatus={toggleStatus}
-                  filter={clientAccountFilter}
-                />
-              )}
+              </Card>
             </div>
-          </DialogContent>
-        </Dialog>
+
+            {/* Client Detail Modal */}
+            <Dialog open={isClientModalOpen} onOpenChange={setInfrastructureModalOpen}>
+              <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden bg-gray-900 border-white/20 flex flex-col">
+                <DialogHeader className="flex-shrink-0">
+                  <DialogTitle className="text-white flex items-center space-x-2">
+                    <Users className="h-5 w-5 text-dashboard-accent" />
+                    <span>{selectedClient?.clientName} - Email Accounts</span>
+                    {clientAccountFilter === 'zeroReplyRate' && (
+                      <Badge variant="outline" className="bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40 ml-2">
+                        0% Reply Rate Filter
+                      </Badge>
+                    )}
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="overflow-y-auto flex-1 pr-2 space-y-4">
+                  {selectedClient && (
+                    <ClientAccountsModal 
+                      client={selectedClient}
+                      expandedAccountTypes={expandedAccountTypes}
+                      expandedStatuses={expandedStatuses}
+                      toggleAccountType={toggleAccountType}
+                      toggleStatus={toggleStatus}
+                      filter={clientAccountFilter}
+                    />
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </>
+        )}
       </div>
     </div>
   );

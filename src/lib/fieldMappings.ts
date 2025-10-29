@@ -142,7 +142,7 @@ export function transformToVolumeClient(dbRow: any, rank: number, daysInMonth: n
  */
 export const EMAIL_ACCOUNT_FIELD_MAP = {
   'Email': 'email_address',
-  'Name': 'account_name',
+  'Name': 'email_address', // Note: 'account_name' column doesn't exist in schema, using email_address instead
   'Status': 'status',
   'Total Sent': 'emails_sent_count',
   'Total Replied': 'total_replied_count',
@@ -182,7 +182,7 @@ export function transformToEmailAccount(dbRow: any): any {
     provider: dbRow.email_provider || undefined, // Convert null to undefined for Zod validation
     fields: {
       'Email': dbRow.email_address,
-      'Name': dbRow.account_name || '',
+      'Name': dbRow.email_address || '', // Use email_address (account_name column doesn't exist in schema)
       'Status': dbRow.status,
       'Total Sent': dbRow.emails_sent_count || 0,
       'Total Replied': dbRow.total_replied_count || 0,

@@ -18,6 +18,7 @@ import {
   MapPin,
   Star,
 } from "lucide-react";
+import { ROUTES } from "@/constants/navigation";
 
 /**
  * Marketing Landing Page for Maverick Marketing LLC
@@ -51,9 +52,9 @@ const MarketingHomePage = () => {
 
   const getPortalLink = () => {
     if (isAuthenticated) {
-      return isAdmin ? "/admin" : "/client-portal";
+      return isAdmin ? ROUTES.ADMIN : ROUTES.CLIENT_PORTAL;
     }
-    return "/login";
+    return ROUTES.LOGIN;
   };
 
   return (
@@ -95,7 +96,7 @@ const MarketingHomePage = () => {
               </a>
             </nav>
 
-            <Link to="/login">
+            <Link to={ROUTES.LOGIN}>
               <Button className="bg-[#5B8FF9] hover:bg-[#4A7FE8] text-white">
                 Client Login
               </Button>
@@ -437,7 +438,7 @@ const MarketingHomePage = () => {
               qualified leads today
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/login">
+              <Link to={ROUTES.LOGIN}>
                 <Button size="lg" className="bg-white text-[#5B8FF9] hover:bg-gray-100 text-lg px-8 py-6">
                   Access Client Portal
                 </Button>
@@ -502,7 +503,7 @@ const MarketingHomePage = () => {
                     Access your personalized dashboard to view your leads, track
                     campaign performance, and manage your pipeline.
                   </p>
-                  <Link to="/login">
+                  <Link to={ROUTES.LOGIN}>
                     <Button className="w-full bg-[#5B8FF9] hover:bg-[#4A7FE8] text-white">
                       Login to Client Portal
                       <ArrowRight className="ml-2 h-4 w-4" />
@@ -562,7 +563,7 @@ const MarketingHomePage = () => {
                   </a>
                 </li>
                 <li>
-                  <Link to="/login" className="text-foreground/70 hover:text-foreground transition-colors">
+                  <Link to={ROUTES.LOGIN} className="text-foreground/70 hover:text-foreground transition-colors">
                     Client Login
                   </Link>
                 </li>

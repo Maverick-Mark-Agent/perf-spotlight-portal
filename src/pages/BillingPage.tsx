@@ -26,6 +26,7 @@ import {
   Download
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { ROUTES } from "@/constants/navigation";
 
 interface ClientBillingData {
   id: string;
@@ -238,7 +239,7 @@ const BillingDashboard = () => {
             <div className="text-destructive text-lg font-semibold mb-2">Error loading billing data</div>
             <p className="text-muted-foreground mb-6">{error}</p>
             <Button asChild className="rounded-xl">
-              <Link to="/">Return to Home</Link>
+              <Link to={ROUTES.HOME}>Return to Home</Link>
             </Button>
           </CardContent>
         </Card>
@@ -259,7 +260,7 @@ const BillingDashboard = () => {
                 size="sm"
                 className="hover:bg-accent"
               >
-                <Link to="/">
+                <Link to={ROUTES.HOME}>
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to Home
                 </Link>

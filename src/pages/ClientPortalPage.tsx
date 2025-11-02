@@ -15,6 +15,7 @@ import { useAuth } from "@/components/auth/ProtectedRoute";
 import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { EMAIL_BISON_API } from "@/constants/api";
+import { ROUTES } from "@/constants/navigation";
 import {
   Select,
   SelectContent,
@@ -464,7 +465,7 @@ const ClientPortalPage = () => {
   };
 
   const handleWorkspaceChange = (newWorkspace: string) => {
-    navigate(`/client-portal/${encodeURIComponent(newWorkspace)}`, {
+    navigate(`${ROUTES.CLIENT_PORTAL}/${encodeURIComponent(newWorkspace)}`, {
       state: {
         availableWorkspaces: workspaces,
         isAdmin: location.state?.isAdmin
@@ -725,7 +726,7 @@ const ClientPortalPage = () => {
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-4 mb-6 justify-between">
-          <Link to="/client-portal">
+          <Link to={ROUTES.CLIENT_PORTAL}>
             <Button variant="ghost">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Client Portal Hub

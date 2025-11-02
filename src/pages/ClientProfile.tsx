@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, Save, RefreshCw, Building2, CheckCircle2, XCircle, Activity, AlertCircle, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ROUTES } from '@/constants/navigation';
 
 interface ClientFullData {
   // Identity
@@ -304,7 +305,7 @@ const ClientProfile: React.FC = () => {
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <Link to="/client-management">
+              <Link to={ROUTES.CLIENT_MANAGEMENT}>
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Client List
               </Link>
@@ -322,7 +323,7 @@ const ClientProfile: React.FC = () => {
         <div>
           <div className="flex items-center gap-4 mb-2">
             <Button asChild variant="ghost" size="sm">
-              <Link to="/client-management">
+              <Link to={ROUTES.CLIENT_MANAGEMENT}>
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Clients
               </Link>

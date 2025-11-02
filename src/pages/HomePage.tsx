@@ -10,6 +10,7 @@ import {
   Shield,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { ROUTES } from "@/constants/navigation";
 
 const Index = () => {
   return (
@@ -34,7 +35,7 @@ const Index = () => {
           className="bg-card border-2 border-border hover:border-success/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer"
           asChild
         >
-          <Link to="/kpi-dashboard">
+          <Link to={ROUTES.KPI_DASHBOARD}>
             <CardHeader>
               <div className="flex items-center space-x-3">
                 <div className="p-3 bg-success/10 rounded-xl group-hover:bg-success/20 transition-colors">
@@ -59,7 +60,7 @@ const Index = () => {
           className="bg-card border-2 border-border hover:border-primary/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer"
           asChild
         >
-          <Link to="/kpi-dashboard">
+          <Link to={ROUTES.KPI_DASHBOARD}>
             <CardHeader>
               <div className="flex items-center space-x-3">
                 <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
@@ -84,7 +85,7 @@ const Index = () => {
           className="bg-card border-2 border-border hover:border-warning/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer"
           asChild
         >
-          <Link to="/revenue-dashboard">
+          <Link to={ROUTES.REVENUE_DASHBOARD}>
             <CardHeader>
               <div className="flex items-center space-x-3">
                 <div className="p-3 bg-warning/10 rounded-xl group-hover:bg-warning/20 transition-colors">
@@ -109,7 +110,7 @@ const Index = () => {
           className="bg-card border-2 border-border hover:border-purple-500/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer"
           asChild
         >
-          <Link to="/contact-pipeline">
+          <Link to={ROUTES.CONTACT_PIPELINE}>
             <CardHeader>
               <div className="flex items-center space-x-3">
                 <div className="p-3 bg-purple-500/10 rounded-xl group-hover:bg-purple-500/20 transition-colors">
@@ -134,7 +135,7 @@ const Index = () => {
           className="bg-card border-2 border-border hover:border-info/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer"
           asChild
         >
-          <Link to="/zip-dashboard">
+          <Link to={ROUTES.ZIP_DASHBOARD}>
             <CardHeader>
               <div className="flex items-center space-x-3">
                 <div className="p-3 bg-info/10 rounded-xl group-hover:bg-info/20 transition-colors">
@@ -172,7 +173,7 @@ const Index = () => {
             size="lg"
             className="bg-primary hover:bg-primary/90 text-primary-foreground px-12 py-6 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl"
           >
-            <Link to="/kpi-dashboard">
+            <Link to={ROUTES.KPI_DASHBOARD}>
               <TrendingUp className="h-5 w-5 mr-2" />
               Launch KPI Dashboard
             </Link>

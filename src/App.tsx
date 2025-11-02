@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/contexts/ThemeContext";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AdminProtectedRoute } from "@/components/auth/AdminProtectedRoute";
+import { ROUTES } from "@/constants/navigation";
 
 // Public pages
 import MarketingHomePage from "./pages/MarketingHomePage";
@@ -54,10 +55,10 @@ const App = () => (
               {/* ========================================= */}
 
               {/* Marketing landing page - HOME PAGE - shown to all visitors */}
-              <Route path="/" element={<MarketingHomePage />} />
+              <Route path={ROUTES.HOME} element={<MarketingHomePage />} />
 
               {/* Login page */}
-              <Route path="/login" element={<LoginPage />} />
+              <Route path={ROUTES.LOGIN} element={<LoginPage />} />
 
               {/* ========================================= */}
               {/* PROTECTED CLIENT PORTAL ROUTES */}
@@ -65,7 +66,7 @@ const App = () => (
 
               {/* Client portal hub - requires authentication */}
               <Route
-                path="/client-portal"
+                path={ROUTES.CLIENT_PORTAL}
                 element={
                   <ProtectedRoute>
                     <ClientPortalHub />
@@ -75,7 +76,7 @@ const App = () => (
 
               {/* Individual client portal workspace - requires authentication */}
               <Route
-                path="/client-portal/:workspace"
+                path={`${ROUTES.CLIENT_PORTAL}/:workspace`}
                 element={
                   <ProtectedRoute>
                     <ClientPortalPage />
@@ -89,7 +90,7 @@ const App = () => (
               {/* Protected routes for internal team with admin role */}
 
               <Route
-                path="/admin"
+                path={ROUTES.ADMIN}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -99,7 +100,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/kpi-dashboard"
+                path={ROUTES.KPI_DASHBOARD}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -109,7 +110,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/kpi-test"
+                path={ROUTES.KPI_TEST}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -119,7 +120,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/email-accounts"
+                path={ROUTES.EMAIL_ACCOUNTS}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -129,7 +130,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/volume-dashboard"
+                path={ROUTES.VOLUME_DASHBOARD}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -139,11 +140,11 @@ const App = () => (
                 }
               />
               <Route
-                path="/billing"
-                element={<Navigate to="/revenue-dashboard" replace />}
+                path={ROUTES.BILLING}
+                element={<Navigate to={ROUTES.REVENUE_DASHBOARD} replace />}
               />
               <Route
-                path="/revenue-dashboard"
+                path={ROUTES.REVENUE_DASHBOARD}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -153,7 +154,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/zip-dashboard"
+                path={ROUTES.ZIP_DASHBOARD}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -163,7 +164,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/roi-dashboard"
+                path={ROUTES.ROI_DASHBOARD}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -173,7 +174,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/rollout-progress"
+                path={ROUTES.ROLLOUT_PROGRESS}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -183,7 +184,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/contact-pipeline"
+                path={ROUTES.CONTACT_PIPELINE}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -193,7 +194,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/client-management"
+                path={ROUTES.CLIENT_MANAGEMENT}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -203,7 +204,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/client-management/:workspaceId"
+                path={`${ROUTES.CLIENT_MANAGEMENT}/:workspaceId`}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
@@ -213,7 +214,7 @@ const App = () => (
                 }
               />
               <Route
-                path="/user-management"
+                path={ROUTES.USER_MANAGEMENT}
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>

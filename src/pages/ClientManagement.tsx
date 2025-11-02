@@ -16,6 +16,7 @@ import { Settings, RefreshCw, ArrowLeft, Building2, CheckCircle2, XCircle, Searc
 import { Link, useNavigate } from 'react-router-dom';
 import AddClientModal, { ClientFormData } from '@/components/AddClientModal';
 import { useToast } from '@/hooks/use-toast';
+import { ROUTES } from '@/constants/navigation';
 
 interface ClientData {
   workspace_id: number;
@@ -235,7 +236,7 @@ const ClientManagement: React.FC = () => {
                   <TableRow
                     key={client.workspace_id}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate(`/client-management/${client.workspace_id}`)}
+                    onClick={() => navigate(`${ROUTES.CLIENT_MANAGEMENT}/${client.workspace_id}`)}
                   >
                     <TableCell>
                       {client.is_active ? (

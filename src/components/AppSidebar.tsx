@@ -1,21 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
 import {
-  BarChart3,
-  TrendingUp,
-  DollarSign,
-  Users,
-  MapPin,
-  Server,
-  Home,
-  ChevronRight,
-  Upload,
-  Settings,
-  PieChart,
-  CreditCard,
-  Activity,
-  UserCog,
-} from "lucide-react";
-import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -29,70 +13,10 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { ROUTES, NAVIGATION_ITEMS } from "@/constants/navigation";
 
 // Navigation items organized by category
-const navigationItems = {
-  main: [
-    {
-      title: "Home",
-      icon: Home,
-      url: "/admin",
-    },
-  ],
-  analytics: [
-    {
-      title: "KPI's & Volume",
-      icon: BarChart3,
-      url: "/kpi-dashboard",
-    },
-  ],
-  management: [
-    {
-      title: "Client Portal",
-      icon: Users,
-      url: "/client-portal",
-    },
-    {
-      title: "Contact Pipeline",
-      icon: Upload,
-      url: "/contact-pipeline",
-    },
-    {
-      title: "ZIP Dashboard",
-      icon: MapPin,
-      url: "/zip-dashboard",
-    },
-    {
-      title: "Client Management",
-      icon: Settings,
-      url: "/client-management",
-    },
-    {
-      title: "User Management",
-      icon: UserCog,
-      url: "/user-management",
-    },
-  ],
-  finance: [
-    {
-      title: "Revenue & Billing",
-      icon: DollarSign,
-      url: "/revenue-dashboard",
-    },
-  ],
-  infrastructure: [
-    {
-      title: "Email Accounts",
-      icon: Server,
-      url: "/email-accounts",
-    },
-    {
-      title: "Rollout Progress",
-      icon: Activity,
-      url: "/rollout-progress",
-    },
-  ],
-};
+const navigationItems = NAVIGATION_ITEMS;
 
 export function AppSidebar() {
   const location = useLocation();

@@ -15,6 +15,7 @@ import { useDashboardContext } from "@/contexts/DashboardContext";
 import { DataFreshnessIndicator } from "@/components/DataFreshnessIndicator";
 import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState, useEffect } from "react";
+import { ROUTES } from "@/constants/navigation";
 
 const MonthlyKPIProgress = () => {
   const { toast } = useToast();
@@ -261,7 +262,7 @@ const MonthlyKPIProgress = () => {
               <div className="flex items-center gap-2">
                 {viewMode === 'overview' ? (
                   <Button asChild variant="ghost" size="sm" className="hover:bg-accent mr-2">
-                    <Link to="/admin">
+                    <Link to={ROUTES.ADMIN}>
                       <ArrowLeft className="h-4 w-4 mr-2" />
                       Back to Portal
                     </Link>

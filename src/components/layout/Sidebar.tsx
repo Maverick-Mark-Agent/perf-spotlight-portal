@@ -9,17 +9,18 @@ import {
   CreditCard,
   Settings
 } from 'lucide-react';
+import { ROUTES } from '@/constants/navigation';
 
 interface SidebarProps {
   className?: string;
 }
 
 const navigation = [
-  { name: 'Home', href: '/', icon: Home },
-  { name: 'KPI Dashboard', href: '/kpi-dashboard', icon: BarChart3 },
-  { name: 'Email Accounts', href: '/email-accounts', icon: Mail },
-  { name: 'Volume Dashboard', href: '/volume-dashboard', icon: TrendingUp },
-  { name: 'Billing', href: '/billing', icon: CreditCard },
+  { name: 'Home', href: ROUTES.HOME, icon: Home },
+  { name: 'KPI Dashboard', href: ROUTES.KPI_DASHBOARD, icon: BarChart3 },
+  { name: 'Email Accounts', href: ROUTES.EMAIL_ACCOUNTS, icon: Mail },
+  { name: 'Volume Dashboard', href: ROUTES.VOLUME_DASHBOARD, icon: TrendingUp },
+  { name: 'Billing', href: ROUTES.BILLING, icon: CreditCard },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ className }) => {

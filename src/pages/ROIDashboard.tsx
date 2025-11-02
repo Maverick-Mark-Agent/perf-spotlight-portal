@@ -15,6 +15,7 @@ import {
   CircleDollarSign
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { ROUTES } from "@/constants/navigation";
 
 const ROIDashboard = () => {
   // Input states
@@ -75,7 +76,7 @@ const ROIDashboard = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button asChild variant="ghost" size="sm">
-                <Link to="/">
+                <Link to={ROUTES.HOME}>
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back
                 </Link>

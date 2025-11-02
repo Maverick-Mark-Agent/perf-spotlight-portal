@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+import { ROUTES } from "@/constants/navigation";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -74,7 +75,7 @@ export const ProtectedRoute = ({
 
   // If auth is required but user is not authenticated, redirect to login
   if (requireAuth && !authenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to={ROUTES.LOGIN} state={{ from: location }} replace />;
   }
 
   // If auth is NOT required (public route), render children

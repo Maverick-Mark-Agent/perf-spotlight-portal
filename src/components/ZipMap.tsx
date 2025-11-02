@@ -5,8 +5,9 @@ import {
   Geography,
   ZoomableGroup,
 } from "react-simple-maps";
+import { MAP_CDN } from "@/constants/api";
 
-const geoUrl = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
+const geoUrl = MAP_CDN.GEO_URL;
 
 export type ZipData = {
   zip: string;

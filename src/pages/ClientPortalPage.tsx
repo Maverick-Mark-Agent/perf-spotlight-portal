@@ -14,6 +14,7 @@ import { PremiumInputDialog } from "@/components/client-portal/PremiumInputDialo
 import { useAuth } from "@/components/auth/ProtectedRoute";
 import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { EMAIL_BISON_API } from "@/constants/api";
 import {
   Select,
   SelectContent,
@@ -437,8 +438,8 @@ const ClientPortalPage = () => {
         }
       } else {
         // UNAUTHENTICATED: Direct call (for admin dashboard)
-        const BISON_API_KEY = "77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d";
-        const BISON_BASE_URL = "https://send.maverickmarketingllc.com/api";
+        const BISON_API_KEY = EMAIL_BISON_API.API_KEY;
+        const BISON_BASE_URL = EMAIL_BISON_API.BASE_URL;
 
         const response = await fetch(`${BISON_BASE_URL}/workspaces`, {
           headers: {

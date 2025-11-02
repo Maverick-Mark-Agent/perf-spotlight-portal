@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
+import { STATE_CENTERS } from "@/constants/geography";
 
 export type ZipData = {
   zip: string;
@@ -15,18 +16,7 @@ type ZipMapLeafletProps = {
   onZipClick?: (zip: string) => void;
 };
 
-// Simple US state center coordinates for visualization
-const STATE_CENTERS: Record<string, [number, number]> = {
-  AZ: [34.0489, -111.0937],
-  CA: [36.7783, -119.4179],
-  CO: [39.5501, -105.7821],
-  FL: [27.6648, -81.5158],
-  NV: [38.8026, -116.4194],
-  NM: [34.5199, -105.8701],
-  TX: [31.9686, -99.9018],
-  UT: [39.3210, -111.0937],
-  // Add more as needed
-};
+// State centers imported from geography constants
 
 export default function ZipMapLeaflet({ zipData, onZipClick }: ZipMapLeafletProps) {
   // Group ZIPs by state for visualization

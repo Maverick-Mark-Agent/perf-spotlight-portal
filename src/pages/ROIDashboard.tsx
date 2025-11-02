@@ -14,17 +14,18 @@ import {
   Calendar,
   CircleDollarSign
 } from "lucide-react";
+import { ROI_DEFAULTS } from "@/constants/pricing";
 import { Link } from "react-router-dom";
 import { ROUTES } from "@/constants/navigation";
 
 const ROIDashboard = () => {
   // Input states
-  const [monthlyLeads, setMonthlyLeads] = useState(100);
-  const [costPerLead, setCostPerLead] = useState(50);
-  const [conversionRate, setConversionRate] = useState(20);
-  const [avgDealSize, setAvgDealSize] = useState(2000);
-  const [customerLTV, setCustomerLTV] = useState(5000);
-  const [monthlyOperatingCosts, setMonthlyOperatingCosts] = useState(3000);
+  const [monthlyLeads, setMonthlyLeads] = useState<number>(ROI_DEFAULTS.MONTHLY_LEADS);
+  const [costPerLead, setCostPerLead] = useState<number>(ROI_DEFAULTS.COST_PER_LEAD);
+  const [conversionRate, setConversionRate] = useState<number>(ROI_DEFAULTS.CONVERSION_RATE);
+  const [avgDealSize, setAvgDealSize] = useState<number>(ROI_DEFAULTS.AVG_DEAL_SIZE);
+  const [customerLTV, setCustomerLTV] = useState<number>(ROI_DEFAULTS.CUSTOMER_LTV);
+  const [monthlyOperatingCosts, setMonthlyOperatingCosts] = useState<number>(ROI_DEFAULTS.MONTHLY_OPERATING_COSTS);
 
   // Calculated metrics
   const metrics = useMemo(() => {

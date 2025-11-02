@@ -109,7 +109,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" variant="sidebar">
       {/* Header */}
       <SidebarHeader className="border-b border-border">
-        <div className="flex items-center gap-2 px-2 group-data-[collapsible=icon]:px-0 py-3">
+        <div className="flex items-center gap-2 px-2 group-data-[collapsible=icon]:px-0 py-[6px]">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <img
               src="/maverick-icon.svg"

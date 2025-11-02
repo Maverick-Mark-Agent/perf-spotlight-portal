@@ -9,6 +9,7 @@ import {
   clearDashboardCache,
   type DataFetchResult,
 } from '@/services/dataService';
+import { CACHE_TTL, CACHE_KEYS } from '@/constants/cache';
 
 // ============= TypeScript Interfaces =============
 
@@ -237,20 +238,7 @@ interface DashboardContextType {
 
 // ============= Cache Configuration =============
 
-const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes in milliseconds (reduced for fresher data)
-const MIN_REFRESH_INTERVAL = 30 * 1000; // 30 seconds minimum between manual refreshes
-
-const CACHE_KEYS = {
-  KPI_DATA: 'kpi-dashboard-data',
-  KPI_TIMESTAMP: 'kpi-dashboard-timestamp',
-  KPI_SELECTED_CLIENT: 'kpi-selected-client',
-  KPI_VIEW_MODE: 'kpi-view-mode',
-  VOLUME_DATA: 'volume-dashboard-data',
-  VOLUME_TIMESTAMP: 'volume-dashboard-timestamp',
-  REVENUE_DATA: 'revenue-dashboard-data',
-  REVENUE_TIMESTAMP: 'revenue-dashboard-timestamp',
-  // Infrastructure doesn't use localStorage cache due to quota limits (4000+ accounts)
-};
+// Cache configuration imported from constants
 
 // ============= Context Creation =============
 
@@ -348,7 +336,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     if (!timestamp) return false;
     const cacheTime = new Date(timestamp).getTime();
     const now = Date.now();
-    return (now - cacheTime) < CACHE_DURATION;
+    return (now - cacheTime) < CACHE_TTL.KPI;
   };
 
   const loadFromCache = <T,>(dataKey: string, timestampKey: string): { data: T | null; timestamp: Date | null } => {
@@ -443,7 +431,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   const refreshKPIDashboard = useCallback(async (force: boolean = true) => {
     // Rate limiting check
     const now = Date.now();
-    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+    if (!force && (now - lastRefreshTime) < CACHE_TTL.VOLUME) {
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
@@ -500,7 +488,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   const refreshVolumeDashboard = useCallback(async (force: boolean = true) => {
     // Rate limiting check
     const now = Date.now();
-    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+    if (!force && (now - lastRefreshTime) < CACHE_TTL.VOLUME) {
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
@@ -602,7 +590,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   const refreshInfrastructure = useCallback(async (force: boolean = true) => {
     // Rate limiting check
     const now = Date.now();
-    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+    if (!force && (now - lastRefreshTime) < CACHE_TTL.VOLUME) {
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
@@ -668,7 +656,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   const refreshRevenueDashboard = useCallback(async (force: boolean = true) => {
     // Rate limiting check
     const now = Date.now();
-    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+    if (!force && (now - lastRefreshTime) < CACHE_TTL.VOLUME) {
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
@@ -681,7 +669,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   const refreshAll = useCallback(async () => {
     // Rate limiting check
     const now = Date.now();
-    if ((now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+    if ((now - lastRefreshTime) < CACHE_TTL.VOLUME) {
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
@@ -697,13 +685,13 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   // Helper functions for refresh rate limiting
   const canRefresh = useCallback(() => {
     const now = Date.now();
-    return (now - lastRefreshTime) >= MIN_REFRESH_INTERVAL;
+    return (now - lastRefreshTime) >= CACHE_TTL.VOLUME;
   }, [lastRefreshTime]);
 
   const getTimeUntilNextRefresh = useCallback(() => {
     const now = Date.now();
     const timeElapsed = now - lastRefreshTime;
-    const timeRemaining = MIN_REFRESH_INTERVAL - timeElapsed;
+    const timeRemaining = CACHE_TTL.VOLUME - timeElapsed;
     return Math.max(0, Math.ceil(timeRemaining / 1000)); // Return seconds
   }, [lastRefreshTime]);
 

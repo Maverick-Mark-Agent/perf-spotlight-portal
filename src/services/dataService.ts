@@ -16,34 +16,15 @@ import {
   fetchVolumeDataRealtime,
   fetchInfrastructureDataRealtime,
 } from './realtimeDataService';
+import { CACHE_TTL, RETRY_CONFIG, CACHE_KEYS, FEATURE_FLAGS } from '@/constants/cache';
 
 // ============= Feature Flags =============
 
-/**
- * Feature flags for real-time data migration
- * Set to false to instantly rollback to Edge Functions
- */
-const FEATURE_FLAGS = {
-  useRealtimeInfrastructure: true, // ✅ ENABLED: Read from sender_emails_cache table (1-2s vs 30-60s Edge Function)
-  useRealtimeKPI: true, // KPI Dashboard (5-10s → <500ms)
-  useRealtimeVolume: true, // Volume Dashboard (3-5s → <300ms)
-} as const;
+// Feature flags imported from constants
 
 // ============= Cache Configuration =============
 
-const CACHE_TTL = {
-  KPI: 2 * 60 * 1000,            // 2 minutes for high-priority KPI data
-  VOLUME: 30 * 1000,             // 30 seconds for volume data (reduced for debugging)
-  REVENUE: 10 * 1000,            // 10 seconds for revenue data (reduced for real-time updates)
-  INFRASTRUCTURE: 10 * 60 * 1000, // 10 minutes - reduced from 60 for fresher data while preventing excessive refreshing
-} as const;
-
-const RETRY_CONFIG = {
-  maxRetries: 3,
-  initialDelayMs: 1000,
-  backoffMultiplier: 2,
-  maxDelayMs: 10000,
-} as const;
+// Cache TTL and retry config imported from constants
 
 const REQUEST_TIMEOUT = 180000; // 180 seconds (3 minutes) for large datasets
 
@@ -236,7 +217,7 @@ export async function fetchKPIData(force: boolean = false): Promise<DataFetchRes
 
   // Fallback to old Edge Function (for rollback)
 
-  const cacheKey = 'kpi-dashboard-data';
+  const cacheKey = CACHE_KEYS.KPI_DATA;
   const startTime = Date.now();
 
   // Check for existing pending request (deduplication)
@@ -346,7 +327,7 @@ export async function fetchVolumeData(force: boolean = false): Promise<DataFetch
 
   // Fallback to old Edge Function (for rollback)
 
-  const cacheKey = 'volume-dashboard-data';
+  const cacheKey = CACHE_KEYS.VOLUME_DATA;
   const startTime = Date.now();
 
   if (!force) {
@@ -439,7 +420,7 @@ export async function fetchVolumeData(force: boolean = false): Promise<DataFetch
  * Uses revenue-analytics Edge Function
  */
 export async function fetchRevenueData(force: boolean = false): Promise<DataFetchResult<{ clients: RevenueClient[], totals: any }>> {
-  const cacheKey = 'revenue-dashboard-data';
+  const cacheKey = CACHE_KEYS.REVENUE_DATA;
   const startTime = Date.now();
 
   if (!force) {
@@ -544,7 +525,7 @@ export async function fetchInfrastructureData(force: boolean = false): Promise<D
 
   // Fallback to old Edge Function (for rollback)
 
-  const cacheKey = 'infrastructure-dashboard-data';
+  const cacheKey = CACHE_KEYS.INFRASTRUCTURE_DATA;
   const startTime = Date.now();
 
   if (!force) {
@@ -651,10 +632,10 @@ export function clearAllCache(): void {
  */
 export function clearDashboardCache(dashboard: 'kpi' | 'volume' | 'revenue' | 'infrastructure'): void {
   const cacheKeys = {
-    kpi: 'kpi-dashboard-data',
-    volume: 'volume-dashboard-data',
-    revenue: 'revenue-dashboard-data',
-    infrastructure: 'infrastructure-dashboard-data',
+    kpi: CACHE_KEYS.KPI_DATA,
+    volume: CACHE_KEYS.VOLUME_DATA,
+    revenue: CACHE_KEYS.REVENUE_DATA,
+    infrastructure: CACHE_KEYS.INFRASTRUCTURE_DATA,
   };
 
   cache.clear(cacheKeys[dashboard]);

@@ -17,6 +17,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { EMAIL_BISON_API } from "@/constants/api";
 import { ROUTES } from "@/constants/navigation";
 import { PIPELINE_STAGES } from "@/constants/pipeline";
+import { BISON_ENDPOINTS } from "@/constants/thirdParty/emailBison";
 import {
   Select,
   SelectContent,
@@ -435,7 +436,7 @@ const ClientPortalPage = () => {
         const BISON_API_KEY = EMAIL_BISON_API.API_KEY;
         const BISON_BASE_URL = EMAIL_BISON_API.BASE_URL;
 
-        const response = await fetch(`${BISON_BASE_URL}/workspaces`, {
+        const response = await fetch(`${BISON_BASE_URL}${BISON_ENDPOINTS.WORKSPACES}`, {
           headers: {
             'Authorization': `Bearer ${BISON_API_KEY}`,
             'Accept': 'application/json',

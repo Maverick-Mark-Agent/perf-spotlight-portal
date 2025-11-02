@@ -16,6 +16,7 @@ import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { EMAIL_BISON_API } from "@/constants/api";
 import { ROUTES } from "@/constants/navigation";
+import { PIPELINE_STAGES } from "@/constants/pipeline";
 import {
   Select,
   SelectContent,
@@ -67,14 +68,6 @@ interface ClientLead {
   updated_at: string;
   last_synced_at: string | null;
 }
-
-const PIPELINE_STAGES = [
-  { key: 'interested', label: 'Interested', color: 'bg-pink-500/20 border-pink-500/40' },
-  { key: 'quoting', label: 'Quoting', color: 'bg-purple-500/20 border-purple-500/40' },
-  { key: 'follow-up', label: 'Follow Up', color: 'bg-yellow-500/20 border-yellow-500/40' },
-  { key: 'won', label: 'Won', color: 'bg-green-500/20 border-green-500/40' },
-  { key: 'lost', label: 'Lost', color: 'bg-red-500/20 border-red-500/40' },
-];
 
 // Draggable Lead Card Component
 interface DraggableLeadCardProps {
@@ -206,7 +199,7 @@ const DraggableLeadCard = ({ lead, onToggleInterested, onClick, formatDate }: Dr
 
 // Droppable Column Component
 interface DroppableColumnProps {
-  stage: typeof PIPELINE_STAGES[0];
+  stage: typeof PIPELINE_STAGES[number];
   leads: ClientLead[];
   onToggleInterested: (leadId: string, currentValue: boolean) => void;
   onLeadClick: (lead: ClientLead) => void;

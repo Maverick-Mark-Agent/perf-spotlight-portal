@@ -5,12 +5,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Search, Calendar, ExternalLink, RefreshCw } from "lucide-react";
+import { ArrowLeft, Search, Calendar, ExternalLink, RefreshCw, UserPlus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ClientKPIStats } from "@/components/dashboard/ClientKPIStats";
 import { LeadDetailModal } from "@/components/client-portal/LeadDetailModal";
 import { PremiumInputDialog } from "@/components/client-portal/PremiumInputDialog";
+import { AddContactModal } from "@/components/client-portal/AddContactModal";
 import { useAuth } from "@/components/auth/ProtectedRoute";
 import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -270,6 +271,7 @@ const ClientPortalPage = () => {
   const [premiumDialogLead, setPremiumDialogLead] = useState<ClientLead | null>(null);
   const [isPremiumDialogOpen, setIsPremiumDialogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAddContactModalOpen, setIsAddContactModalOpen] = useState(false);
   const { toast} = useToast();
 
   const handleLeadClick = (lead: ClientLead) => {
@@ -335,6 +337,11 @@ const ClientPortalPage = () => {
     } finally {
       setIsRefreshing(false);
     }
+  };
+
+  const handleAddContactSuccess = async () => {
+    // Refresh the leads list after successful contact addition
+    await fetchLeads();
   };
 
   const handlePremiumSave = async (premiumAmount: number, policyType: string) => {
@@ -818,16 +825,26 @@ const ClientPortalPage = () => {
             )}
           </div>
 
-          {/* Refresh Button */}
+          {/* Action Buttons */}
           {workspace && (
-            <Button
-              onClick={handleRefreshData}
-              disabled={isRefreshing}
-              variant="default"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-              {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
-            </Button>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => setIsAddContactModalOpen(true)}
+                variant="outline"
+                className="border-dashboard-accent text-dashboard-accent hover:bg-dashboard-accent hover:text-white"
+              >
+                <UserPlus className="w-4 h-4 mr-2" />
+                Add Contact
+              </Button>
+              <Button
+                onClick={handleRefreshData}
+                disabled={isRefreshing}
+                variant="default"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -910,6 +927,16 @@ const ClientPortalPage = () => {
           leadName={premiumDialogLead ? `${premiumDialogLead.first_name} ${premiumDialogLead.last_name}` : ''}
           currentPremium={premiumDialogLead?.premium_amount}
           currentPolicyType={premiumDialogLead?.policy_type}
+        />
+      )}
+
+      {/* Add Contact Modal */}
+      {workspace && (
+        <AddContactModal
+          isOpen={isAddContactModalOpen}
+          onClose={() => setIsAddContactModalOpen(false)}
+          onSuccess={handleAddContactSuccess}
+          workspaceName={workspace}
         />
       )}
     </div>

@@ -22,11 +22,10 @@ const normalizeClientName = (name: string): string => {
 
 /**
  * Estimate labor costs based on account count and MTD leads
+ * NOTE: Labor costs should only come from manual client_costs table entries
  */
 function estimateLaborCosts(accountCount: number, mtdLeads: number): number {
-  const accountLabor = accountCount * 10;
-  const leadLabor = mtdLeads * 5;
-  return Math.max(200, accountLabor + leadLabor);
+  return 0; // No estimated labor - only use manual costs from client_costs table
 }
 
 /**
@@ -40,9 +39,10 @@ function calculateEmailAccountCosts(emailAccounts: any[], workspaceName: string)
 
 /**
  * Calculate other fixed costs per client
+ * NOTE: Overhead costs should only come from manual client_costs table entries
  */
 function calculateOtherCosts(): number {
-  return 25; // $25/month overhead
+  return 0; // No automatic overhead - only manual costs
 }
 
 /**
@@ -91,9 +91,9 @@ async function getClientCosts(
 
   const emailCosts = calculateEmailAccountCosts(emailAccounts, workspaceName);
   const accountCount = emailAccounts.length;
-  const laborCosts = estimateLaborCosts(accountCount, mtdLeads);
-  const otherCosts = calculateOtherCosts();
-  const totalCosts = emailCosts + laborCosts + otherCosts;
+  const laborCosts = 0; // No estimated labor - only from manual client_costs
+  const otherCosts = 0;  // No automatic overhead - only from manual client_costs
+  const totalCosts = emailCosts; // Only infrastructure costs when calculated
 
   return {
     workspace_name: workspaceName,

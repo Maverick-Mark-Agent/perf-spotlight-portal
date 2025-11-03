@@ -13,6 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, Save, RefreshCw, Building2, CheckCircle2, XCircle, Activity, AlertCircle, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { BISON_INSTANCES } from '@/constants/thirdParty/emailBison';
+import { ROUTES } from '@/constants/navigation';
 
 interface ClientFullData {
   // Identity
@@ -205,7 +207,7 @@ const ClientProfile: React.FC = () => {
           };
           console.log('[ClientProfile] Inserting ZIP with data:', insertData);
 
-          const { data: insertResult, error: insertError } = await supabase
+          const { data: insertResult, error: insertError } = await (supabase as any)
             .from('client_zipcodes')
             .insert(insertData)
             .select();
@@ -223,7 +225,7 @@ const ClientProfile: React.FC = () => {
         }
       }
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('client_registry')
         .update({
           display_name: client.display_name,
@@ -304,7 +306,7 @@ const ClientProfile: React.FC = () => {
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <Link to="/client-management">
+              <Link to={ROUTES.CLIENT_MANAGEMENT}>
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Client List
               </Link>
@@ -322,7 +324,7 @@ const ClientProfile: React.FC = () => {
         <div>
           <div className="flex items-center gap-4 mb-2">
             <Button asChild variant="ghost" size="sm">
-              <Link to="/client-management">
+              <Link to={ROUTES.CLIENT_MANAGEMENT}>
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back to Clients
               </Link>
@@ -923,7 +925,7 @@ const ClientProfile: React.FC = () => {
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Email Bison Instance</Label>
                   <p className="text-sm text-muted-foreground">
-                    {client.bison_instance === 'maverick' ? 'Maverick' : client.bison_instance === 'longrun' ? 'Long Run' : 'Not configured'}
+                    {client.bison_instance === BISON_INSTANCES.MAVERICK ? 'Maverick' : client.bison_instance === BISON_INSTANCES.LONG_RUN ? 'Long Run' : 'Not configured'}
                   </p>
                 </div>
 

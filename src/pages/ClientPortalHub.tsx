@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/components/auth/ProtectedRoute";
 import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { ROUTES } from "@/constants/navigation";
 
 interface Workspace {
   id: number;
@@ -174,7 +175,7 @@ export default function ClientPortalHub() {
   };
 
   const handleWorkspaceClick = (workspaceName: string) => {
-    navigate(`/client-portal/${encodeURIComponent(workspaceName)}`, {
+    navigate(`${ROUTES.CLIENT_PORTAL}/${encodeURIComponent(workspaceName)}`, {
       state: {
         availableWorkspaces: workspaces.map(w => w.name),
         isAdmin
@@ -190,7 +191,7 @@ export default function ClientPortalHub() {
         <div className="mb-6 flex items-center justify-between w-full">
           <div>
             {isAdmin ? (
-              <Link to="/admin">
+              <Link to={ROUTES.ADMIN}>
                 <Button variant="ghost">
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Back to Dashboard
@@ -223,7 +224,7 @@ export default function ClientPortalHub() {
               variant="outline"
               onClick={async () => {
                 await supabase.auth.signOut();
-                window.location.href = "/";
+                window.location.href = ROUTES.HOME;
               }}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h4a2 2 0 012 2v1" /></svg>
@@ -245,13 +246,13 @@ export default function ClientPortalHub() {
           {isAdmin && (
             <div className="flex gap-2">
               <Button asChild variant="outline">
-                <Link to="/zip-dashboard">
+                <Link to={ROUTES.ZIP_DASHBOARD}>
                   <MapPin className="h-4 w-4 mr-2" />
                   ZIP Dashboard
                 </Link>
               </Button>
               <Button asChild variant="outline">
-                <Link to="/roi-dashboard">
+                <Link to={ROUTES.ROI_DASHBOARD}>
                   <PieChart className="h-4 w-4 mr-2" />
                   ROI Dashboard
                 </Link>

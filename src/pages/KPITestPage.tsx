@@ -6,6 +6,7 @@ import { ArrowLeft, RefreshCw, CheckCircle, XCircle, AlertCircle } from "lucide-
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { ROUTES } from "@/constants/navigation";
 
 const KPITestPage = () => {
   const [loading, setLoading] = useState(true);
@@ -77,7 +78,7 @@ const KPITestPage = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button asChild variant="ghost" size="sm">
-                <Link to="/kpi-dashboard">
+                <Link to={ROUTES.KPI_DASHBOARD}>
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to KPI Dashboard
                 </Link>

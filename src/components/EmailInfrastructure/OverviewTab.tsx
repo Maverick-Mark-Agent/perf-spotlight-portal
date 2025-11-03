@@ -10,6 +10,7 @@ import { MessageSquare, Send } from 'lucide-react';
 import { AlertsSection } from './AlertsSection';
 import { useAlerts, type EmailAccount } from '@/hooks/useAlerts';
 import { supabase } from '@/integrations/supabase/client';
+import { EMAIL_ACCOUNT_STATUS } from '@/constants/pipeline';
 
 interface OverviewTabProps {
   // Optional: can receive pre-fetched data to avoid duplicate queries
@@ -50,18 +51,20 @@ export function OverviewTab({}: OverviewTabProps) {
         setAccounts(null);
         return;
       }
+      
+      const typedAccounts = accountsData as EmailAccount[];
 
       // Store accounts for alerts
-      setAccounts(accountsData as EmailAccount[]);
+      setAccounts(typedAccounts);
 
       // Calculate metrics for quick stats
-      const totalAccounts = accountsData.length;
-      const connectedAccounts = accountsData.filter(a => a.status === 'connected').length;
-      const disconnectedAccounts = accountsData.filter(a => a.status === 'disconnected').length;
-      const failedAccounts = accountsData.filter(a => a.status === 'failed').length;
+      const totalAccounts = typedAccounts.length;
+      const connectedAccounts = typedAccounts.filter(a => a.status === EMAIL_ACCOUNT_STATUS.CONNECTED.toLowerCase()).length;
+      const disconnectedAccounts = typedAccounts.filter(a => a.status === EMAIL_ACCOUNT_STATUS.DISCONNECTED.toLowerCase()).length;
+      const failedAccounts = typedAccounts.filter(a => a.status === EMAIL_ACCOUNT_STATUS.FAILED.toLowerCase()).length;
 
-      const totalSent = accountsData.reduce((sum, a) => sum + (a.emails_sent_count || 0), 0);
-      const totalReplies = accountsData.reduce((sum, a) => sum + (a.total_replied_count || 0), 0);
+      const totalSent = typedAccounts.reduce((sum, a) => sum + (a.emails_sent_count || 0), 0);
+      const totalReplies = typedAccounts.reduce((sum, a) => sum + (a.total_replied_count || 0), 0);
 
       setMetrics({
         totalAccounts,

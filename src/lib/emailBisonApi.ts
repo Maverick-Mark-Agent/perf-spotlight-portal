@@ -3,8 +3,10 @@
  * Centralized client for all Email Bison API interactions
  */
 
-const EMAIL_BISON_BASE_URL = 'https://send.maverickmarketingllc.com/api';
-const EMAIL_BISON_API_KEY = '77|AqozJcNT8l2m52CRyvQyEEmLKa49ofuZRjK98aio8a3feb5d';
+import { EMAIL_BISON_API } from '../constants/api';
+
+const EMAIL_BISON_BASE_URL = EMAIL_BISON_API.BASE_URL;
+const EMAIL_BISON_API_KEY = EMAIL_BISON_API.API_KEY;
 
 export interface EmailBisonWorkspace {
   id: number;

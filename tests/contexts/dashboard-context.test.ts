@@ -12,6 +12,7 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { CACHE_TTL } from '../../src/constants/cache';
 
 // Mock localStorage for Node.js environment
 class LocalStorageMock {
@@ -43,7 +44,7 @@ test.describe('DashboardContext - Cache Management', () => {
   });
 
   test('should validate cache expiry logic', () => {
-    const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+    const CACHE_DURATION = CACHE_TTL.KPI; // 2 minutes
     
     const isCacheValid = (timestamp: string | null): boolean => {
       if (!timestamp) return false;
@@ -86,7 +87,7 @@ test.describe('DashboardContext - Cache Management', () => {
   });
 
   test('should handle cache invalidation', () => {
-    const CACHE_DURATION = 2 * 60 * 1000;
+    const CACHE_DURATION = CACHE_TTL.KPI;
     
     // Set old timestamp (3 minutes ago)
     const oldTimestamp = new Date(Date.now() - 3 * 60 * 1000).toISOString();
@@ -107,7 +108,7 @@ test.describe('DashboardContext - Cache Management', () => {
 test.describe('DashboardContext - Rate Limiting', () => {
   
   test('should enforce minimum refresh interval', () => {
-    const MIN_REFRESH_INTERVAL = 30 * 1000; // 30 seconds
+    const MIN_REFRESH_INTERVAL = CACHE_TTL.VOLUME; // 30 seconds
     let lastRefreshTime = Date.now();
 
     const canRefresh = (): boolean => {
@@ -133,7 +134,7 @@ test.describe('DashboardContext - Rate Limiting', () => {
   });
 
   test('should calculate time until next refresh correctly', () => {
-    const MIN_REFRESH_INTERVAL = 30 * 1000;
+    const MIN_REFRESH_INTERVAL = CACHE_TTL.VOLUME;
     const lastRefreshTime = Date.now() - 10 * 1000; // 10 seconds ago
 
     const getTimeUntilNextRefresh = (): number => {
@@ -359,7 +360,7 @@ test.describe('DashboardContext - Performance', () => {
   });
 
   test('should mark data freshness correctly', () => {
-    const CACHE_DURATION = 2 * 60 * 1000;
+    const CACHE_DURATION = CACHE_TTL.KPI;
     
     const checkFreshness = (timestamp: Date | null): boolean => {
       if (!timestamp) return false;

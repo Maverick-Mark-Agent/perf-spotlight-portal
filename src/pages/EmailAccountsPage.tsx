@@ -15,6 +15,7 @@ import { TabNavigation, type TabValue } from "@/components/EmailInfrastructure/T
 import { OverviewTab } from "@/components/EmailInfrastructure/OverviewTab";
 import { PerformanceTab } from "@/components/EmailInfrastructure/PerformanceTab";
 import { HomeInsuranceTab } from "@/components/EmailInfrastructure/HomeInsuranceTab";
+import { EMAIL_ACCOUNT_STATUS } from "@/constants/pipeline";
 
 // Removed localStorage caching due to quota limits with large dataset (4000+ accounts)
 // Data is now fetched fresh on each page load for real-time accuracy
@@ -337,7 +338,7 @@ const SendingAccountsInfrastructure = () => {
        
        clientGroups[clientName].accounts.push(account);
        clientGroups[clientName].totalAccounts += 1;
-       if (account.fields['Status'] === 'Connected') {
+       if (account.fields['Status'] === EMAIL_ACCOUNT_STATUS.CONNECTED) {
          clientGroups[clientName].connectedAccounts += 1;
        }
        
@@ -537,7 +538,7 @@ const SendingAccountsInfrastructure = () => {
     });
 
     // Calculate final metrics for each reseller
-    const resellerStats = Object.values(resellerGroups).map(group => ({
+    const resellerStats = Object.values(resellerGroups).map((group: any) => ({
       ...group,
       replyRate: group.totalSent > 0 ? ((group.totalReplies / group.totalSent) * 100).toFixed(2) : '0.00',
       groupBounceRate: group.totalSent > 0 ? ((group.totalBounces / group.totalSent) * 100).toFixed(2) : '0.00',
@@ -545,7 +546,7 @@ const SendingAccountsInfrastructure = () => {
     }));
 
     // Calculate final metrics for each ESP
-    const espStats = Object.values(espGroups).map(group => ({
+    const espStats = Object.values(espGroups).map((group: any) => ({
       ...group,
       replyRate: group.totalSent > 0 ? ((group.totalReplies / group.totalSent) * 100).toFixed(2) : '0.00',
       groupBounceRate: group.totalSent > 0 ? ((group.totalBounces / group.totalSent) * 100).toFixed(2) : '0.00',
@@ -572,7 +573,7 @@ const SendingAccountsInfrastructure = () => {
   const downloadFailedAccounts = () => {
     // Show confirmation dialog
     const confirmDownload = window.confirm(
-      'Do you want to download all disconnected/failed accounts? This will include accounts with status: Failed, Not connected, or Disconnected.'
+      `Do you want to download all disconnected/failed accounts? This will include accounts with status: ${EMAIL_ACCOUNT_STATUS.FAILED}, ${EMAIL_ACCOUNT_STATUS.NOT_CONNECTED}, or ${EMAIL_ACCOUNT_STATUS.DISCONNECTED}.`
     );
     
     if (!confirmDownload) {
@@ -582,7 +583,7 @@ const SendingAccountsInfrastructure = () => {
     // Filter accounts with Failed or Not connected status
     const failedAccounts = emailAccounts.filter(account => {
       const status = account.fields['Status'];
-      return status === 'Failed' || status === 'Not connected' || status === 'Disconnected';
+      return status === EMAIL_ACCOUNT_STATUS.FAILED || status === EMAIL_ACCOUNT_STATUS.NOT_CONNECTED || status === EMAIL_ACCOUNT_STATUS.DISCONNECTED;
     });
 
     if (failedAccounts.length === 0) {
@@ -662,7 +663,7 @@ const SendingAccountsInfrastructure = () => {
       clientGroups[clientName].accounts.push(account);
       clientGroups[clientName].totalAccounts += 1;
 
-      if (account.fields['Status'] === 'Connected') {
+      if (account.fields['Status'] === EMAIL_ACCOUNT_STATUS.CONNECTED) {
         clientGroups[clientName].connectedAccounts += 1;
       }
 
@@ -692,9 +693,15 @@ const SendingAccountsInfrastructure = () => {
       console.error('Error fetching client daily targets:', error);
     }
 
+    // Define the expected type for client registry rows to resolve TypeScript inference issues
+    type ClientRegistryRow = {
+      workspace_name: string;
+      daily_sending_target: number | null;
+    };
+
     // Create a map of client name -> daily_sending_target
     const dailyTargetMap = {};
-    (clientRegistryData || []).forEach(row => {
+    (clientRegistryData as ClientRegistryRow[] || []).forEach(row => {
       dailyTargetMap[row.workspace_name] = row.daily_sending_target || 0;
     });
 
@@ -773,19 +780,17 @@ const SendingAccountsInfrastructure = () => {
   }, [setInfrastructureModalOpen, setInfrastructureSelectedClient, setInfrastructureFilter]);
 
   const toggleAccountType = useCallback((accountType: string) => {
-    setInfrastructureExpandedAccountTypes(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(accountType)) {
-        newSet.delete(accountType);
-      } else {
-        newSet.add(accountType);
-      }
-      return newSet;
-    });
-  }, [setInfrastructureExpandedAccountTypes]);
+    const newSet = new Set(expandedAccountTypes);
+    if (newSet.has(accountType)) {
+      newSet.delete(accountType);
+    } else {
+      newSet.add(accountType);
+    }
+    setInfrastructureExpandedAccountTypes(newSet);
+  }, [expandedAccountTypes, setInfrastructureExpandedAccountTypes]);
 
   const toggleProvider = useCallback((providerName: string) => {
-    setExpandedProviders(prev => {
+    setExpandedProviders((prev: Set<string>) => {
       const newSet = new Set(prev);
       if (newSet.has(providerName)) {
         newSet.delete(providerName);
@@ -963,7 +968,7 @@ const SendingAccountsInfrastructure = () => {
     const avgAccountsPerClient = uniqueClients > 0 ? (totalAccounts / uniqueClients).toFixed(1) : '0';
 
     // Count connected vs disconnected
-    const connectedCount = accounts.filter(account => account.fields['Status'] === 'Connected').length;
+    const connectedCount = accounts.filter(account => account.fields['Status'] === EMAIL_ACCOUNT_STATUS.CONNECTED).length;
     const disconnectedCount = totalAccounts - connectedCount;
 
     // Calculate price metrics
@@ -1790,7 +1795,7 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
         };
       }
 
-      const status = account.fields['Status'] === 'Connected' ? 'Connected' : 'Disconnected';
+      const status = account.fields['Status'] === EMAIL_ACCOUNT_STATUS.CONNECTED ? EMAIL_ACCOUNT_STATUS.CONNECTED : EMAIL_ACCOUNT_STATUS.DISCONNECTED;
       accountsByType[accountType][status].push(account);
     });
 

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Lock, Mail, Eye, EyeOff, Loader2 } from "lucide-react";
 import { FcGoogle } from "react-icons/fc";
+import { ROUTES } from "@/constants/navigation";
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -45,9 +46,9 @@ const LoginPage = () => {
 
         // Redirect based on role
         if (adminCheck) {
-          navigate("/admin");
+          navigate(ROUTES.ADMIN);
         } else {
-          navigate("/client-portal");
+          navigate(ROUTES.CLIENT_PORTAL);
         }
       }
     } catch (error: any) {
@@ -96,7 +97,7 @@ const LoginPage = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/client-portal`,
+          redirectTo: `${window.location.origin}${ROUTES.CLIENT_PORTAL}`,
         }
       });
 

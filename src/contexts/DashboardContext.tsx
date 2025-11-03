@@ -9,6 +9,8 @@ import {
   clearDashboardCache,
   type DataFetchResult,
 } from '@/services/dataService';
+import { CACHE_TTL, CACHE_KEYS } from '@/constants/cache';
+import { CACHE_INTERVALS } from '@/constants/timeouts';
 
 // ============= TypeScript Interfaces =============
 
@@ -63,21 +65,21 @@ interface InfrastructureFilters {
 }
 
 interface RevenueClientData {
-  workspace_name: string;
-  billing_type: 'per_lead' | 'retainer';
+  workspace_name?: string;
+  billing_type?: 'per_lead' | 'retainer';
   // MTD Metrics
-  current_month_leads: number;
-  current_month_revenue: number;
-  current_month_costs: number;
-  current_month_profit: number;
+  current_month_leads?: number;
+  current_month_revenue?: number;
+  current_month_costs?: number;
+  current_month_profit?: number;
   // Profitability
-  profit_margin: number;
-  price_per_lead: number;
-  retainer_amount: number;
+  profit_margin?: number;
+  price_per_lead?: number;
+  retainer_amount?: number;
   // KPI Metrics
-  monthly_kpi: number;
-  kpi_progress: number;
-  leads_remaining: number;
+  monthly_kpi?: number;
+  kpi_progress?: number;
+  leads_remaining?: number;
   // Cost Details (NEW)
   cost_source?: 'manual' | 'calculated';
   email_account_costs?: number;
@@ -91,7 +93,7 @@ interface RevenueClientData {
   unsubscribes_mtd?: number;
   reply_rate?: number;
   interested_rate?: number;
-  rank: number;
+  rank?: number;
 }
 
 interface RevenueTotals {
@@ -237,20 +239,7 @@ interface DashboardContextType {
 
 // ============= Cache Configuration =============
 
-const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes in milliseconds (reduced for fresher data)
-const MIN_REFRESH_INTERVAL = 30 * 1000; // 30 seconds minimum between manual refreshes
-
-const CACHE_KEYS = {
-  KPI_DATA: 'kpi-dashboard-data',
-  KPI_TIMESTAMP: 'kpi-dashboard-timestamp',
-  KPI_SELECTED_CLIENT: 'kpi-selected-client',
-  KPI_VIEW_MODE: 'kpi-view-mode',
-  VOLUME_DATA: 'volume-dashboard-data',
-  VOLUME_TIMESTAMP: 'volume-dashboard-timestamp',
-  REVENUE_DATA: 'revenue-dashboard-data',
-  REVENUE_TIMESTAMP: 'revenue-dashboard-timestamp',
-  // Infrastructure doesn't use localStorage cache due to quota limits (4000+ accounts)
-};
+// Cache configuration imported from constants
 
 // ============= Context Creation =============
 
@@ -348,7 +337,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     if (!timestamp) return false;
     const cacheTime = new Date(timestamp).getTime();
     const now = Date.now();
-    return (now - cacheTime) < CACHE_DURATION;
+    return (now - cacheTime) < CACHE_TTL.KPI;
   };
 
   const loadFromCache = <T,>(dataKey: string, timestampKey: string): { data: T | null; timestamp: Date | null } => {
@@ -394,7 +383,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       if (result.success && result.data) {
         setKPIDashboard(prev => ({
           ...prev,
-          clients: result.data!,
+          clients: result.data as ClientData[],
           lastUpdated: result.timestamp,
           loading: false,
           isUsingCache: result.cached,
@@ -407,7 +396,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
         // Handle error case - may still have stale data
         setKPIDashboard(prev => ({
           ...prev,
-          clients: result.data || prev.clients, // Keep old data if fetch failed
+          clients: (result.data as ClientData[]) || prev.clients, // Keep old data if fetch failed
           lastUpdated: result.timestamp,
           loading: false,
           isUsingCache: result.cached,
@@ -443,7 +432,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   const refreshKPIDashboard = useCallback(async (force: boolean = true) => {
     // Rate limiting check
     const now = Date.now();
-    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+    if (!force && (now - lastRefreshTime) < CACHE_TTL.VOLUME) {
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
@@ -466,7 +455,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
 
       if (result.success && result.data) {
         setVolumeDashboard({
-          clients: result.data,
+          clients: result.data as VolumeClientData[],
           lastUpdated: result.timestamp,
           loading: false,
           isUsingCache: result.cached,
@@ -478,7 +467,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       } else {
         setVolumeDashboard(prev => ({
           ...prev,
-          clients: result.data || prev.clients,
+          clients: (result.data as VolumeClientData[]) || prev.clients,
           lastUpdated: result.timestamp,
           loading: false,
           isUsingCache: result.cached,
@@ -500,7 +489,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   const refreshVolumeDashboard = useCallback(async (force: boolean = true) => {
     // Rate limiting check
     const now = Date.now();
-    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+    if (!force && (now - lastRefreshTime) < CACHE_TTL.VOLUME) {
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
@@ -517,10 +506,9 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       // Only prevent rapid-fire spam clicking with 5-second cooldown
       const now = Date.now();
       const timeSinceLastFetch = now - lastRefreshTime;
-      const COOLDOWN_MS = 5000; // 5 seconds
 
-      if (!force && timeSinceLastFetch < COOLDOWN_MS) {
-        console.log(`[Infrastructure] Rate limited - please wait ${Math.ceil((COOLDOWN_MS - timeSinceLastFetch) / 1000)}s`);
+      if (!force && timeSinceLastFetch < CACHE_INTERVALS.MIN_REFRESH) {
+        console.log(`[Infrastructure] Rate limited - please wait ${Math.ceil((CACHE_INTERVALS.MIN_REFRESH - timeSinceLastFetch) / 1000)}s`);
         return;
       }
 
@@ -602,7 +590,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   const refreshInfrastructure = useCallback(async (force: boolean = true) => {
     // Rate limiting check
     const now = Date.now();
-    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+    if (!force && (now - lastRefreshTime) < CACHE_TTL.VOLUME) {
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
@@ -645,8 +633,8 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       } else {
         setRevenueDashboard(prev => ({
           ...prev,
-          clients: result.data?.clients || prev.clients,
-          totals: result.data?.totals || prev.totals,
+          clients: (result.data?.clients as RevenueClientData[]) || prev.clients,
+          totals: (result.data?.totals as RevenueTotals) || prev.totals,
           lastUpdated: result.timestamp,
           loading: false,
           isUsingCache: result.cached,
@@ -668,7 +656,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   const refreshRevenueDashboard = useCallback(async (force: boolean = true) => {
     // Rate limiting check
     const now = Date.now();
-    if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+    if (!force && (now - lastRefreshTime) < CACHE_TTL.VOLUME) {
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
@@ -681,7 +669,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   const refreshAll = useCallback(async () => {
     // Rate limiting check
     const now = Date.now();
-    if ((now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
+    if ((now - lastRefreshTime) < CACHE_TTL.VOLUME) {
       console.log('[Refresh] Rate limited - too soon since last refresh');
       return;
     }
@@ -697,13 +685,13 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
   // Helper functions for refresh rate limiting
   const canRefresh = useCallback(() => {
     const now = Date.now();
-    return (now - lastRefreshTime) >= MIN_REFRESH_INTERVAL;
+    return (now - lastRefreshTime) >= CACHE_TTL.VOLUME;
   }, [lastRefreshTime]);
 
   const getTimeUntilNextRefresh = useCallback(() => {
     const now = Date.now();
     const timeElapsed = now - lastRefreshTime;
-    const timeRemaining = MIN_REFRESH_INTERVAL - timeElapsed;
+    const timeRemaining = CACHE_TTL.VOLUME - timeElapsed;
     return Math.max(0, Math.ceil(timeRemaining / 1000)); // Return seconds
   }, [lastRefreshTime]);
 
@@ -723,6 +711,9 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
         lastUpdated: kpiCache.timestamp,
         loading: false,
         isUsingCache: true,
+        isFresh: false,
+        error: null,
+        warnings: [],
       });
       console.log('Loaded KPI dashboard from cache:', kpiCache.timestamp);
     }
@@ -735,6 +726,9 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
         lastUpdated: volumeCache.timestamp,
         loading: false,
         isUsingCache: true,
+        isFresh: false,
+        error: null,
+        warnings: [],
       });
       console.log('Loaded Volume dashboard from cache:', volumeCache.timestamp);
     }
@@ -748,6 +742,9 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
         lastUpdated: revenueCache.timestamp,
         loading: false,
         isUsingCache: true,
+        isFresh: false,
+        error: null,
+        warnings: [],
       });
       console.log('Loaded Revenue dashboard from cache:', revenueCache.timestamp);
     }

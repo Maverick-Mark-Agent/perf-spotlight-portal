@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { UI_DELAYS } from '@/constants/timeouts';
 import { Progress } from '@/components/ui/progress';
 import { CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
 
@@ -65,17 +66,15 @@ export function SyncProgressBar({ jobId, onComplete }: SyncProgressBarProps) {
       }
 
       if (data) {
-        console.log('Progress fetched:', data);
-        setProgress(data as SyncProgress);
+        const progressData = data as SyncProgress;
+        console.log('Progress fetched:', progressData);
+        setProgress(progressData);
 
         // Auto-hide after completion
-        if (data.status === 'completed' || data.status === 'failed') {
+        if (progressData.status === 'completed' || progressData.status === 'failed') {
           setTimeout(() => {
             setIsVisible(false);
-            if (data.status === 'completed' && onComplete) {
-              onComplete();
-            }
-          }, 3000); // Hide after 3 seconds
+          }, UI_DELAYS.LONG); // Hide after 3 seconds
         }
       }
     };

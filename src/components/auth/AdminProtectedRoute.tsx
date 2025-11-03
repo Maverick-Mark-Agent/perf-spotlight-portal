@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { ROUTES } from "@/constants/navigation";
 
 interface AdminProtectedRouteProps {
   children: React.ReactNode;
@@ -99,7 +100,7 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
 
   // If not authenticated, redirect to login
   if (!authenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to={ROUTES.LOGIN} state={{ from: location }} replace />;
   }
 
   // If authenticated but not admin, show access denied
@@ -118,7 +119,7 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
             This area is restricted to team members only.
           </p>
           <div className="flex gap-4 justify-center">
-            <Link to="/client-portal">
+            <Link to={ROUTES.CLIENT_PORTAL}>
               <Button variant="outline">
                 Go to Client Portal
               </Button>
@@ -127,7 +128,7 @@ export const AdminProtectedRoute = ({ children }: AdminProtectedRouteProps) => {
               variant="default"
               onClick={async () => {
                 await supabase.auth.signOut();
-                window.location.href = "/login";
+                window.location.href = ROUTES.LOGIN;
               }}
             >
               Logout

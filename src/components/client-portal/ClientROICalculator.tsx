@@ -12,6 +12,7 @@ import {
   Calculator,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { DEFAULT_CLIENT_METRICS } from "@/constants/pricing";
 
 interface ClientLead {
   id: string;
@@ -53,21 +54,25 @@ export const ClientROICalculator = ({ workspaceName, leads }: ClientROICalculato
         console.error('Error fetching client settings:', error);
         // Use defaults if not found
         setSettings({
-          cost_per_lead: 50,
-          default_commission_rate: 10
+          cost_per_lead: DEFAULT_CLIENT_METRICS.COST_PER_LEAD,
+          default_commission_rate: DEFAULT_CLIENT_METRICS.COMMISSION_RATE
         });
-        setCommissionRate(10);
+        setCommissionRate(DEFAULT_CLIENT_METRICS.COMMISSION_RATE);
       } else {
-        setSettings(data);
-        setCommissionRate(data.default_commission_rate);
+        const settingsData = data || {
+          cost_per_lead: DEFAULT_CLIENT_METRICS.COST_PER_LEAD,
+          default_commission_rate: DEFAULT_CLIENT_METRICS.COMMISSION_RATE
+        };
+        setSettings(settingsData);
+        setCommissionRate(settingsData.default_commission_rate);
       }
     } catch (error) {
       console.error('Error fetching client settings:', error);
       setSettings({
-        cost_per_lead: 50,
-        default_commission_rate: 10
+        cost_per_lead: DEFAULT_CLIENT_METRICS.COST_PER_LEAD,
+        default_commission_rate: DEFAULT_CLIENT_METRICS.COMMISSION_RATE
       });
-      setCommissionRate(10);
+      setCommissionRate(DEFAULT_CLIENT_METRICS.COMMISSION_RATE);
     } finally {
       setLoading(false);
     }

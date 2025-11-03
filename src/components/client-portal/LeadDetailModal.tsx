@@ -15,15 +15,8 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar, Mail, Phone, MapPin, Building, ExternalLink, DollarSign } from "lucide-react";
+import { PIPELINE_STAGES } from "@/constants/pipeline";
 import { SMAPoliciesList } from "@/components/sma/SMAPoliciesList";
-
-const PIPELINE_STAGES = [
-  { key: 'new', label: 'New Lead', color: 'bg-blue-500/20 border-blue-500/40' },
-  { key: 'quoting', label: 'Quoting', color: 'bg-purple-500/20 border-purple-500/40' },
-  { key: 'follow-up', label: 'Follow Up', color: 'bg-yellow-500/20 border-yellow-500/40' },
-  { key: 'won', label: 'Won', color: 'bg-green-500/20 border-green-500/40' },
-  { key: 'lost', label: 'Lost', color: 'bg-red-500/20 border-red-500/40' },
-];
 
 interface ClientLead {
   id: string;
@@ -124,7 +117,7 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('client_leads')
         .update(updates)
         .eq('id', lead.id);

@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useDashboardContext } from "@/contexts/DashboardContext";
+import { ROUTES } from "@/constants/navigation";
 
 const VolumeDashboard = () => {
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
@@ -101,7 +102,7 @@ const VolumeDashboard = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Button asChild variant="ghost" size="sm" className="hover:bg-accent">
-                <Link to="/">
+                <Link to={ROUTES.HOME}>
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to Portal
                 </Link>

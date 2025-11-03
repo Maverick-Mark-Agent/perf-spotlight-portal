@@ -18,6 +18,11 @@ import { EMAIL_BISON_API } from "@/constants/api";
 import { ROUTES } from "@/constants/navigation";
 import { PIPELINE_STAGES } from "@/constants/pipeline";
 import { BISON_ENDPOINTS } from "@/constants/thirdParty/emailBison";
+// SMA Insurance specific imports
+import { SMACommissionKPICards } from "@/components/sma/SMACommissionKPICards";
+import { SMAPoliciesInputDialog } from "@/components/sma/SMAPoliciesInputDialog";
+import { createPolicies } from "@/services/smaPoliciesService";
+import { SMAPolicyFormData } from "@/types/sma";
 import {
   Select,
   SelectContent,
@@ -362,6 +367,55 @@ const ClientPortalPage = () => {
       toast({
         title: "Error",
         description: "Failed to update lead",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // SMA Insurance: Handle multiple policies save
+  const handleSMAPoliciesSave = async (policies: SMAPolicyFormData[]) => {
+    if (!premiumDialogLead) return;
+
+    try {
+      // Create multiple policies for this lead
+      await createPolicies(premiumDialogLead.id, policies);
+
+      // Update lead pipeline stage to won
+      const { error } = await (supabase as any)
+        .from('client_leads')
+        .update({
+          pipeline_stage: 'won',
+        })
+        .eq('id', premiumDialogLead.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setLeads(prev => prev.map(l =>
+        l.id === premiumDialogLead.id
+          ? { ...l, pipeline_stage: 'won' }
+          : l
+      ));
+
+      const totalPremium = policies.reduce((sum, p) => sum + p.premium_amount, 0);
+      const totalAgencyCommission = policies.reduce((sum, p) => sum + p.agency_commission, 0);
+
+      toast({
+        title: "🎉 Deal won!",
+        description: `${premiumDialogLead.first_name} ${premiumDialogLead.last_name} moved to Won with ${policies.length} ${policies.length === 1 ? 'policy' : 'policies'} totaling $${totalPremium.toLocaleString()} premium`,
+      });
+
+      setPremiumDialogLead(null);
+
+      // Refresh SMA KPI cards if available
+      if (typeof (window as any).refreshSMAKPIs === 'function') {
+        (window as any).refreshSMAKPIs();
+      }
+    } catch (error) {
+      console.error('Error creating SMA policies:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create policies",
         variant: "destructive",
       });
     }
@@ -788,12 +842,16 @@ const ClientPortalPage = () => {
 
       {/* KPI Stats */}
       {workspace && (
-        <ClientKPIStats
-          workspaceName={workspace}
-          totalLeads={filteredLeads.length}
-          wonLeads={getLeadsByStage('won').length}
-          newLeads={getLeadsByStage('interested').length}
-        />
+        workspace === "SMA Insurance" ? (
+          <SMACommissionKPICards />
+        ) : (
+          <ClientKPIStats
+            workspaceName={workspace}
+            totalLeads={filteredLeads.length}
+            wonLeads={getLeadsByStage('won').length}
+            newLeads={getLeadsByStage('interested').length}
+          />
+        )
       )}
 
       {/* Kanban Board */}
@@ -826,18 +884,30 @@ const ClientPortalPage = () => {
         onUpdate={handleLeadUpdate}
       />
 
-      {/* Premium Input Dialog */}
-      <PremiumInputDialog
-        isOpen={isPremiumDialogOpen}
-        onClose={() => {
-          setIsPremiumDialogOpen(false);
-          setPremiumDialogLead(null);
-        }}
-        onSave={handlePremiumSave}
-        leadName={premiumDialogLead ? `${premiumDialogLead.first_name} ${premiumDialogLead.last_name}` : ''}
-        currentPremium={premiumDialogLead?.premium_amount}
-        currentPolicyType={premiumDialogLead?.policy_type}
-      />
+      {/* Premium Input Dialog - Conditional based on workspace */}
+      {workspace === "SMA Insurance" ? (
+        <SMAPoliciesInputDialog
+          isOpen={isPremiumDialogOpen}
+          onClose={() => {
+            setIsPremiumDialogOpen(false);
+            setPremiumDialogLead(null);
+          }}
+          onSave={handleSMAPoliciesSave}
+          leadName={premiumDialogLead ? `${premiumDialogLead.first_name} ${premiumDialogLead.last_name}` : ''}
+        />
+      ) : (
+        <PremiumInputDialog
+          isOpen={isPremiumDialogOpen}
+          onClose={() => {
+            setIsPremiumDialogOpen(false);
+            setPremiumDialogLead(null);
+          }}
+          onSave={handlePremiumSave}
+          leadName={premiumDialogLead ? `${premiumDialogLead.first_name} ${premiumDialogLead.last_name}` : ''}
+          currentPremium={premiumDialogLead?.premium_amount}
+          currentPolicyType={premiumDialogLead?.policy_type}
+        />
+      )}
     </div>
   );
 };

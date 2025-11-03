@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar, Mail, Phone, MapPin, Building, ExternalLink, DollarSign } from "lucide-react";
 import { PIPELINE_STAGES } from "@/constants/pipeline";
+import { SMAPoliciesList } from "@/components/sma/SMAPoliciesList";
 
 interface ClientLead {
   id: string;
@@ -288,7 +289,16 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
             </div>
           )}
 
-          {/* Premium Information */}
+          {/* SMA Insurance: Policies Section */}
+          {lead.workspace_name === "SMA Insurance" && (
+            <SMAPoliciesList
+              leadId={lead.id}
+              onPoliciesChange={onUpdate}
+            />
+          )}
+
+          {/* Premium Information - Hide for SMA Insurance (they use policies instead) */}
+          {lead.workspace_name !== "SMA Insurance" && (
           <div className="space-y-3">
             <h3 className="text-white/90 font-semibold flex items-center gap-2">
               <DollarSign className="w-4 h-4" />
@@ -333,6 +343,7 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
               )}
             </div>
           </div>
+          )}
 
           {/* Notes Section */}
           <div className="space-y-3">

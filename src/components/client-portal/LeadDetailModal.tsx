@@ -56,9 +56,10 @@ interface LeadDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpdate: () => void;
+  onOptimisticUpdate?: (leadId: string, updates: Partial<ClientLead>) => void;
 }
 
-export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailModalProps) => {
+export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticUpdate }: LeadDetailModalProps) => {
   const { toast } = useToast();
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -135,6 +136,12 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
         updated_at: new Date().toISOString(),
       };
 
+      // Optimistic update - update UI immediately for instant feedback
+      if (onOptimisticUpdate) {
+        onOptimisticUpdate(lead.id, updates);
+      }
+
+      // Save to database in background
       const { error } = await supabase
         .from('client_leads')
         .update(updates)
@@ -147,7 +154,8 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
         description: field === 'pipeline_stage' ? "Pipeline stage updated" : "Notes saved",
       });
 
-      onUpdate(); // Refresh the kanban board
+      // No need to call onUpdate() - optimistic update already handled it!
+      // Full refresh will happen when modal closes
     } catch (error) {
       console.error('Error in quick save:', error);
       toast({
@@ -155,6 +163,8 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
         description: error instanceof Error ? error.message : "Failed to save changes",
         variant: "destructive",
       });
+      // If save failed, refresh to revert optimistic update
+      onUpdate();
     }
   };
 

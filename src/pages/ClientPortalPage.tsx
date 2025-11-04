@@ -282,10 +282,25 @@ const ClientPortalPage = () => {
   const handleModalClose = () => {
     setIsModalOpen(false);
     setSelectedLead(null);
+    // Refresh data when modal closes to ensure everything is in sync
+    fetchLeads();
+  };
+
+  // Optimistic update function for instant UI feedback
+  const handleOptimisticLeadUpdate = (leadId: string, updates: Partial<ClientLead>) => {
+    setLeads(prevLeads =>
+      prevLeads.map(lead =>
+        lead.id === leadId ? { ...lead, ...updates } : lead
+      )
+    );
+    // Also update the selected lead if it's the one being updated
+    if (selectedLead?.id === leadId) {
+      setSelectedLead(prev => prev ? { ...prev, ...updates } : null);
+    }
   };
 
   const handleLeadUpdate = () => {
-    fetchLeads(); // Refresh leads after update
+    fetchLeads(); // Refresh leads after update (used for full edits)
   };
 
   const handleRefreshData = async () => {
@@ -903,6 +918,7 @@ const ClientPortalPage = () => {
         isOpen={isModalOpen}
         onClose={handleModalClose}
         onUpdate={handleLeadUpdate}
+        onOptimisticUpdate={handleOptimisticLeadUpdate}
       />
 
       {/* Premium Input Dialog - Conditional based on workspace */}

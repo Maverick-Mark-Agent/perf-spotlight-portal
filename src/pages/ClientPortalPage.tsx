@@ -279,11 +279,13 @@ const ClientPortalPage = () => {
     setIsModalOpen(true);
   };
 
-  const handleModalClose = () => {
+  const handleModalClose = (shouldRefresh?: boolean) => {
     setIsModalOpen(false);
     setSelectedLead(null);
-    // Refresh data when modal closes to ensure everything is in sync
-    fetchLeads();
+    // Only refresh if a full edit was made (not for quick saves like stage/notes changes)
+    if (shouldRefresh) {
+      fetchLeads();
+    }
   };
 
   // Optimistic update function for instant UI feedback

@@ -54,7 +54,7 @@ interface ClientLead {
 interface LeadDetailModalProps {
   lead: ClientLead | null;
   isOpen: boolean;
-  onClose: () => void;
+  onClose: (shouldRefresh?: boolean) => void;
   onUpdate: () => void;
   onOptimisticUpdate?: (leadId: string, updates: Partial<ClientLead>) => void;
 }
@@ -63,6 +63,7 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
   const { toast } = useToast();
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [fullEditMade, setFullEditMade] = useState(false);
 
   // Editable fields
   const [firstName, setFirstName] = useState("");
@@ -107,6 +108,7 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
         .map(cv => ({ name: cv.name, value: cv.value }));
       setCustomVariables(validCustomVariables);
       setEditMode(false); // Reset edit mode when lead changes
+      setFullEditMade(false); // Reset full edit flag when lead changes
     }
   }, [lead]);
 
@@ -246,6 +248,7 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
       });
 
       setEditMode(false);
+      setFullEditMade(true); // Mark that a full edit was made
       onUpdate(); // Refresh the kanban board
       onClose();
     } catch (error) {
@@ -286,7 +289,8 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
       }
       setEditMode(false);
     }
-    onClose();
+    // Pass fullEditMade flag to parent so it knows whether to refresh
+    onClose(fullEditMade);
   };
 
   return (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -100,7 +100,11 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
       setPremiumAmount(lead.premium_amount?.toString() || "");
       setPolicyType(lead.policy_type || "");
       setPipelineStage(lead.pipeline_stage || "new");
-      setCustomVariables(lead.custom_variables || []);
+      // Filter out null/empty custom variables on load to prevent null.trim() errors
+      const validCustomVariables = (lead.custom_variables || [])
+        .filter(cv => cv && cv.name && cv.value)
+        .map(cv => ({ name: cv.name, value: cv.value }));
+      setCustomVariables(validCustomVariables);
       setEditMode(false); // Reset edit mode when lead changes
     }
   }, [lead]);
@@ -119,6 +123,39 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
     const updated = [...customVariables];
     updated[index][field] = value;
     setCustomVariables(updated);
+  };
+
+  // Quick save for pipeline stage and notes (without requiring Edit mode)
+  const handleQuickSave = async (field: 'pipeline_stage' | 'notes', value: string) => {
+    if (!lead) return;
+
+    try {
+      const updates: any = {
+        [field]: value?.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('client_leads')
+        .update(updates)
+        .eq('id', lead.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Updated",
+        description: field === 'pipeline_stage' ? "Pipeline stage updated" : "Notes saved",
+      });
+
+      onUpdate(); // Refresh the kanban board
+    } catch (error) {
+      console.error('Error in quick save:', error);
+      toast({
+        title: "Save failed",
+        description: error instanceof Error ? error.message : "Failed to save changes",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSave = async () => {
@@ -160,28 +197,28 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
     try {
       setSaving(true);
 
-      // Filter out empty custom variables
+      // Filter out empty custom variables with null safety
       const filteredCustomVariables = customVariables
-        .filter(cv => cv.name.trim() && cv.value.trim())
+        .filter(cv => cv?.name?.trim() && cv?.value?.trim())
         .map(cv => ({ name: cv.name.trim(), value: cv.value.trim() }));
 
       const updates: any = {
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        lead_email: email.toLowerCase().trim(),
-        phone: phone.trim() || null,
-        address: address.trim() || null,
-        city: city.trim() || null,
-        state: state.trim() || null,
-        zip: zip.trim() || null,
-        title: title.trim() || null,
-        company: company.trim() || null,
-        renewal_date: renewalDate.trim() || null,
-        birthday: birthday.trim() || null,
-        notes: notes.trim() || null,
+        first_name: firstName?.trim() || null,
+        last_name: lastName?.trim() || null,
+        lead_email: email?.toLowerCase()?.trim() || null,
+        phone: phone?.trim() || null,
+        address: address?.trim() || null,
+        city: city?.trim() || null,
+        state: state?.trim() || null,
+        zip: zip?.trim() || null,
+        title: title?.trim() || null,
+        company: company?.trim() || null,
+        renewal_date: renewalDate?.trim() || null,
+        birthday: birthday?.trim() || null,
+        notes: notes?.trim() || null,
         pipeline_stage: pipelineStage,
         premium_amount: premiumAmount ? parseFloat(premiumAmount) : null,
-        policy_type: policyType.trim() || null,
+        policy_type: policyType?.trim() || null,
         custom_variables: filteredCustomVariables.length > 0 ? filteredCustomVariables : null,
         updated_at: new Date().toISOString(),
       };
@@ -262,6 +299,11 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
               </Button>
             )}
           </div>
+          <DialogDescription className="text-white/60">
+            {editMode
+              ? "Update contact information and details"
+              : "View contact details. Pipeline stage and notes can be updated directly."}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -311,10 +353,16 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
             </div>
           )}
 
-          {/* Pipeline Stage Selector */}
+          {/* Pipeline Stage Selector - Always enabled for quick changes */}
           <div className="space-y-3">
             <h3 className="text-white/90 font-semibold">Pipeline Stage</h3>
-            <Select value={pipelineStage} onValueChange={setPipelineStage} disabled={!editMode}>
+            <Select
+              value={pipelineStage}
+              onValueChange={(value) => {
+                setPipelineStage(value);
+                handleQuickSave('pipeline_stage', value);
+              }}
+            >
               <SelectTrigger className="bg-white/10 border-white/20 text-white">
                 <SelectValue placeholder="Select stage" />
               </SelectTrigger>
@@ -564,8 +612,8 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
             </div>
           )}
 
-          {/* Custom Variables */}
-          {(editMode || (lead.custom_variables && lead.custom_variables.length > 0)) && (
+          {/* Custom Variables - Only show if in edit mode or there are valid custom variables */}
+          {(editMode || customVariables.length > 0) && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-white/90 font-semibold">Additional Information</h3>
@@ -620,7 +668,7 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
                 </div>
               ) : (
                 <div className="bg-white/5 rounded-lg p-4 space-y-2">
-                  {lead.custom_variables && lead.custom_variables.map((cv, idx) => (
+                  {customVariables.map((cv, idx) => (
                     <div key={idx} className="flex justify-between items-center">
                       <span className="text-white/50">{cv.name}:</span>
                       <span className="text-white/90">{cv.value}</span>
@@ -689,15 +737,15 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate }: LeadDetailM
           </div>
           )}
 
-          {/* Notes Section */}
+          {/* Notes Section - Always enabled for quick updates */}
           <div className="space-y-3">
             <h3 className="text-white/90 font-semibold">Notes</h3>
             <Textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add notes about this lead..."
+              onBlur={() => handleQuickSave('notes', notes)}
+              placeholder="Add notes about this lead... (saves automatically)"
               className="min-h-[120px] bg-white/10 border-white/20 text-white placeholder:text-white/40 resize-y"
-              disabled={!editMode}
             />
           </div>
 

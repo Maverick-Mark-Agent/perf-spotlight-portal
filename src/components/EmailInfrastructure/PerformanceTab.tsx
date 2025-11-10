@@ -17,6 +17,11 @@ interface PerformanceTabProps {
   resellerStatsData: any[];
   espStatsData: any[];
   top100AccountsData: any[];
+  noReplyAccountsData: {
+    resellerStats: any[];
+    espStats: any[];
+    allAccounts: any[];
+  };
   loading: boolean;
   expandedProviders: Set<string>;
   toggleProvider: (name: string) => void;
@@ -28,6 +33,7 @@ export function PerformanceTab({
   resellerStatsData,
   espStatsData,
   top100AccountsData,
+  noReplyAccountsData,
   loading,
   expandedProviders,
   toggleProvider
@@ -400,10 +406,333 @@ export function PerformanceTab({
                 </div>
               )}
 
-              {/* VIEW 4 & 5: Placeholder for now - will reuse existing logic */}
-              {(providerPerformanceView === 'accounts50' || providerPerformanceView === 'no-replies') && (
+              {/* VIEW 4: Accounts 50+ (Enhanced) - Placeholder for now */}
+              {providerPerformanceView === 'accounts50' && (
                 <div className="text-white/70 text-center py-8">
                   This view will be implemented using enhanced version of existing functionality
+                </div>
+              )}
+
+              {/* VIEW 5: 100+ No Replies */}
+              {(providerPerformanceView === 'no-replies' || providerPerformanceView === 'no-replies-reseller' || providerPerformanceView === 'no-replies-esp' || providerPerformanceView === 'no-replies-all') && (
+                <div className="space-y-4">
+                  {(() => {
+                    console.log('[PerformanceTab] 100+ No Replies view - Debug:', {
+                      providerPerformanceView,
+                      hasNoReplyData: !!noReplyAccountsData,
+                      noReplyDataKeys: noReplyAccountsData ? Object.keys(noReplyAccountsData) : [],
+                      allAccountsLength: noReplyAccountsData?.allAccounts?.length ?? 'undefined',
+                      resellerStatsLength: noReplyAccountsData?.resellerStats?.length ?? 'undefined',
+                      espStatsLength: noReplyAccountsData?.espStats?.length ?? 'undefined',
+                    });
+                    return null;
+                  })()}
+                  {!noReplyAccountsData || !noReplyAccountsData.allAccounts || noReplyAccountsData.allAccounts.length === 0 ? (
+                    <div className="text-white/70 text-center py-8">
+                      {!noReplyAccountsData || !noReplyAccountsData.allAccounts 
+                        ? 'Loading 100+ No Replies data...' 
+                        : 'No accounts found with 100+ sent and 0 replies'}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Summary metrics */}
+                      <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-white/10 rounded-lg">
+                        <div>
+                          <div className="text-white/70 text-xs mb-1">Total Accounts</div>
+                          <div className="text-white font-bold">{noReplyAccountsData.allAccounts?.length || 0}</div>
+                        </div>
+                        <div>
+                          <div className="text-white/70 text-xs mb-1">Total Sent</div>
+                          <div className="text-white font-bold">
+                            {(noReplyAccountsData.allAccounts || []).reduce((sum, acc: any) => sum + (parseFloat(acc.fields['Total Sent']) || 0), 0).toLocaleString()}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-white/70 text-xs mb-1">Total Bounces</div>
+                          <div className="text-white font-bold">
+                            {(noReplyAccountsData.allAccounts || []).reduce((sum, acc: any) => sum + (parseFloat(acc.fields['Bounced']) || 0), 0).toLocaleString()}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-white/70 text-xs mb-1">Avg Bounce Rate</div>
+                          <div className="text-white font-bold">
+                            {(() => {
+                              const allAccounts = noReplyAccountsData.allAccounts || [];
+                              const totalSent = allAccounts.reduce((sum, acc: any) => sum + (parseFloat(acc.fields['Total Sent']) || 0), 0);
+                              const totalBounced = allAccounts.reduce((sum, acc: any) => sum + (parseFloat(acc.fields['Bounced']) || 0), 0);
+                              return totalSent > 0 ? ((totalBounced / totalSent) * 100).toFixed(2) : '0.00';
+                            })()}%
+                          </div>
+                        </div>
+                      </div>
+
+                  {/* Toggle between Reseller and ESP view */}
+                  <div className="flex gap-2 mb-4">
+                    <button
+                      onClick={() => setProviderPerformanceView('no-replies-reseller')}
+                      className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                        providerPerformanceView === 'no-replies' || providerPerformanceView === 'no-replies-reseller'
+                          ? 'bg-dashboard-primary text-white'
+                          : 'bg-white/10 text-white/70 hover:bg-white/20'
+                      }`}
+                    >
+                      By Reseller
+                    </button>
+                    <button
+                      onClick={() => setProviderPerformanceView('no-replies-esp')}
+                      className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                        providerPerformanceView === 'no-replies-esp'
+                          ? 'bg-dashboard-primary text-white'
+                          : 'bg-white/10 text-white/70 hover:bg-white/20'
+                      }`}
+                    >
+                      By ESP
+                    </button>
+                    <button
+                      onClick={() => setProviderPerformanceView('no-replies-all')}
+                      className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
+                        providerPerformanceView === 'no-replies-all'
+                          ? 'bg-dashboard-primary text-white'
+                          : 'bg-white/10 text-white/70 hover:bg-white/20'
+                      }`}
+                    >
+                      All Accounts
+                    </button>
+                  </div>
+
+                  {/* By Reseller View (default when no-replies is selected) */}
+                  {(providerPerformanceView === 'no-replies' || providerPerformanceView === 'no-replies-reseller') && (
+                    <div className="space-y-4">
+                      {noReplyAccountsData.resellerStats.length === 0 ? (
+                        <div className="text-white/70 text-center py-8">No accounts with 100+ sent and 0 replies</div>
+                      ) : (
+                        noReplyAccountsData.resellerStats.map((reseller: any) => (
+                          <Collapsible key={reseller.name} className="bg-white/5 rounded-lg border border-white/10">
+                            <div className="p-4">
+                              <div className="flex justify-between items-start mb-3">
+                                <div className="flex items-center gap-3 flex-1">
+                                  <CollapsibleTrigger
+                                    className="hover:bg-white/10 p-1 rounded transition-colors"
+                                    onClick={() => toggleProvider(reseller.name)}
+                                  >
+                                    {expandedProviders.has(reseller.name) ? (
+                                      <ChevronDown className="h-5 w-5 text-white" />
+                                    ) : (
+                                      <ChevronRight className="h-5 w-5 text-white" />
+                                    )}
+                                  </CollapsibleTrigger>
+                                  <h3 className="text-white font-semibold text-lg">{reseller.name}</h3>
+                                </div>
+                                <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/40">
+                                  {reseller.totalAccounts} accounts
+                                </Badge>
+                              </div>
+                              <div className="grid grid-cols-3 gap-4 mt-3">
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Total Sent</span>
+                                  <div className="text-white font-semibold">{reseller.totalSent.toLocaleString()}</div>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Total Bounces</span>
+                                  <div className="text-white font-semibold">{reseller.totalBounces.toLocaleString()}</div>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Bounce Rate</span>
+                                  <div className="text-white font-semibold">{reseller.bounceRate}%</div>
+                                </div>
+                              </div>
+                            </div>
+                            <CollapsibleContent>
+                              <div className="border-t border-white/10 p-4 bg-white/5">
+                                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                                  {reseller.accounts.map((account: any, idx: number) => {
+                                    const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+                                    const bounced = parseFloat(account.fields['Bounced']) || 0;
+                                    const bounceRate = totalSent > 0 ? ((bounced / totalSent) * 100).toFixed(2) : '0.00';
+
+                                    return (
+                                      <div key={idx} className="bg-white/5 rounded p-3 text-sm">
+                                        <div className="flex justify-between items-start mb-2">
+                                          <span className="text-white font-medium">{account.fields['Email'] || account.fields['Name'] || 'No email'}</span>
+                                          <Badge
+                                            variant={account.fields['Status'] === 'Connected' ? 'default' : 'destructive'}
+                                            className="text-xs"
+                                          >
+                                            {account.fields['Status']}
+                                          </Badge>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2 text-white/70">
+                                          <div>
+                                            <div className="text-xs">Sent</div>
+                                            <div className="text-white font-semibold">{totalSent.toLocaleString()}</div>
+                                          </div>
+                                          <div>
+                                            <div className="text-xs">Bounced</div>
+                                            <div className="text-white font-semibold">{bounced.toLocaleString()}</div>
+                                          </div>
+                                          <div>
+                                            <div className="text-xs">Bounce Rate</div>
+                                            <div className="text-white font-semibold">{bounceRate}%</div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* By ESP View */}
+                  {providerPerformanceView === 'no-replies-esp' && (
+                    <div className="space-y-4">
+                      {noReplyAccountsData.espStats.length === 0 ? (
+                        <div className="text-white/70 text-center py-8">No accounts with 100+ sent and 0 replies</div>
+                      ) : (
+                        noReplyAccountsData.espStats.map((esp: any) => (
+                          <Collapsible key={esp.name} className="bg-white/5 rounded-lg border border-white/10">
+                            <div className="p-4">
+                              <div className="flex justify-between items-start mb-3">
+                                <div className="flex items-center gap-3 flex-1">
+                                  <CollapsibleTrigger
+                                    className="hover:bg-white/10 p-1 rounded transition-colors"
+                                    onClick={() => toggleProvider(esp.name)}
+                                  >
+                                    {expandedProviders.has(esp.name) ? (
+                                      <ChevronDown className="h-5 w-5 text-white" />
+                                    ) : (
+                                      <ChevronRight className="h-5 w-5 text-white" />
+                                    )}
+                                  </CollapsibleTrigger>
+                                  <h3 className="text-white font-semibold text-lg">{esp.name}</h3>
+                                </div>
+                                <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/40">
+                                  {esp.totalAccounts} accounts
+                                </Badge>
+                              </div>
+                              <div className="grid grid-cols-3 gap-4 mt-3">
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Total Sent</span>
+                                  <div className="text-white font-semibold">{esp.totalSent.toLocaleString()}</div>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Total Bounces</span>
+                                  <div className="text-white font-semibold">{esp.totalBounces.toLocaleString()}</div>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-white/70 text-xs mb-1">Bounce Rate</span>
+                                  <div className="text-white font-semibold">{esp.bounceRate}%</div>
+                                </div>
+                              </div>
+                            </div>
+                            <CollapsibleContent>
+                              <div className="border-t border-white/10 p-4 bg-white/5">
+                                <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                                  {esp.accounts.map((account: any, idx: number) => {
+                                    const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+                                    const bounced = parseFloat(account.fields['Bounced']) || 0;
+                                    const bounceRate = totalSent > 0 ? ((bounced / totalSent) * 100).toFixed(2) : '0.00';
+
+                                    return (
+                                      <div key={idx} className="bg-white/5 rounded p-3 text-sm">
+                                        <div className="flex justify-between items-start mb-2">
+                                          <span className="text-white font-medium">{account.fields['Email'] || account.fields['Name'] || 'No email'}</span>
+                                          <Badge
+                                            variant={account.fields['Status'] === 'Connected' ? 'default' : 'destructive'}
+                                            className="text-xs"
+                                          >
+                                            {account.fields['Status']}
+                                          </Badge>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2 text-white/70">
+                                          <div>
+                                            <div className="text-xs">Sent</div>
+                                            <div className="text-white font-semibold">{totalSent.toLocaleString()}</div>
+                                          </div>
+                                          <div>
+                                            <div className="text-xs">Bounced</div>
+                                            <div className="text-white font-semibold">{bounced.toLocaleString()}</div>
+                                          </div>
+                                          <div>
+                                            <div className="text-xs">Bounce Rate</div>
+                                            <div className="text-white font-semibold">{bounceRate}%</div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* All Accounts View */}
+                  {providerPerformanceView === 'no-replies-all' && (
+                    <div>
+                      <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                        {noReplyAccountsData.allAccounts.length === 0 ? (
+                          <div className="text-white/70 text-center py-8">No accounts with 100+ sent and 0 replies</div>
+                        ) : (
+                          noReplyAccountsData.allAccounts.map((account: any, idx: number) => {
+                            const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+                            const bounced = parseFloat(account.fields['Bounced']) || 0;
+                            const bounceRate = totalSent > 0 ? ((bounced / totalSent) * 100).toFixed(2) : '0.00';
+
+                            return (
+                              <div key={idx} className="bg-white/5 rounded p-3 border border-white/10">
+                                <div className="flex justify-between items-start mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/40">
+                                      #{idx + 1}
+                                    </Badge>
+                                    <span className="text-white font-medium">{account.fields['Email'] || account.fields['Name'] || 'No email'}</span>
+                                  </div>
+                                  <Badge
+                                    variant={account.fields['Status'] === 'Connected' ? 'default' : 'destructive'}
+                                    className="text-xs"
+                                  >
+                                    {account.fields['Status']}
+                                  </Badge>
+                                </div>
+                                <div className="grid grid-cols-5 gap-2 text-sm text-white/70">
+                                  <div>
+                                    <div className="text-xs">Reseller</div>
+                                    <div className="text-white font-semibold">{account.fields['Tag - Reseller'] || 'N/A'}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs">ESP</div>
+                                    <div className="text-white font-semibold">{account.fields['Tag - Email Provider'] || 'N/A'}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs">Sent</div>
+                                    <div className="text-white font-semibold">{totalSent.toLocaleString()}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs">Bounced</div>
+                                    <div className="text-white font-semibold">{bounced.toLocaleString()}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs">Bounce Rate</div>
+                                    <div className="text-white font-semibold">{bounceRate}%</div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+                    </>
+                  )}
                 </div>
               )}
             </div>

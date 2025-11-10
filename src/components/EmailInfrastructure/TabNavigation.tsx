@@ -2,13 +2,13 @@
  * Tab Navigation Component
  *
  * Main tab navigation for the Email Infrastructure Dashboard
- * Tabs: Overview / Performance / Home Insurance / All Clients
+ * Tabs: Overview / Performance / Home Insurance
  * Created: 2025-10-27
  */
 
-import { LayoutDashboard, TrendingUp, Home, Users } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Home } from 'lucide-react';
 
-export type TabValue = 'overview' | 'performance' | 'home-insurance' | 'all-clients';
+export type TabValue = 'overview' | 'performance' | 'home-insurance';
 
 interface Tab {
   value: TabValue;
@@ -40,12 +40,6 @@ const tabs: Tab[] = [
     label: 'Home Insurance',
     icon: Home,
     description: 'Dedicated view for home insurance campaigns',
-  },
-  {
-    value: 'all-clients',
-    label: 'All Clients',
-    icon: Users,
-    description: 'All email accounts across all clients',
   },
 ];
 

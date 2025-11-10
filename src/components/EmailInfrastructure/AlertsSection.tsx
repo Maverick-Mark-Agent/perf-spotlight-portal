@@ -8,26 +8,26 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, AlertCircle, Info, ChevronRight, CheckCircle } from 'lucide-react';
-import type { Alert, AlertsResult } from '@/hooks/useAlerts';
+import { AlertTriangle, AlertCircle, Info, CheckCircle, Eye } from 'lucide-react';
+import type { Alert, AlertsResult, EmailAccount } from '@/hooks/useAlerts';
 import { useState } from 'react';
+import { AlertAccountsModal } from './AlertAccountsModal';
 
 interface AlertsSectionProps {
   alertsResult: AlertsResult;
   loading?: boolean;
+  accounts?: EmailAccount[] | null;
 }
 
-export function AlertsSection({ alertsResult, loading = false }: AlertsSectionProps) {
-  const [expandedAlerts, setExpandedAlerts] = useState<Set<string>>(new Set());
+export function AlertsSection({ alertsResult, loading = false, accounts = null }: AlertsSectionProps) {
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
 
-  const toggleAlert = (alertId: string) => {
-    const newExpanded = new Set(expandedAlerts);
-    if (newExpanded.has(alertId)) {
-      newExpanded.delete(alertId);
-    } else {
-      newExpanded.add(alertId);
-    }
-    setExpandedAlerts(newExpanded);
+  const handleViewAllAccounts = (alert: Alert) => {
+    setSelectedAlert(alert);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedAlert(null);
   };
 
   const getAlertIcon = (type: Alert['type']) => {
@@ -135,8 +135,6 @@ export function AlertsSection({ alertsResult, loading = false }: AlertsSectionPr
       <CardContent>
         <div className="space-y-3">
           {alertsResult.alerts.map((alert) => {
-            const isExpanded = expandedAlerts.has(alert.id);
-
             return (
               <div
                 key={alert.id}
@@ -156,31 +154,28 @@ export function AlertsSection({ alertsResult, loading = false }: AlertsSectionPr
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         {getCategoryBadge(alert.category)}
-                        {(alert.accounts || alert.count) && (
+                        {alert.count && alert.count > 0 && (
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-6 w-6 p-0 hover:bg-white/10"
-                            onClick={() => toggleAlert(alert.id)}
+                            className="h-7 px-3 text-xs bg-white/5 border-white/20 hover:bg-white/10 text-white"
+                            onClick={() => handleViewAllAccounts(alert)}
                           >
-                            <ChevronRight
-                              className={`h-4 w-4 text-white transition-transform ${
-                                isExpanded ? 'rotate-90' : ''
-                              }`}
-                            />
+                            <Eye className="h-3 w-3 mr-1.5" />
+                            View All {alert.count}
                           </Button>
                         )}
                       </div>
                     </div>
 
-                    {/* Expanded Details */}
-                    {isExpanded && alert.accounts && alert.accounts.length > 0 && (
+                    {/* Preview: Show first 3 accounts if available */}
+                    {alert.accounts && alert.accounts.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-white/10">
                         <div className="text-white/60 text-xs mb-2">
-                          Affected accounts {alert.count && `(showing ${alert.accounts.length} of ${alert.count})`}:
+                          Sample accounts {alert.count && `(showing ${Math.min(alert.accounts.length, 3)} of ${alert.count})`}:
                         </div>
                         <div className="space-y-1">
-                          {alert.accounts.map((email, idx) => (
+                          {alert.accounts.slice(0, 3).map((email, idx) => (
                             <div
                               key={idx}
                               className="text-white/80 text-xs bg-white/5 rounded px-2 py-1 font-mono"
@@ -188,6 +183,11 @@ export function AlertsSection({ alertsResult, loading = false }: AlertsSectionPr
                               {email}
                             </div>
                           ))}
+                          {alert.count && alert.count > 3 && (
+                            <div className="text-white/60 text-xs italic">
+                              ... and {alert.count - 3} more
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -210,6 +210,14 @@ export function AlertsSection({ alertsResult, loading = false }: AlertsSectionPr
           })}
         </div>
       </CardContent>
+
+      {/* Alert Accounts Modal */}
+      <AlertAccountsModal
+        isOpen={selectedAlert !== null}
+        onClose={handleCloseModal}
+        alert={selectedAlert}
+        allAccounts={accounts}
+      />
     </Card>
   );
 }

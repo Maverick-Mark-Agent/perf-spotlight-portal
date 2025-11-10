@@ -81,6 +81,11 @@ const SendingAccountsInfrastructure = () => {
   const [resellerStatsData, setResellerStatsData] = useState([]);
   const [espStatsData, setEspStatsData] = useState([]);
   const [top100AccountsData, setTop100AccountsData] = useState([]);
+  const [noReplyAccountsData, setNoReplyAccountsData] = useState({
+    resellerStats: [],
+    espStats: [],
+    allAccounts: [],
+  });
 
   const formatLastUpdated = () => {
     if (!lastUpdated) return '';
@@ -564,9 +569,95 @@ const SendingAccountsInfrastructure = () => {
       .sort((a, b) => b.calculatedReplyRate - a.calculatedReplyRate)
       .slice(0, 100);
 
+    // 100+ NO REPLIES: Accounts with 100+ sent and 0 replies, grouped by reseller
+    const noReplyResellerGroups = {};
+    const noReplyEspGroups = {};
+    
+    accounts
+      .filter(account => {
+        const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+        const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
+        return totalSent >= 100 && totalReplied === 0;
+      })
+      .forEach(account => {
+        const reseller = account.fields['Tag - Reseller'] || 'Unknown';
+        const esp = account.fields['Tag - Email Provider'] || 'Unknown';
+        const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+        const bounced = parseFloat(account.fields['Bounced']) || 0;
+
+        // Group by reseller
+        if (!noReplyResellerGroups[reseller]) {
+          noReplyResellerGroups[reseller] = {
+            name: reseller,
+            accounts: [],
+            totalAccounts: 0,
+            totalSent: 0,
+            totalBounces: 0,
+          };
+        }
+        noReplyResellerGroups[reseller].accounts.push(account);
+        noReplyResellerGroups[reseller].totalAccounts += 1;
+        noReplyResellerGroups[reseller].totalSent += totalSent;
+        noReplyResellerGroups[reseller].totalBounces += bounced;
+
+        // Group by ESP
+        if (!noReplyEspGroups[esp]) {
+          noReplyEspGroups[esp] = {
+            name: esp,
+            accounts: [],
+            totalAccounts: 0,
+            totalSent: 0,
+            totalBounces: 0,
+          };
+        }
+        noReplyEspGroups[esp].accounts.push(account);
+        noReplyEspGroups[esp].totalAccounts += 1;
+        noReplyEspGroups[esp].totalSent += totalSent;
+        noReplyEspGroups[esp].totalBounces += bounced;
+      });
+
+    // Calculate metrics and sort by account count (most problematic first)
+    const noReplyResellerStats = Object.values(noReplyResellerGroups)
+      .map((group: any) => ({
+        ...group,
+        bounceRate: group.totalSent > 0 ? ((group.totalBounces / group.totalSent) * 100).toFixed(2) : '0.00',
+      }))
+      .sort((a: any, b: any) => b.totalAccounts - a.totalAccounts);
+
+    const noReplyEspStats = Object.values(noReplyEspGroups)
+      .map((group: any) => ({
+        ...group,
+        bounceRate: group.totalSent > 0 ? ((group.totalBounces / group.totalSent) * 100).toFixed(2) : '0.00',
+      }))
+      .sort((a: any, b: any) => b.totalAccounts - a.totalAccounts);
+
     setResellerStatsData(resellerStats);
     setEspStatsData(espStats);
     setTop100AccountsData(top100);
+    
+    const noReplyAllAccounts = accounts.filter(account => {
+      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+      const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
+      return totalSent >= 100 && totalReplied === 0;
+    }).sort((a, b) => {
+      const aSent = parseFloat(a.fields['Total Sent']) || 0;
+      const bSent = parseFloat(b.fields['Total Sent']) || 0;
+      return bSent - aSent; // Sort by sent count descending
+    });
+    
+    const noReplyData = {
+      resellerStats: noReplyResellerStats,
+      espStats: noReplyEspStats,
+      allAccounts: noReplyAllAccounts,
+    };
+    
+    console.log('[Performance] Generated 100+ No Replies data:', {
+      totalAccounts: noReplyAllAccounts.length,
+      resellerGroups: noReplyResellerStats.length,
+      espGroups: noReplyEspStats.length,
+    });
+    
+    setNoReplyAccountsData(noReplyData);
   };
 
   const downloadFailedAccounts = () => {
@@ -1025,6 +1116,30 @@ const SendingAccountsInfrastructure = () => {
     setAccountTypeData(accountTypeChartData);
   }, [emailAccounts]);
 
+  // ✅ Memoize client chart data for Overview tab to ensure it updates when emailAccounts changes
+  const clientChartData = useMemo(() => {
+    if (emailAccounts.length === 0) return [];
+    
+    const clientCounts: { [key: string]: number } = {};
+    emailAccounts.forEach(account => {
+      const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
+      clientCounts[clientName] = (clientCounts[clientName] || 0) + 1;
+    });
+    
+    const sortedData = Object.entries(clientCounts)
+      .map(([name, count]) => ({ name, count: count as number }))
+      .sort((a, b) => b.count - a.count);
+    
+    return sortedData.map((item, index) => ({
+      ...item,
+      rank: index + 1,
+      fill: index < 3 ? '#10B981' : // Top 3 - bright green
+            index >= sortedData.length - 3 ? '#6B7280' : // Bottom 3 - gray
+            '#3B82F6', // Middle - blue
+      isTop3: index < 3
+    }));
+  }, [emailAccounts]);
+
   return (
     <div className="min-h-screen bg-muted/30">
       {/* Header */}
@@ -1200,189 +1315,14 @@ const SendingAccountsInfrastructure = () => {
             resellerStatsData={resellerStatsData}
             espStatsData={espStatsData}
             top100AccountsData={top100AccountsData}
+            noReplyAccountsData={noReplyAccountsData}
             loading={loading}
             expandedProviders={expandedProviders}
             toggleProvider={toggleProvider}
           />
         )}
 
-        {/* ==================================================================
-            ALL CLIENTS TAB CONTENT
-            ================================================================== */}
 
-        {activeTab === 'all-clients' && (
-          <>
-            {/* Status Overview - 4 Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Card 1: Total Email Accounts Owned */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <Mail className="h-6 w-6 text-dashboard-primary" />
-                <Badge variant="outline" className="bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40">
-                  Active
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.total}</div>
-              <p className="text-white/70 text-sm">{loading ? loadingMessage : 'Total Email Accounts Owned'}</p>
-            </CardContent>
-          </Card>
-
-          {/* Card 2: Average Email Accounts per Client */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <Users className="h-6 w-6 text-dashboard-accent" />
-                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
-                  Balanced
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.avgPerClient}</div>
-              <p className="text-white/70 text-sm">Avg Accounts per Client</p>
-            </CardContent>
-          </Card>
-
-          {/* Card 3: Total Accounts Value */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <DollarSign className="h-6 w-6 text-dashboard-primary" />
-                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
-                  Value
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-white mb-1">
-                ${loading ? '...' : accountStats.totalPrice.toFixed(2)}
-              </div>
-              <p className="text-white/70 text-sm">Total Accounts Value</p>
-            </CardContent>
-          </Card>
-
-          {/* Card 4: Average Cost per Client */}
-          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <DollarSign className="h-6 w-6 text-dashboard-accent" />
-                <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40">
-                  Average
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-white mb-1">
-                ${loading ? '...' : accountStats.avgCostPerClient}
-              </div>
-              <p className="text-white/70 text-sm">Avg Cost per Client</p>
-            </CardContent>
-          </Card>
-            </div>
-          </>
-        )}
-
-        {/* Accounts Per Client Bar Chart - Overview Tab Only */}
-        {activeTab === 'overview' && (
-          <div className="mt-8 mb-8">
-            <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center space-x-2">
-                <Users className="h-5 w-5 text-dashboard-primary" />
-                <span>Total Accounts Per Client</span>
-              </CardTitle>
-              <p className="text-white/60 text-sm mt-1">
-                Distribution of email accounts across all clients
-              </p>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="h-96 flex items-center justify-center">
-                  <div className="text-white/70">Loading client data...</div>
-                </div>
-              ) : (
-                <div className="h-96">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={(() => {
-                        const clientCounts: { [key: string]: number } = {};
-                        emailAccounts.forEach(account => {
-                          const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
-                          clientCounts[clientName] = (clientCounts[clientName] || 0) + 1;
-                        });
-                        
-                        const sortedData = Object.entries(clientCounts)
-                          .map(([name, count]) => ({ name, count: count as number }))
-                          .sort((a, b) => b.count - a.count); // Show ALL clients
-                        
-                        // Add ranking and colors
-                        return sortedData.map((item, index) => ({
-                          ...item,
-                          rank: index + 1,
-                          fill: index < 3 ? '#10B981' : // Top 3 - bright green
-                                index >= sortedData.length - 3 ? '#6B7280' : // Bottom 3 - gray
-                                '#3B82F6', // Middle - blue
-                          isTop3: index < 3
-                        }));
-                      })()}
-                      margin={{ top: 40, right: 30, left: 20, bottom: 80 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                      <XAxis 
-                        dataKey="name" 
-                        stroke="rgba(255,255,255,0.7)"
-                        angle={-45}
-                        textAnchor="end"
-                        height={100}
-                        interval={0}
-                        fontSize={11}
-                      />
-                      <YAxis stroke="rgba(255,255,255,0.7)" />
-                      <Bar 
-                        dataKey="count" 
-                        radius={[4, 4, 0, 0]}
-                        label={{
-                          position: 'top',
-                          fill: 'white',
-                          fontSize: 12,
-                          fontWeight: 'bold'
-                        }}
-                      >
-                        {(() => {
-                          const clientCounts: { [key: string]: number } = {};
-                          emailAccounts.forEach(account => {
-                            const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
-                            clientCounts[clientName] = (clientCounts[clientName] || 0) + 1;
-                          });
-                          
-                          const sortedData = Object.entries(clientCounts)
-                            .map(([name, count]) => ({ name, count: count as number }))
-                            .sort((a, b) => b.count - a.count); // Show ALL clients
-                          
-                          return sortedData.map((item, index) => (
-                            <Cell 
-                              key={`cell-${index}`} 
-                              fill={index < 3 ? '#10B981' : // Top 3 - bright green
-                                    index >= sortedData.length - 3 ? '#6B7280' : // Bottom 3 - gray
-                                    '#3B82F6'} // Middle - blue
-                            />
-                          ));
-                        })()}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                  
-                  {/* Top 3 Legend */}
-                  <div className="mt-1"></div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          </div>
-        )}
 
         {/* Simplified Price Analysis - Performance Tab Only */}
         {activeTab === 'performance' && (
@@ -1482,260 +1422,6 @@ const SendingAccountsInfrastructure = () => {
         )}
 
 
-        {/* Client Sending Capacity Comparison - All Clients Tab Only */}
-        {activeTab === 'all-clients' && (
-          <div className="mt-8">
-            <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center space-x-2">
-                <Users className="h-5 w-5 text-dashboard-accent" />
-                <span>Client Sending Capacity Analysis</span>
-              </CardTitle>
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-white/60 text-sm">Compare maximum sending capacity vs available sending per client</p>
-                <div className="flex items-center space-x-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setInfrastructureFilter('selectedClientForSending', 'Insufficient Capacity')}
-                    className={`border-dashboard-warning/40 text-dashboard-warning hover:bg-dashboard-warning/10 ${
-                      selectedClientForSending === 'Insufficient Capacity' ? 'bg-dashboard-warning/20' : ''
-                    }`}
-                  >
-                    Show Insufficient Capacity
-                  </Button>
-                  <Select value={selectedClientForSending} onValueChange={(value) => setInfrastructureFilter('selectedClientForSending', value)}>
-                    <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="All Clients">All Clients</SelectItem>
-                      {clientSendingData.map((client, index) => (
-                        <SelectItem key={index} value={client.clientName}>
-                          {client.clientName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="h-96 flex items-center justify-center">
-                  <div className="text-white/70">Loading capacity analysis...</div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {(() => {
-                    if (!clientSendingData || clientSendingData.length === 0) {
-                      return <div className="col-span-3 text-center text-white/70 py-8">No client data available</div>;
-                    }
-
-                    let displayData;
-                    if (selectedClientForSending === 'All Clients') {
-                      displayData = clientSendingData.slice(0, 6); // Show top 6 clients
-                    } else if (selectedClientForSending === 'Insufficient Capacity') {
-                      displayData = clientSendingData.filter(client => (client.medianDailyTarget || 0) > (client.availableSending || 0));
-                    } else {
-                      displayData = clientSendingData.filter(client => client.clientName === selectedClientForSending);
-                    }
-
-                    if (!displayData || displayData.length === 0) {
-                      return <div className="col-span-3 text-center text-white/70 py-8">No clients match the selected filter</div>;
-                    }
-
-                    return displayData.map((client: any, index) => (
-                      <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                        <div className="flex justify-between items-start mb-3">
-                          <h4 className="text-white font-medium text-sm">{client.clientName}</h4>
-                          <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
-                            {client.accountCount} accounts
-                          </Badge>
-                        </div>
-                        
-                        {/* Capacity Bar Chart */}
-                        <div className="space-y-2 mb-3">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-white/70">Maximum Capacity</span>
-                            <span className="text-white font-semibold">{(client.maxSending || 0).toLocaleString()}</span>
-                          </div>
-                          <div className="w-full bg-white/10 rounded-full h-2">
-                            <div 
-                              className="bg-dashboard-success h-2 rounded-full" 
-                              style={{ width: '100%' }}
-                            ></div>
-                          </div>
-                          
-                          <div className="flex justify-between text-xs">
-                            <span className="text-white/70">Available Sending</span>
-                            <span className="text-white font-semibold">{(client.availableSending || 0).toLocaleString()}</span>
-                          </div>
-                          <div className="w-full bg-white/10 rounded-full h-2">
-                            <div 
-                              className="bg-dashboard-accent h-2 rounded-full" 
-                              style={{ width: `${client.utilizationPercentage || 0}%` }}
-                            ></div>
-                          </div>
-                          
-                          <div className="flex justify-between text-xs">
-                            <span className="text-white/70">Daily Target</span>
-                            <span className={`font-semibold ${
-                              (client.medianDailyTarget || 0) > (client.availableSending || 0)
-                                ? 'text-dashboard-warning'
-                                : 'text-dashboard-success'
-                            }`}>
-                              {(client.medianDailyTarget || 0).toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="w-full bg-white/10 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${
-                                (client.medianDailyTarget || 0) > (client.availableSending || 0)
-                                  ? 'bg-dashboard-warning'
-                                  : 'bg-dashboard-success'
-                              }`}
-                              style={{
-                                width: `${(client.maxSending || 0) > 0 ? Math.min(((client.medianDailyTarget || 0) / client.maxSending) * 100, 100) : 0}%`
-                              }}
-                            ></div>
-                          </div>
-                        </div>
-                        
-                        {/* Metrics */}
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div>
-                            <span className="text-white/70">Utilization:</span>
-                            <div className="text-white font-semibold">{client.utilizationPercentage || 0}%</div>
-                          </div>
-                          <div>
-                            <span className="text-white/70">Shortfall:</span>
-                            <div className="text-dashboard-warning font-semibold">{client.shortfallPercentage || 0}%</div>
-                          </div>
-                          <div>
-                            <span className="text-white/70">Daily Target:</span>
-                            <div className="text-white font-semibold">{(client.medianDailyTarget || 0).toLocaleString()}</div>
-                          </div>
-                          <div>
-                            <span className="text-white/70">Gap:</span>
-                            <div className="text-dashboard-warning font-semibold">{(client.shortfall || 0).toLocaleString()}</div>
-                          </div>
-                        </div>
-                      </div>
-                    ));
-                  })()}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          </div>
-        )}
-
-        {/* Client Accounts View - All Clients Tab Only */}
-        {activeTab === 'all-clients' && (
-          <>
-            <div className="mt-8">
-              <Card className="bg-white/5 backdrop-blur-sm border-white/10">
-            <CardHeader>
-              <CardTitle className="text-white flex items-center space-x-2">
-                <Users className="h-5 w-5 text-dashboard-accent" />
-                <span>Client Email Accounts</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-white/70">Loading client data...</div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {clientAccountsData.map((client: any, index) => (
-                    <div 
-                      key={index}
-                      onClick={() => openClientModal(client)}
-                      className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <ChevronRight className="h-4 w-4 text-white/70" />
-                          <div>
-                            <h3 className="text-white font-medium text-sm">{client.clientName}</h3>
-                            <p className="text-white/60 text-xs">{client.totalAccounts} accounts</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-4">
-                          <div className="text-right">
-                            <div className="text-white font-medium text-sm">${client.totalPrice.toFixed(2)}</div>
-                            <div className="text-white/60 text-xs">Total Value</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-white font-medium text-sm">{client.maxSendingVolume.toLocaleString()}</div>
-                            <div className="text-white/60 text-xs">Max Volume</div>
-                          </div>
-                           <div className="text-right">
-                             <div className="text-white font-medium text-sm">{client.currentAvailableSending.toLocaleString()}</div>
-                             <div className="text-white/60 text-xs">Daily Limit</div>
-                           </div>
-                           <div 
-                             className="text-right cursor-pointer hover:bg-white/10 rounded px-2 py-1 transition-colors"
-                             onClick={(e) => {
-                               e.stopPropagation();
-                               openClientModalWithFilter(client, 'zeroReplyRate');
-                             }}
-                           >
-                             <div className={`text-white font-medium text-sm ${parseFloat(client.zeroReplyRatePercentage) > 0 ? 'text-dashboard-warning' : 'text-dashboard-success'}`}>
-                               {client.zeroReplyRatePercentage}%
-                             </div>
-                             <div className="text-white/60 text-xs">0% Reply Rate</div>
-                           </div>
-                          <Badge variant="outline" className={`text-xs ${
-                            client.connectedAccounts === client.totalAccounts 
-                              ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
-                              : 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
-                          }`}>
-                            {client.connectedAccounts}/{client.totalAccounts}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-              </Card>
-            </div>
-
-            {/* Client Detail Modal */}
-            <Dialog open={isClientModalOpen} onOpenChange={setInfrastructureModalOpen}>
-              <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden bg-gray-900 border-white/20 flex flex-col">
-                <DialogHeader className="flex-shrink-0">
-                  <DialogTitle className="text-white flex items-center space-x-2">
-                    <Users className="h-5 w-5 text-dashboard-accent" />
-                    <span>{selectedClient?.clientName} - Email Accounts</span>
-                    {clientAccountFilter === 'zeroReplyRate' && (
-                      <Badge variant="outline" className="bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40 ml-2">
-                        0% Reply Rate Filter
-                      </Badge>
-                    )}
-                  </DialogTitle>
-                </DialogHeader>
-
-                <div className="overflow-y-auto flex-1 pr-2 space-y-4">
-                  {selectedClient && (
-                    <ClientAccountsModal 
-                      client={selectedClient}
-                      expandedAccountTypes={expandedAccountTypes}
-                      expandedStatuses={expandedStatuses}
-                      toggleAccountType={toggleAccountType}
-                      toggleStatus={toggleStatus}
-                      filter={clientAccountFilter}
-                    />
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-          </>
-        )}
       </div>
     </div>
   );

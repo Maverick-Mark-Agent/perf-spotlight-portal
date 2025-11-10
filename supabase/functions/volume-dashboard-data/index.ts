@@ -221,7 +221,7 @@ serve(async (req) => {
 
         // Log validation issues if any
         if (validationIssues.length > 0) {
-          console.error(`⚠ Data validation issues for ${workspace.name}:`, validationIssues);
+          console.error(`⚠ Data validation issues for ${displayName}:`, validationIssues);
           // Don't return null - just log the issues for monitoring
         }
 
@@ -257,6 +257,8 @@ serve(async (req) => {
         return {
           id: client.workspaceId,
           name: displayName,
+          displayName,
+          workspaceName: client.workspaceName,
           emails: emailsMTD,
           emailsToday,
           emailsLast7Days,
@@ -303,8 +305,52 @@ serve(async (req) => {
       }
     }
 
+    // Clients to exclude from volume reports (0 emails going out vs 0 needed)
+    const VOLUME_DASHBOARD_BLACKLIST = [
+      'Maverick In-house',
+      'LongRun',
+      'Koppa Analytics',
+      'Boring Book Keeping',
+      'Radiant Energy',
+      'Shane Miller',
+      'ATI',
+      'Ozment Media',
+      'Littlegiant',
+    ].map(name => name.toLowerCase().trim());
+
+    // Filter out blacklisted clients before sorting - check both display_name and workspace_name
+    const filteredClients = clients.filter((client) => {
+      const displayNameLower = ((client.displayName || client.name) || '').toLowerCase().trim();
+      const workspaceNameLower = (client.workspaceName || '').toLowerCase().trim();
+      const clientNameLower = (client.name || '').toLowerCase().trim();
+
+      const isExcluded = VOLUME_DASHBOARD_BLACKLIST.some(
+        excluded => 
+          excluded === displayNameLower ||
+          excluded === workspaceNameLower ||
+          excluded === clientNameLower
+      );
+
+      if (isExcluded) {
+        console.log(`Filtering out blacklisted client: "${client.name}" (display: "${client.displayName}", workspace: "${client.workspaceName}")`);
+      }
+
+      return !isExcluded;
+    });
+
+    const filteredCount = clients.length - filteredClients.length;
+    console.log(`Filtered ${filteredCount} blacklisted client(s) from Volume Dashboard (${clients.length} total → ${filteredClients.length} remaining)`);
+    
+    if (filteredCount > 0) {
+      const clientNames = new Set(filteredClients.map(c => c.name));
+      const filteredNames = clients
+        .filter(c => !clientNames.has(c.name))
+        .map(c => c.name);
+      console.log(`Filtered client names: ${filteredNames.join(', ')}`);
+    }
+
     // Sort clients: On Pace → Near Target → Behind Pace, then 0 emails at bottom
-    clients.sort((a: any, b: any) => {
+    filteredClients.sort((a: any, b: any) => {
       // First, push 0 email clients to the bottom
       if (a.emails === 0 && b.emails !== 0) return 1;
       if (a.emails !== 0 && b.emails === 0) return -1;
@@ -332,13 +378,13 @@ serve(async (req) => {
     });
 
     // Assign ranks after sorting
-    clients.forEach((client, index) => {
+    filteredClients.forEach((client, index) => {
       client.rank = index + 1;
     });
 
-    console.log(`Processed ${clients.length} clients for Volume Dashboard`);
+    console.log(`Processed ${filteredClients.length} clients for Volume Dashboard`);
 
-    return new Response(JSON.stringify({ clients }), {
+    return new Response(JSON.stringify({ clients: filteredClients }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

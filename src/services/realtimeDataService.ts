@@ -24,6 +24,7 @@ import {
   type VolumeClient,
   type EmailAccount,
 } from '@/lib/dataValidation';
+import { isClientExcludedFromVolume } from '@/lib/clientFilters';
 import type { DataFetchResult } from './dataService';
 
 // ============= KPI Dashboard (Real-Time) =============
@@ -271,9 +272,21 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
     }
 
     // Transform database rows to VolumeClient interface
-    const transformedData = metrics.map((row, index) =>
+    const allTransformedData = metrics.map((row, index) =>
       transformToVolumeClient(row, index + 1, daysInMonth, daysElapsed)
     );
+
+    // Filter out blacklisted clients
+    // Check both display_name and workspace_name from original metrics since client.name uses display_name || workspace_name
+    const transformedData = allTransformedData.filter((client, index) => {
+      const originalRow = metrics[index];
+      const displayName = originalRow?.client_registry?.display_name;
+      const workspaceName = originalRow?.client_registry?.workspace_name;
+      
+      return !isClientExcludedFromVolume(displayName, workspaceName);
+    });
+
+    console.log(`[Volume Realtime] Filtered ${allTransformedData.length - transformedData.length} blacklisted clients`);
 
     // Validate transformed data
     const validation = validateVolumeClients(transformedData);

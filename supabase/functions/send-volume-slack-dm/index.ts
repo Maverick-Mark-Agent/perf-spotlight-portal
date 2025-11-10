@@ -111,20 +111,70 @@ serve(async (req) => {
 
     console.log(`Found ${metrics.length} clients with MTD data`);
 
+    // Clients to exclude from volume reports (0 emails going out vs 0 needed)
+    const VOLUME_DASHBOARD_BLACKLIST = [
+      'Maverick In-house',
+      'LongRun',
+      'Koppa Analytics',
+      'Boring Book Keeping',
+      'Radiant Energy',
+      'Shane Miller',
+      'ATI',
+      'Ozment Media',
+      'Littlegiant',
+    ].map(name => name.toLowerCase().trim());
+
     // Transform database rows to match the format expected by Slack message
-    const clients = metrics.map((row: any) => {
+    const allClients = metrics.map((row: any) => {
       const registry = row.client_registry;
       const emailsToday = row.emails_scheduled_today || 0; // SAME as Volume Dashboard
       const emailsMTD = row.emails_sent_mtd || 0;
       const dailyTarget = registry.daily_sending_target || 0;
 
+      const displayName = (registry.display_name || '').trim();
+      const workspaceName = (registry.workspace_name || '').trim();
+      const clientName = displayName || workspaceName;
+
       return {
-        name: registry.display_name || registry.workspace_name,
+        name: clientName,
+        displayName,
+        workspaceName,
         emails: emailsMTD,
         dailyQuota: dailyTarget,
         dailyAverage: emailsToday,
       };
     });
+
+    // Filter out blacklisted clients - check both display_name and workspace_name
+    const clients = allClients.filter((client) => {
+      const displayNameLower = (client.displayName || '').toLowerCase().trim();
+      const workspaceNameLower = (client.workspaceName || '').toLowerCase().trim();
+      const clientNameLower = (client.name || '').toLowerCase().trim();
+
+      const isExcluded = VOLUME_DASHBOARD_BLACKLIST.some(
+        excluded => 
+          excluded === displayNameLower ||
+          excluded === workspaceNameLower ||
+          excluded === clientNameLower
+      );
+
+      if (isExcluded) {
+        console.log(`Filtering out blacklisted client: "${client.name}" (display: "${client.displayName}", workspace: "${client.workspaceName}")`);
+      }
+
+      return !isExcluded;
+    });
+
+    const filteredCount = allClients.length - clients.length;
+    console.log(`Filtered ${filteredCount} blacklisted client(s) from Slack report (${allClients.length} total → ${clients.length} remaining)`);
+    
+    if (filteredCount > 0) {
+      const clientNames = new Set(clients.map(c => c.name));
+      const filteredNames = allClients
+        .filter(c => !clientNames.has(c.name))
+        .map(c => c.name);
+      console.log(`Filtered client names: ${filteredNames.join(', ')}`);
+    }
 
     // Generate and send Slack message
     const slackMessage = generateSlackMessage(clients);

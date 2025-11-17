@@ -55,8 +55,8 @@ const MonthlyKPIProgress = () => {
     'StreetSmart Commercial',
     'Kim Wallace',
     'Jason Binyon',
-    'Nicholas Sakha',
-    'SMA Insurance Services',
+    'Nick Sakha', // Fixed: was 'Nicholas Sakha'
+    'SMA Insurance', // Fixed: was 'SMA Insurance Services'
     'John Roberts',
     'Rob Russell',
     'Kirk Hodgson',

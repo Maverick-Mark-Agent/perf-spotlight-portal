@@ -53,6 +53,8 @@ const MonthlyKPIProgress = () => {
     'Danny Schwartz',
     'Devin Hodo',
     'StreetSmart Commercial',
+    'StreetSmart P&C', // Added: Client has KPI target of 100
+    'StreetSmart Trucking', // Added: Client has KPI target of 100
     'Kim Wallace',
     'Jason Binyon',
     'Nick Sakha', // Fixed: was 'Nicholas Sakha'

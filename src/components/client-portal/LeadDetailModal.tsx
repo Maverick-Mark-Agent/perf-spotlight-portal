@@ -14,8 +14,9 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, Mail, Phone, MapPin, Building, ExternalLink, DollarSign, Edit2, X, Plus } from "lucide-react";
+import { Calendar, Mail, Phone, MapPin, Building, ExternalLink, DollarSign, Edit2, X, Plus, User, Trash2, RotateCcw, AlertTriangle } from "lucide-react";
 import { SMAPoliciesList } from "@/components/sma/SMAPoliciesList";
+import { useWorkspaceProducers, Producer } from "@/hooks/useWorkspaceProducers";
 
 const PIPELINE_STAGES = [
   { key: 'new', label: 'New Lead', color: 'bg-blue-500/20 border-blue-500/40' },
@@ -49,6 +50,15 @@ interface ClientLead {
   bison_conversation_url: string | null;
   lead_value: number;
   date_received: string | null;
+  // Producer assignment fields
+  assigned_to_user_id: string | null;
+  assigned_to_name: string | null;
+  assigned_at: string | null;
+  assigned_by_user_id: string | null;
+  // Soft-delete fields
+  deleted_at: string | null;
+  deleted_by_user_id: string | null;
+  deletion_reason: string | null;
 }
 
 interface LeadDetailModalProps {
@@ -57,9 +67,10 @@ interface LeadDetailModalProps {
   onClose: (shouldRefresh?: boolean) => void;
   onUpdate: () => void;
   onOptimisticUpdate?: (leadId: string, updates: Partial<ClientLead>) => void;
+  onDelete?: (leadId: string) => Promise<void>;
 }
 
-export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticUpdate }: LeadDetailModalProps) => {
+export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticUpdate, onDelete }: LeadDetailModalProps) => {
   const { toast } = useToast();
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -83,6 +94,12 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
   const [policyType, setPolicyType] = useState("");
   const [pipelineStage, setPipelineStage] = useState("");
   const [customVariables, setCustomVariables] = useState<Array<{name: string; value: string}>>([]);
+  const [assignedToUserId, setAssignedToUserId] = useState<string>("");
+  const [assignedToName, setAssignedToName] = useState<string>("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Fetch producers for the workspace
+  const { producers, loading: producersLoading } = useWorkspaceProducers(lead?.workspace_name || null);
 
   useEffect(() => {
     if (lead) {
@@ -107,6 +124,8 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
         .filter(cv => cv && cv.name && cv.value)
         .map(cv => ({ name: cv.name, value: cv.value }));
       setCustomVariables(validCustomVariables);
+      setAssignedToUserId(lead.assigned_to_user_id || "");
+      setAssignedToName(lead.assigned_to_name || "");
       setEditMode(false); // Reset edit mode when lead changes
       setFullEditMade(false); // Reset full edit flag when lead changes
     }
@@ -163,6 +182,60 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
       toast({
         title: "Save failed",
         description: error instanceof Error ? error.message : "Failed to save changes",
+        variant: "destructive",
+      });
+      // If save failed, refresh to revert optimistic update
+      onUpdate();
+    }
+  };
+
+  // Quick save for producer assignment
+  const handleProducerAssignment = async (producerId: string) => {
+    if (!lead) return;
+
+    try {
+      // Find the selected producer
+      const selectedProducer = producers.find(p => p.user_id === producerId);
+      const producerName = selectedProducer?.full_name || null;
+
+      // Get current user for assignment tracking
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUserId = session?.user?.id || null;
+
+      const updates: any = {
+        assigned_to_user_id: producerId || null,
+        assigned_to_name: producerName,
+        assigned_at: producerId ? new Date().toISOString() : null,
+        assigned_by_user_id: producerId ? currentUserId : null,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Update local state immediately
+      setAssignedToUserId(producerId);
+      setAssignedToName(producerName || "");
+
+      // Optimistic update - update UI immediately for instant feedback
+      if (onOptimisticUpdate) {
+        onOptimisticUpdate(lead.id, updates);
+      }
+
+      // Save to database in background
+      const { error } = await supabase
+        .from('client_leads')
+        .update(updates)
+        .eq('id', lead.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Producer assigned",
+        description: producerName ? `Lead assigned to ${producerName}` : "Assignment removed",
+      });
+    } catch (error) {
+      console.error('Error assigning producer:', error);
+      toast({
+        title: "Assignment failed",
+        description: error instanceof Error ? error.message : "Failed to assign producer",
         variant: "destructive",
       });
       // If save failed, refresh to revert optimistic update
@@ -293,6 +366,35 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
     onClose(fullEditMade);
   };
 
+  const handleDelete = async () => {
+    if (!lead || !onDelete) return;
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete ${lead.first_name} ${lead.last_name}?\n\nThis lead will be moved to deleted leads and can be restored later.`
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      setIsDeleting(true);
+      await onDelete(lead.id);
+      toast({
+        title: "Lead deleted",
+        description: `${lead.first_name} ${lead.last_name} has been deleted and can be restored from Deleted Leads.`,
+      });
+      onClose(true); // Close and trigger refresh
+    } catch (error) {
+      console.error('Error deleting lead:', error);
+      toast({
+        title: "Delete failed",
+        description: error instanceof Error ? error.message : "Failed to delete lead",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-gradient-to-br from-dashboard-darkBlue via-dashboard-mediumBlue to-dashboard-darkBlue border-white/20">
@@ -389,6 +491,40 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
               </SelectContent>
             </Select>
           </div>
+
+          {/* Producer Assignment - Only show if producers are available */}
+          {producers.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-white/90 font-semibold flex items-center gap-2">
+                <User className="w-4 h-4" />
+                Assigned Producer
+              </h3>
+              <Select
+                value={assignedToUserId || "unassigned"}
+                onValueChange={(value) => {
+                  const producerId = value === "unassigned" ? "" : value;
+                  handleProducerAssignment(producerId);
+                }}
+              >
+                <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                  <SelectValue placeholder="Assign to producer..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {producers.map((producer) => (
+                    <SelectItem key={producer.user_id} value={producer.user_id}>
+                      {producer.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {assignedToName && (
+                <p className="text-white/50 text-sm">
+                  Currently assigned to: <span className="text-blue-300">{assignedToName}</span>
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Contact Information */}
           <div className="space-y-3">
@@ -827,6 +963,29 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
               >
                 Close
               </Button>
+            )}
+
+            {/* Delete Button - Only visible for non-deleted leads */}
+            {onDelete && !lead?.deleted_at && (
+              <Button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                variant="destructive"
+                className="ml-auto"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                {isDeleting ? 'Deleting...' : 'Delete Lead'}
+              </Button>
+            )}
+
+            {/* Deleted Indicator */}
+            {lead?.deleted_at && (
+              <div className="ml-auto flex items-center gap-2">
+                <Badge variant="destructive" className="flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  Lead Deleted
+                </Badge>
+              </div>
             )}
           </div>
         </div>

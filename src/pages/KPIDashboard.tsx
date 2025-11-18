@@ -72,6 +72,11 @@ const MonthlyKPIProgress = () => {
     client => KPI_DASHBOARD_CLIENTS.includes(client.name)
   );
 
+  // Filter volume clients to match KPI Dashboard whitelist
+  const displayedVolumeClients = volumeDashboard.clients.filter(
+    client => KPI_DASHBOARD_CLIENTS.includes(client.name)
+  );
+
   // Calculate aggregate metrics for displayed clients only
   const aggregateMetrics = displayedClients.reduce(
     (acc, client) => ({
@@ -358,7 +363,7 @@ const MonthlyKPIProgress = () => {
               {/* Unified Top Cards - Combining KPI and Volume metrics */}
               <UnifiedTopCards
                 kpiClients={displayedClients}
-                volumeClients={volumeDashboard.clients}
+                volumeClients={displayedVolumeClients}
                 onRefresh={handleRefresh}
                 isRefreshing={loading}
               />

@@ -15,6 +15,27 @@ const normalizeClientName = (name: string): string => {
     .replace(/[^a-z0-9-]/g, '');
 };
 
+// ============= Timezone Utilities =============
+// Convert UTC timestamp to CST date string (YYYY-MM-DD)
+// Handles DST automatically via Intl.DateTimeFormat
+const CST_TIMEZONE = 'America/Chicago';
+
+function getCstDateString(utcDateString: string): string {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: CST_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  const parts = formatter.formatToParts(new Date(utcDateString));
+  const year = parts.find((p) => p.type === 'year')!.value;
+  const month = parts.find((p) => p.type === 'month')!.value;
+  const day = parts.find((p) => p.type === 'day')!.value;
+
+  return `${year}-${month}-${day}`;
+}
+
 // NOTE: Pricing data now comes from client_registry table in Supabase
 // No more hardcoded pricing or name mapping!
 
@@ -69,11 +90,12 @@ async function getClientCosts(
     };
   }
 
-  // Otherwise, calculate from infrastructure (sender_emails_cache)
+  // Otherwise, calculate from infrastructure (email_accounts_raw - latest sync data)
   const { data: emailAccounts } = await supabase
-    .from('sender_emails_cache')
+    .from('email_accounts_raw')
     .select('workspace_name, status, price')
-    .eq('workspace_name', workspaceName);
+    .eq('workspace_name', workspaceName)
+    .is('deleted_at', null); // Only count active accounts (not soft-deleted)
 
   if (!emailAccounts || emailAccounts.length === 0) {
     // No infrastructure data, return zero costs
@@ -329,6 +351,13 @@ serve(async (req) => {
 
     // Query daily billable lead data from client_leads table
     console.log('📊 Fetching daily billable revenue data from client_leads...');
+
+    // Calculate next month for proper date range (avoids "Nov 31" errors)
+    const [year, month] = currentMonthYear.split('-').map(Number);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
     const { data: leadData, error: leadError } = await supabase
       .from('client_leads')
       .select(`
@@ -337,7 +366,7 @@ serve(async (req) => {
         lead_value
       `)
       .gte('date_received', `${currentMonthYear}-01`)
-      .lte('date_received', `${currentMonthYear}-31`)
+      .lt('date_received', nextMonthStr) // Use < next month instead of <= last day
       .order('date_received', { ascending: true });
 
     if (leadError) {
@@ -358,7 +387,9 @@ serve(async (req) => {
         return; // Skip non-per-lead clients
       }
 
-      const date = lead.date_received.split('T')[0]; // Extract YYYY-MM-DD
+      // Convert UTC timestamp to CST date (handles DST automatically)
+      const date = getCstDateString(lead.date_received);
+
       const pricePerLead = parseFloat(registryClient.price_per_lead) || 0;
 
       if (!dailyRevenueMap.has(date)) {

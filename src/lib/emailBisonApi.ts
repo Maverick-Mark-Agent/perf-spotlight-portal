@@ -243,6 +243,81 @@ class EmailBisonAPIClient {
 
     return Promise.all(statsPromises);
   }
+
+  /**
+   * Create a new campaign
+   */
+  async createCampaign(name: string, type: string = 'outbound'): Promise<EmailBisonCampaign> {
+    return this.makeRequest<EmailBisonCampaign>('/campaigns', {
+      method: 'POST',
+      body: JSON.stringify({ name, type }),
+    });
+  }
+
+  /**
+   * Create a sequence step for a campaign
+   */
+  async createSequenceStep(campaignId: number, params: {
+    subject: string;
+    body: string;
+    step_number?: number;
+  }): Promise<any> {
+    return this.makeRequest(`/campaigns/${campaignId}/sequence-steps`, {
+      method: 'POST',
+      body: JSON.stringify({
+        sequence_steps: [
+          {
+            title: params.subject,
+            email_subject: params.subject,
+            email_body: params.body,
+            order: params.step_number || 1,
+            wait_in_days: 0,
+          },
+        ],
+      }),
+    });
+  }
+
+  /**
+   * Add leads to a campaign
+   */
+  async addLeadsToCampaign(campaignId: number, leads: Array<{
+    email: string;
+    first_name?: string;
+    last_name?: string;
+    [key: string]: any;
+  }>): Promise<any> {
+    return this.makeRequest(`/campaigns/${campaignId}/leads/attach-leads`, {
+      method: 'POST',
+      body: JSON.stringify({ leads }),
+    });
+  }
+
+  /**
+   * Send a test email from a sequence step
+   * This is the key endpoint for inbox placement testing!
+   */
+  async sendTestEmail(sequenceStepId: number, params: {
+    sender_email_id: number;
+    to_email: string;
+  }): Promise<any> {
+    return this.makeRequest(`/campaigns/sequence-steps/${sequenceStepId}/test-email`, {
+      method: 'POST',
+      body: JSON.stringify({
+        sender_email_id: params.sender_email_id,
+        to_email: params.to_email,
+      }),
+    });
+  }
+
+  /**
+   * Archive a campaign (cleanup)
+   */
+  async archiveCampaign(campaignId: number): Promise<any> {
+    return this.makeRequest(`/campaigns/${campaignId}/archive`, {
+      method: 'POST',
+    });
+  }
 }
 
 // Export singleton instance

@@ -225,36 +225,33 @@ export const CLIENT_PORTAL_FIELD_MAP = {
 
 // ============= Helper Functions =============
 
+import { getCurrentCstInfo } from './timezoneUtils';
+
 /**
  * Calculate current date information for dashboard queries
+ * Now returns CST dates instead of UTC
  */
 export function getCurrentDateInfo() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth(); // 0-indexed
+  const cstInfo = getCurrentCstInfo();
+  const { year, month, day, dateString } = cstInfo;
 
-  // Get days in current month
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  // Get days in current month (in CST)
+  const daysInMonth = new Date(year, month, 0).getDate();
 
-  // Get days elapsed (including today)
-  const daysElapsed = now.getDate();
+  // Get days elapsed (including today) in CST
+  const daysElapsed = day;
 
-  // Get first and last day of month
-  const firstDayOfMonth = new Date(year, month, 1);
-  const lastDayOfMonth = new Date(year, month + 1, 0);
-
-  // Get date strings
-  const todayStr = now.toISOString().split('T')[0];
-  const firstDayStr = firstDayOfMonth.toISOString().split('T')[0];
-  const lastDayStr = lastDayOfMonth.toISOString().split('T')[0];
+  // Get first and last day of month strings
+  const firstDayStr = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDayStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
   return {
-    now,
+    now: cstInfo.date,
     year,
-    month: month + 1, // 1-indexed for display
+    month, // Already 1-indexed from getCstInfo
     daysInMonth,
     daysElapsed,
-    todayStr,
+    todayStr: dateString,
     firstDayStr,
     lastDayStr,
   };

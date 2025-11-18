@@ -158,18 +158,46 @@ serve(async (req) => {
         const uniqueReplies = Array.from(repliesByEmail.values());
         console.log(`  Deduplicated to ${uniqueReplies.length} unique leads`);
 
-        // STEP 4: Fetch full lead details if workspace API key is available
+        // STEP 4: Fetch existing leads to preserve pipeline stages
+        console.log(`  Fetching existing leads to preserve pipeline stages...`);
+        const { data: existingLeads } = await supabase
+          .from('client_leads')
+          .select('lead_email, pipeline_stage, notes, premium_amount, policy_type')
+          .eq('workspace_name', workspace_name)
+          .in('lead_email', uniqueReplies.map(r => (r.from_email_address || '').toLowerCase()));
+
+        const existingLeadsMap = new Map();
+        (existingLeads || []).forEach(lead => {
+          existingLeadsMap.set(lead.lead_email.toLowerCase(), lead);
+        });
+
+        // STEP 5: Fetch full lead details if workspace API key is available
         console.log(`  Processing leads with ${useWorkspaceKey ? 'FULL' : 'BASIC'} data...`);
         const leadsToInsert = [];
 
         for (const reply of uniqueReplies) {
+          const email = (reply.from_email_address || '').toLowerCase();
+          const existingLead = existingLeadsMap.get(email);
+          
           const nameParts = (reply.from_name || '').split(' ');
           const domain = bison_instance === 'Maverick'
             ? 'send.maverickmarketingllc.com'
             : 'send.longrun.agency';
-          const conversationUrl = reply.lead_id
-            ? `https://${domain}/leads/${reply.lead_id}`
-            : null;
+          
+          // Generate conversation URL - prefer UUID pattern, fallback to lead_id pattern
+          let conversationUrl = null;
+          if (reply.uuid) {
+            // Best pattern: /inbox/replies/{uuid} (works reliably)
+            conversationUrl = `https://${domain}/inbox/replies/${reply.uuid}`;
+          } else if (reply.lead_id) {
+            // Fallback: /leads/{lead_id}
+            conversationUrl = `https://${domain}/leads/${reply.lead_id}`;
+          }
+
+          // Preserve pipeline stage if lead already exists and has been moved beyond 'interested'
+          const pipelineStage = existingLead && existingLead.pipeline_stage !== 'interested' 
+            ? existingLead.pipeline_stage 
+            : 'interested';
 
           let leadData: any = {
             airtable_id: `bison_reply_${reply.id}`,
@@ -179,13 +207,26 @@ serve(async (req) => {
             last_name: nameParts.slice(1).join(' ') || null,
             date_received: reply.date_received,
             interested: true,
-            pipeline_stage: 'interested',
+            pipeline_stage: pipelineStage,
             bison_reply_id: reply.id,
             bison_reply_uuid: reply.uuid || null,
             bison_lead_id: reply.lead_id?.toString() || null,
-            bison_conversation_url: conversationUrl,
             last_synced_at: new Date().toISOString(),
           };
+
+          // Preserve notes, premium_amount, policy_type, and conversation URL if lead exists
+          if (existingLead) {
+            if (existingLead.notes) leadData.notes = existingLead.notes;
+            if (existingLead.premium_amount) leadData.premium_amount = existingLead.premium_amount;
+            if (existingLead.policy_type) leadData.policy_type = existingLead.policy_type;
+            // Preserve existing conversation URL if new one is null or empty
+            if (!conversationUrl && existingLead.bison_conversation_url) {
+              conversationUrl = existingLead.bison_conversation_url;
+            }
+          }
+          
+          // Always set conversation URL (use preserved one if available)
+          leadData.bison_conversation_url = conversationUrl;
 
           // Fetch full lead details using workspace API key
           if (useWorkspaceKey && reply.lead_id) {
@@ -236,17 +277,18 @@ serve(async (req) => {
 
         console.log(`  Prepared ${leadsToInsert.length} leads (${useWorkspaceKey ? 'with full details' : 'basic data'})`);
 
-        // Insert in batches
+        // Insert in batches using correct conflict resolution
         const BATCH_SIZE = 100;
         let totalInserted = 0;
 
         for (let j = 0; j < leadsToInsert.length; j += BATCH_SIZE) {
           const batch = leadsToInsert.slice(j, j + BATCH_SIZE);
 
+          // Use workspace_name,lead_email for conflict resolution (matches database unique constraint)
           const { error } = await supabase
             .from('client_leads')
             .upsert(batch, {
-              onConflict: 'airtable_id',
+              onConflict: 'workspace_name,lead_email',
               ignoreDuplicates: false,
             });
 
@@ -254,6 +296,10 @@ serve(async (req) => {
             totalInserted += batch.length;
           } else {
             console.error(`  Batch insert error:`, error.message);
+            // Log first few errors for debugging
+            if (j === 0) {
+              console.error(`  First batch error details:`, JSON.stringify(error, null, 2));
+            }
           }
 
           await new Promise(resolve => setTimeout(resolve, 100));

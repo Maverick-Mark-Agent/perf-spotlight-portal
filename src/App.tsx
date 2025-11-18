@@ -33,6 +33,8 @@ import ContactPipelineDashboard from "./pages/ContactPipelineDashboard";
 import ClientManagement from "./pages/ClientManagement";
 import ClientProfile from "./pages/ClientProfile";
 import UserManagement from "./pages/UserManagement";
+import RepliesDashboard from "./pages/RepliesDashboard";
+import LiveRepliesBoard from "./pages/LiveRepliesBoard";
 
 // Error pages
 import NotFoundPage from "./pages/NotFoundPage";
@@ -219,6 +221,24 @@ const App = () => (
                     <MainLayout>
                       <UserManagement />
                     </MainLayout>
+                  </AdminProtectedRoute>
+                }
+              />
+              <Route
+                path="/live-replies"
+                element={
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <RepliesDashboard />
+                    </MainLayout>
+                  </AdminProtectedRoute>
+                }
+              />
+              <Route
+                path="/live-replies-board"
+                element={
+                  <AdminProtectedRoute>
+                    <LiveRepliesBoard />
                   </AdminProtectedRoute>
                 }
               />

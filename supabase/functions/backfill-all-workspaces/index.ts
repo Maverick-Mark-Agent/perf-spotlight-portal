@@ -139,10 +139,31 @@ serve(async (req) => {
         const uniqueReplies = Array.from(repliesByEmail.values());
         console.log(`  Deduplicated to ${uniqueReplies.length} unique leads`);
 
-        // STEP 4: Transform and insert in batches
+        // STEP 4: Fetch existing leads to preserve pipeline stages
+        console.log(`  Fetching existing leads to preserve pipeline stages...`);
+        const { data: existingLeads } = await supabase
+          .from('client_leads')
+          .select('lead_email, pipeline_stage, notes, premium_amount, policy_type')
+          .eq('workspace_name', workspace_name)
+          .in('lead_email', uniqueReplies.map(r => (r.from_email_address || '').toLowerCase()));
+
+        const existingLeadsMap = new Map();
+        (existingLeads || []).forEach(lead => {
+          existingLeadsMap.set(lead.lead_email.toLowerCase(), lead);
+        });
+
+        // STEP 5: Transform and insert in batches
         const leadsToInsert = uniqueReplies.map(reply => {
+          const email = (reply.from_email_address || '').toLowerCase();
+          const existingLead = existingLeadsMap.get(email);
           const nameParts = (reply.from_name || '').split(' ');
-          return {
+          
+          // Preserve pipeline stage if lead already exists and has been moved beyond 'new'
+          const pipelineStage = existingLead && existingLead.pipeline_stage !== 'new' && existingLead.pipeline_stage !== 'interested'
+            ? existingLead.pipeline_stage 
+            : 'interested';
+
+          const leadData: any = {
             airtable_id: `bison_reply_${reply.id}`,
             workspace_name,
             lead_email: reply.from_email_address || 'unknown@email.com',
@@ -150,11 +171,20 @@ serve(async (req) => {
             last_name: nameParts.slice(1).join(' ') || null,
             date_received: reply.date_received,
             interested: true,
-            pipeline_stage: 'new',
+            pipeline_stage: pipelineStage,
             bison_reply_id: reply.id,
             bison_reply_uuid: reply.uuid || null,
             bison_lead_id: reply.lead_id?.toString() || null,
           };
+
+          // Preserve notes, premium_amount, and policy_type if lead exists
+          if (existingLead) {
+            if (existingLead.notes) leadData.notes = existingLead.notes;
+            if (existingLead.premium_amount) leadData.premium_amount = existingLead.premium_amount;
+            if (existingLead.policy_type) leadData.policy_type = existingLead.policy_type;
+          }
+
+          return leadData;
         });
 
         const BATCH_SIZE = 100;
@@ -163,10 +193,11 @@ serve(async (req) => {
         for (let j = 0; j < leadsToInsert.length; j += BATCH_SIZE) {
           const batch = leadsToInsert.slice(j, j + BATCH_SIZE);
 
+          // Use workspace_name,lead_email for conflict resolution (matches database unique constraint)
           const { error } = await supabase
             .from('client_leads')
             .upsert(batch, {
-              onConflict: 'airtable_id',
+              onConflict: 'workspace_name,lead_email',
               ignoreDuplicates: false,
             });
 

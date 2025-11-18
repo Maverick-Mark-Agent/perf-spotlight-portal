@@ -14,6 +14,7 @@ import {
   CreditCard,
   Activity,
   UserCog,
+  MessageCircle,
 } from "lucide-react";
 import {
   Sidebar,
@@ -56,6 +57,11 @@ const navigationItems = {
       title: "Contact Pipeline",
       icon: Upload,
       url: "/contact-pipeline",
+    },
+    {
+      title: "Live Replies",
+      icon: MessageCircle,
+      url: "/live-replies",
     },
     {
       title: "ZIP Dashboard",

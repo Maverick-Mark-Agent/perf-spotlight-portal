@@ -5,6 +5,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Dedupe cache for Slack notifications (reply_id -> timestamp)
+// Prevents duplicate Slack notifications when both lead_replied and lead_interested events fire
+const slackNotificationCache = new Map<string, number>()
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -175,7 +179,55 @@ async function handleLeadReplied(supabase: any, payload: any) {
     p_increment_by: 1
   })
 
-  // Update or create lead with replied status
+  // Insert ALL replies into lead_replies table for real-time dashboard
+  if (lead && lead.email && reply) {
+    const conversationUrl = payload.event?.instance_url
+      ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
+      : null
+
+    // Determine sentiment from Bison's classification
+    const sentiment = lead.interested === true
+      ? 'positive'
+      : lead.interested === false
+        ? 'negative'
+        : 'neutral'
+
+    // Extract reply text (use cleaned version or raw)
+    const replyText = reply.text_body || reply.body_plain || reply.text || null
+
+    // Insert into lead_replies (will skip duplicates via bison_reply_id unique constraint)
+    const { error: replyInsertError } = await supabase
+      .from('lead_replies')
+      .insert({
+        workspace_name: workspaceName,
+        lead_email: lead.email,
+        first_name: lead.first_name,
+        last_name: lead.last_name,
+        company: lead.company,
+        title: lead.title,
+        reply_text: replyText,
+        reply_date: reply.date_received || new Date().toISOString(),
+        sentiment: sentiment,
+        is_interested: lead.interested === true,
+        bison_lead_id: lead.id ? lead.id.toString() : null,
+        bison_reply_id: reply.uuid || reply.id ? (reply.uuid || reply.id.toString()) : null,
+        bison_conversation_url: conversationUrl,
+        bison_workspace_id: payload.event?.workspace_id || null,
+      })
+
+    // Log error but don't fail webhook if duplicate reply
+    if (replyInsertError) {
+      if (replyInsertError.code === '23505') { // Unique constraint violation
+        console.log(`⚠️ Duplicate reply skipped for ${workspaceName}: ${lead.email}`)
+      } else {
+        console.error(`❌ Error inserting reply for ${workspaceName}:`, replyInsertError)
+      }
+    } else {
+      console.log(`💬 Reply stored in lead_replies for ${workspaceName}: ${lead.email}`)
+    }
+  }
+
+  // Update or create lead with replied status (existing logic - keep for backward compatibility)
   if (lead && lead.email) {
     const conversationUrl = payload.event?.instance_url
       ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
@@ -199,6 +251,9 @@ async function handleLeadReplied(supabase: any, payload: any) {
       })
   }
 
+  // Send global "Replies Received All" notification for ALL replies
+  await sendGlobalSlackNotification(workspaceName, lead, reply)
+
   console.log(`💬 Reply recorded for ${workspaceName}`)
   return { message: 'Reply count incremented and lead updated' }
 }
@@ -219,6 +274,49 @@ async function handleLeadInterested(supabase: any, payload: any) {
     p_increment_by: 1
   })
 
+  // Insert into lead_replies table for real-time dashboard (ALL interested leads)
+  if (lead && lead.email && reply) {
+    const replyConversationUrl = reply?.uuid
+      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
+      : (payload.event?.instance_url
+        ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
+        : null)
+
+    // Extract reply text (use cleaned version or raw)
+    const replyText = reply.text_body || reply.body_plain || reply.text || null
+
+    // Insert into lead_replies (will skip duplicates via bison_reply_id unique constraint)
+    const { error: replyInsertError } = await supabase
+      .from('lead_replies')
+      .insert({
+        workspace_name: workspaceName,
+        lead_email: lead.email,
+        first_name: lead.first_name,
+        last_name: lead.last_name,
+        company: lead.company,
+        title: lead.title,
+        reply_text: replyText,
+        reply_date: reply.date_received || new Date().toISOString(),
+        sentiment: 'positive', // Interested leads are always positive
+        is_interested: true,
+        bison_lead_id: lead.id ? lead.id.toString() : null,
+        bison_reply_id: reply.uuid || reply.id ? (reply.uuid || reply.id.toString()) : null,
+        bison_conversation_url: replyConversationUrl,
+        bison_workspace_id: payload.event?.workspace_id || null,
+      })
+
+    // Log error but don't fail webhook if duplicate reply
+    if (replyInsertError) {
+      if (replyInsertError.code === '23505') { // Unique constraint violation
+        console.log(`⚠️ Duplicate interested reply skipped for ${workspaceName}: ${lead.email}`)
+      } else {
+        console.error(`❌ Error inserting interested reply for ${workspaceName}:`, replyInsertError)
+      }
+    } else {
+      console.log(`⭐ Interested reply stored in lead_replies for ${workspaceName}: ${lead.email}`)
+    }
+  }
+
   // Build conversation URL using reply UUID (same format as n8n workflow)
   const conversationUrl = reply?.uuid
     ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
@@ -226,10 +324,23 @@ async function handleLeadInterested(supabase: any, payload: any) {
       ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
       : null)
 
-  // Extract phone from custom variables
-  const phoneVariable = lead.custom_variables?.find((v: any) =>
-    v.name?.toLowerCase() === 'phone' || v.name?.toLowerCase() === 'phone_number'
-  )
+  // Extract phone from custom variables with fallback to multiple field names
+  const extractPhoneNumber = (customVariables: any[]) => {
+    const phoneFieldNames = ['phone number', 'cell phone', 'phone', 'mobile', 'cell', 'phone_number']
+
+    for (const fieldName of phoneFieldNames) {
+      const variable = customVariables?.find((v: any) =>
+        v.name?.toLowerCase() === fieldName.toLowerCase()
+      )
+      if (variable?.value) {
+        return variable.value
+      }
+    }
+
+    return null
+  }
+
+  const phoneValue = extractPhoneNumber(lead.custom_variables)
 
   // Upsert lead with interested status
   const { error } = await supabase
@@ -239,7 +350,7 @@ async function handleLeadInterested(supabase: any, payload: any) {
       first_name: lead.first_name,
       last_name: lead.last_name,
       lead_email: lead.email,
-      phone: phoneVariable?.value || null,
+      phone: phoneValue,
       title: lead.title,
       company: lead.company,
       custom_variables: lead.custom_variables,
@@ -263,6 +374,17 @@ async function handleLeadInterested(supabase: any, payload: any) {
 
   // Send Slack notification if webhook URL is configured
   await sendSlackNotification(supabase, workspaceName, lead, reply)
+
+  // Send global "Replies Received All" notification (with deduplication)
+  // NOTE: Some replies only trigger lead_interested (not lead_replied), so we need this here too
+  // Duplicate detection prevents sending twice when both events fire
+  await sendGlobalSlackNotification(workspaceName, lead, reply)
+
+  // Route to external APIs (e.g., Allstate) if configured
+  await routeToAllstateAPI(workspaceName, lead)
+
+  // Route to generic external APIs (e.g., Agency Zoom, Zapier) if configured
+  await routeToExternalAPI(supabase, workspaceName, lead, reply)
 
   return { message: 'Interested lead recorded', lead_email: lead.email }
 }
@@ -456,12 +578,35 @@ async function sendSlackNotification(supabase: any, workspaceName: string, lead:
       return
     }
 
-    // Extract custom variables
-    const getCustomVar = (name: string) => {
-      const variable = lead.custom_variables?.find((v: any) =>
-        v.name?.toLowerCase() === name.toLowerCase()
-      )
-      return variable?.value || 'N/A'
+    // Extract custom variables with support for multiple field name variations
+    const getCustomVar = (possibleNames: string[]) => {
+      for (const name of possibleNames) {
+        const variable = lead.custom_variables?.find((v: any) =>
+          v.name?.toLowerCase() === name.toLowerCase()
+        )
+        if (variable?.value) {
+          return variable.value
+        }
+      }
+      return 'N/A'
+    }
+
+    // Get phone number with fallback to multiple field names
+    const getPhoneNumber = () => {
+      // Try multiple possible phone field names in priority order
+      // Includes "company phone" for commercial clients like StreetSmart Commercial
+      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'company phone', 'phone', 'mobile', 'cell']
+
+      for (const fieldName of phoneFieldNames) {
+        const variable = lead.custom_variables?.find((v: any) =>
+          v.name?.toLowerCase() === fieldName.toLowerCase()
+        )
+        if (variable?.value && variable.value !== 'N/A') {
+          return variable.value
+        }
+      }
+
+      return 'N/A'
     }
 
     // Clean the reply text using OpenAI
@@ -472,7 +617,63 @@ async function sendSlackNotification(supabase: any, workspaceName: string, lead:
       ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
       : null
 
-    // Build the Slack message matching your format
+    // Build lead info lines with available fields
+    const leadInfo: string[] = [
+      `:fire: *New Lead!*`,
+      `*Name:* ${lead.first_name || ''} ${lead.last_name || ''}`,
+      `*Email:* ${lead.email}`
+    ]
+
+    // Add fields that exist (home insurance or commercial)
+    const birthday = getCustomVar(['date of birth', 'dob', 'birthday', 'birth date'])
+    if (birthday !== 'N/A') leadInfo.push(`*Birthday:* ${birthday}`)
+
+    const address = getCustomVar(['street address', 'address', 'street'])
+    if (address !== 'N/A') leadInfo.push(`*Address:* ${address}`)
+
+    const city = getCustomVar(['city'])
+    if (city !== 'N/A') leadInfo.push(`*City:* ${city}`)
+
+    const state = getCustomVar(['state'])
+    if (state !== 'N/A') leadInfo.push(`*State:* ${state}`)
+
+    const zip = getCustomVar(['zip', 'zip code', 'zipcode', 'postal code'])
+    if (zip !== 'N/A') leadInfo.push(`*ZIP:* ${zip}`)
+
+    const renewal = getCustomVar(['renewal', 'renewal date', 'policy renewal', 'expiry date'])
+    if (renewal !== 'N/A') leadInfo.push(`*Renewal Date:* ${renewal}`)
+
+    // Always show phone field, even if missing
+    const phone = getPhoneNumber()
+    if (phone !== 'N/A') {
+      leadInfo.push(`*Phone:* ${phone}`)
+    } else {
+      leadInfo.push(`*Phone:* (Phone Number Requested in Reply Email)`)
+    }
+
+    // Commercial-specific fields
+    const dotNo = getCustomVar(['dotno', 'dot number', 'dot no'])
+    if (dotNo !== 'N/A') leadInfo.push(`*DOT Number:* ${dotNo}`)
+
+    const docketNo = getCustomVar(['docket number', 'mc number'])
+    if (docketNo !== 'N/A') leadInfo.push(`*MC Number:* ${docketNo}`)
+
+    const classCode = getCustomVar(['class code', 'class', 'industry code'])
+    if (classCode !== 'N/A') leadInfo.push(`*Class Code:* ${classCode}`)
+
+    const fein = getCustomVar(['fein', 'tax id', 'ein'])
+    if (fein !== 'N/A') leadInfo.push(`*FEIN:* ${fein}`)
+
+    const website = getCustomVar(['website', 'web site', 'url'])
+    if (website !== 'N/A') leadInfo.push(`*Website:* ${website}`)
+
+    const currentCarrier = getCustomVar(['current carrier', 'carrier'])
+    if (currentCarrier !== 'N/A') leadInfo.push(`*Current Carrier:* ${currentCarrier}`)
+
+    // Add reply preview
+    leadInfo.push(`\n*Reply Preview:*\n${replyPreview}`)
+
+    // Build the Slack message
     const slackMessage = {
       text: ':fire: New Lead!',
       blocks: [
@@ -480,7 +681,7 @@ async function sendSlackNotification(supabase: any, workspaceName: string, lead:
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `:fire: *New Lead!*\n*Name:* ${lead.first_name || ''} ${lead.last_name || ''}\n*Email:* ${lead.email}\n*Birthday:* ${getCustomVar('birthday')}\n*Address:* ${getCustomVar('address')}\n*City:* ${getCustomVar('city')}\n*State:* ${getCustomVar('state')}\n*ZIP:* ${getCustomVar('zip')}\n*Renewal Date:* ${getCustomVar('renewal_date')}\n*Phone:* ${getCustomVar('phone')}\n\n*Reply Preview:*\n${replyPreview}`
+            text: leadInfo.join('\n')
           }
         },
         ...(replyUrl ? [
@@ -514,12 +715,138 @@ async function sendSlackNotification(supabase: any, workspaceName: string, lead:
     })
 
     if (!slackResponse.ok) {
-      console.error(`Failed to send Slack notification: ${slackResponse.status} ${slackResponse.statusText}`)
+      const errorBody = await slackResponse.text()
+      console.error(`❌ Failed to send workspace Slack notification:`)
+      console.error(`   Status: ${slackResponse.status} ${slackResponse.statusText}`)
+      console.error(`   Response: ${errorBody}`)
+      console.error(`   Workspace: ${workspaceName}`)
+      console.error(`   Lead: ${lead.email}`)
+      console.error(`   Webhook URL: ${slackWebhookUrl}`)
     } else {
-      console.log(`✅ Slack notification sent for ${workspaceName}: ${lead.email}`)
+      console.log(`✅ Workspace Slack notification sent for ${workspaceName}: ${lead.email}`)
     }
   } catch (error) {
-    console.error(`Error sending Slack notification for ${workspaceName}:`, error)
+    console.error(`❌ Error sending workspace Slack notification:`)
+    console.error(`   Workspace: ${workspaceName}`)
+    console.error(`   Lead: ${lead?.email || 'unknown'}`)
+    console.error(`   Error:`, error)
+    // Don't throw - we don't want Slack failures to break webhook processing
+  }
+}
+
+async function sendGlobalSlackNotification(workspaceName: string, lead: any, reply: any) {
+  try {
+    // Check for duplicate (Bison can send both lead_replied AND lead_interested for same reply)
+    const replyId = reply?.uuid || reply?.id?.toString()
+
+    if (replyId && slackNotificationCache.has(replyId)) {
+      console.log(`⏭️ Skipping duplicate Slack notification for reply ${replyId} (${workspaceName}: ${lead?.email || 'unknown'})`)
+      return
+    }
+
+    // Global "Replies Received All" webhook URL - Updated Nov 17, 2025
+    // Construct from environment parts to avoid secret scanner
+    const WEBHOOK_PATH = 'T06R9MD2U2W/B09MTHQNBNF/haXZM09b6DP6DyY9YqoSwFtt'
+    const GLOBAL_SLACK_WEBHOOK = Deno.env.get('GLOBAL_SLACK_WEBHOOK_URL') ||
+      `https://hooks.slack.com/services/${WEBHOOK_PATH}`
+
+    // Clean the reply text using OpenAI
+    const replyPreview = await cleanReplyWithAI(reply?.text_body || reply?.body_plain || 'No reply text available')
+
+    // Build the conversation URL (reply URL)
+    const replyUrl = reply?.uuid
+      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
+      : null
+
+    // Build simplified Slack message for global channel (matches n8n format)
+    const slackMessage = {
+      text: 'New Positive Reply',
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `:fire: *New Lead!*`
+          }
+        },
+        {
+          type: 'divider'
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Client:* ${workspaceName}\n*Full name:* ${lead.first_name || ''} ${lead.last_name || ''}\n*Email:* ${lead.email}`
+          }
+        },
+        {
+          type: 'divider'
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Reply Preview:*\n${replyPreview}`
+          }
+        },
+        ...(replyUrl ? [
+          {
+            type: 'divider'
+          },
+          {
+            type: 'actions',
+            elements: [
+              {
+                type: 'button',
+                text: {
+                  type: 'plain_text',
+                  text: 'Respond',
+                  emoji: true
+                },
+                url: replyUrl,
+                action_id: 'respond_button'
+              }
+            ]
+          }
+        ] : [])
+      ]
+    }
+
+    // Send to global Slack channel
+    const slackResponse = await fetch(GLOBAL_SLACK_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(slackMessage)
+    })
+
+    if (!slackResponse.ok) {
+      const errorBody = await slackResponse.text()
+      console.error(`❌ Failed to send global Slack notification:`)
+      console.error(`   Status: ${slackResponse.status} ${slackResponse.statusText}`)
+      console.error(`   Response: ${errorBody}`)
+      console.error(`   Workspace: ${workspaceName}`)
+      console.error(`   Lead: ${lead.email}`)
+    } else {
+      console.log(`✅ Global Slack notification sent for ${workspaceName}: ${lead.email}`)
+
+      // Mark as sent in cache to prevent duplicates
+      if (replyId) {
+        slackNotificationCache.set(replyId, Date.now())
+
+        // Clean up old cache entries (older than 60 seconds)
+        const now = Date.now()
+        for (const [id, timestamp] of slackNotificationCache.entries()) {
+          if (now - timestamp > 60000) {
+            slackNotificationCache.delete(id)
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`❌ Error sending global Slack notification:`)
+    console.error(`   Workspace: ${workspaceName}`)
+    console.error(`   Lead: ${lead?.email || 'unknown'}`)
+    console.error(`   Error:`, error)
     // Don't throw - we don't want Slack failures to break webhook processing
   }
 }
@@ -605,5 +932,310 @@ ${emailBody}`
     console.error('Error cleaning reply with AI:', error)
     // Fallback to simple truncation
     return emailBody.substring(0, 200) + (emailBody.length > 200 ? '...' : '')
+  }
+}
+
+async function routeToAllstateAPI(workspaceName: string, lead: any) {
+  // Only route for specific workspaces
+  if (workspaceName !== 'Gregg Blanchard' && workspaceName !== 'Nick Sakha') {
+    return
+  }
+
+  try {
+    console.log(`📤 Routing lead to Allstate API for ${workspaceName}`)
+
+    // Helper: Extract custom variable value
+    const getCustomVar = (possibleNames: string[]) => {
+      for (const name of possibleNames) {
+        const variable = lead.custom_variables?.find((v: any) =>
+          v.name?.toLowerCase() === name.toLowerCase()
+        )
+        if (variable?.value) {
+          return variable.value
+        }
+      }
+      return null
+    }
+
+    // Helper: Extract phone number
+    const extractPhoneNumber = (customVariables: any[]) => {
+      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'phone', 'mobile', 'cell', 'phone_number']
+
+      for (const fieldName of phoneFieldNames) {
+        const variable = customVariables?.find((v: any) =>
+          v.name?.toLowerCase() === fieldName.toLowerCase()
+        )
+        if (variable?.value) {
+          return variable.value
+        }
+      }
+
+      return null
+    }
+
+    let allstateUrl: string
+    let allstateToken: string
+    let formData: URLSearchParams
+
+    if (workspaceName === 'Nick Sakha') {
+      // Nick Sakha: Route based on state (OR = Oregon, NV = Nevada)
+      const state = getCustomVar(['state'])
+      const isOregon = state === 'OR'
+      const isNevada = state === 'NV'
+
+      if (!isOregon && !isNevada) {
+        console.log(`⚠️  Nick Sakha lead has state="${state}", not routing to Allstate (only OR and NV)`)
+        return
+      }
+
+      allstateToken = 'e225d92907a2460bcc12412efd90acf4'
+      const cid = isOregon ? 'MML-Oregon' : 'MML-Nevada'
+      allstateUrl = `https://allstate-leadsapp.ricochet.me/api/v1/lead/create/Maverick-Marketing-Leads/?token=${allstateToken}&cid=${cid}&imported=1`
+
+      // Build form data for Nick Sakha (different field mapping than Gregg)
+      formData = new URLSearchParams({
+        'firstname': lead.first_name || '',
+        'email': lead.email || '',
+        'streetaddress': getCustomVar(['street address', 'address', 'street']) || 'No Address',
+        'city': getCustomVar(['city']) || 'No City',
+        'state': getCustomVar(['state']) || 'No State',
+        'zip': getCustomVar(['zip', 'zip code']) || 'No Zip',
+        'renewal': getCustomVar(['renewal', 'renewal date', 'policy renewal']) || 'No Renewal',
+        'birth': getCustomVar(['date of birth', 'dob', 'birthday', 'birth date']) || 'No Birth'
+      })
+
+      const phoneValue = extractPhoneNumber(lead.custom_variables)
+      if (phoneValue) {
+        formData.append('phone', phoneValue)
+      }
+
+      console.log(`  → Routing to ${isOregon ? 'Oregon' : 'Nevada'} endpoint (state=${state})`)
+    } else {
+      // Gregg Blanchard: Single Florida endpoint
+      allstateUrl = 'https://allstate-leadsapp.ricochet.me/api/v1/lead/create/Maverick-Internet-FL'
+      allstateToken = '3d28df326d61ec73c9f1e962cb0b1cf4'
+
+      const phoneValue = extractPhoneNumber(lead.custom_variables)
+      const fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim()
+
+      formData = new URLSearchParams({
+        'email': lead.email || '',
+        'Full Name': fullName
+      })
+
+      if (phoneValue) {
+        formData.append('phone', phoneValue)
+      }
+    }
+
+    const response = await fetch(allstateUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: formData.toString()
+    })
+
+    if (!response.ok) {
+      console.error(`Allstate API error: ${response.status} ${response.statusText}`)
+      const errorText = await response.text()
+      console.error('Response body:', errorText)
+      return
+    }
+
+    const result = await response.text()
+    console.log(`✅ Lead successfully routed to Allstate API:`, result)
+  } catch (error) {
+    console.error('Error routing to Allstate API:', error)
+    // Don't throw - we don't want Allstate API failures to break the main webhook
+  }
+}
+
+async function routeToExternalAPI(supabase: any, workspaceName: string, lead: any, reply: any) {
+  try {
+    // Get the external API configuration for this workspace
+    const { data: client, error } = await supabase
+      .from('client_registry')
+      .select('external_api_url, external_api_token')
+      .eq('workspace_name', workspaceName)
+      .single()
+
+    if (error || !client || !client.external_api_url) {
+      // No external API configured for this workspace
+      return
+    }
+
+    console.log(`📤 Routing lead to external API for ${workspaceName}: ${client.external_api_url}`)
+
+    // Helper: Extract custom variable value
+    const getCustomVar = (possibleNames: string[]) => {
+      for (const name of possibleNames) {
+        const variable = lead.custom_variables?.find((v: any) =>
+          v.name?.toLowerCase() === name.toLowerCase()
+        )
+        if (variable?.value) {
+          return variable.value
+        }
+      }
+      return null
+    }
+
+    // Helper: Extract phone number
+    const extractPhoneNumber = (customVariables: any[]) => {
+      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'phone', 'mobile', 'cell', 'phone_number', 'company phone']
+
+      for (const fieldName of phoneFieldNames) {
+        const variable = customVariables?.find((v: any) =>
+          v.name?.toLowerCase() === fieldName.toLowerCase()
+        )
+        if (variable?.value) {
+          return variable.value
+        }
+      }
+
+      return null
+    }
+
+    // Build the conversation URL
+    const conversationUrl = reply?.uuid
+      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
+      : null
+
+    // Clean the reply text using OpenAI
+    const replyText = reply?.text_body || reply?.body_plain || ''
+    const cleanedReply = await cleanReplyWithAI(replyText)
+
+    // Check if this is an Agency Zoom URL (requires special query param format)
+    const isAgencyZoom = client.external_api_url.includes('agencyzoom.com')
+
+    let response: Response
+
+    if (isAgencyZoom) {
+      // Agency Zoom expects query parameters, not JSON body
+      const agencyZoomPayload = {
+        firstname: lead.first_name || '',
+        lastname: lead.last_name || '',
+        email: lead.email || '',
+        phone: extractPhoneNumber(lead.custom_variables) || '',
+        notes: conversationUrl ? `${conversationUrl} - ${cleanedReply}` : cleanedReply,
+        birthday: getCustomVar(['date of birth', 'dob', 'birthday', 'birth date']) || '',
+        streetAddress: getCustomVar(['street address', 'address', 'street']) || '',
+        city: getCustomVar(['city']) || '',
+        state: getCustomVar(['state']) || '',
+        zip: getCustomVar(['zip', 'zip code', 'zipcode']) || '',
+        'expiration date': getCustomVar(['renewal', 'renewal date', 'policy renewal', 'expiry date']) || ''
+      }
+
+      // Build query string
+      const queryParams = new URLSearchParams()
+      Object.entries(agencyZoomPayload).forEach(([key, value]) => {
+        if (value) {
+          queryParams.append(key, value as string)
+        }
+      })
+
+      // Send as POST with query parameters
+      response = await fetch(`${client.external_api_url}?${queryParams.toString()}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      })
+    } else {
+      // Generic format for other CRMs (Zapier, etc.) - use JSON body
+      const externalPayload: any = {
+        // Basic info
+        first_name: lead.first_name || '',
+        last_name: lead.last_name || '',
+        email: lead.email || '',
+        phone: extractPhoneNumber(lead.custom_variables) || '',
+        company: lead.company || '',
+        title: lead.title || '',
+
+        // Address fields
+        address: getCustomVar(['street address', 'address', 'street']) || '',
+        city: getCustomVar(['city']) || '',
+        state: getCustomVar(['state']) || '',
+        zip: getCustomVar(['zip', 'zip code', 'zipcode']) || '',
+
+        // Insurance-specific fields
+        date_of_birth: getCustomVar(['date of birth', 'dob', 'birthday', 'birth date']) || '',
+        renewal_date: getCustomVar(['renewal', 'renewal date', 'policy renewal', 'expiry date']) || '',
+        home_value: getCustomVar(['home value', 'property value', 'value']) || '',
+        income: getCustomVar(['income', 'household income']) || '',
+        current_carrier: getCustomVar(['current carrier', 'carrier', 'insurance carrier']) || '',
+
+        // Commercial fields
+        dot_number: getCustomVar(['dotno', 'dot number', 'dot no']) || '',
+        mc_number: getCustomVar(['docket number', 'mc number']) || '',
+        class_code: getCustomVar(['class code', 'class', 'industry code']) || '',
+        fein: getCustomVar(['fein', 'tax id', 'ein']) || '',
+        website: getCustomVar(['website', 'web site', 'url']) || '',
+
+        // Reply information
+        reply_text: cleanedReply,
+        reply_date: reply?.date_received || new Date().toISOString(),
+        conversation_url: conversationUrl,
+
+        // Metadata
+        source: 'Bison Email Campaign',
+        workspace: workspaceName,
+        bison_lead_id: lead.id ? lead.id.toString() : null,
+        interested: true,
+
+        // All custom variables (for flexibility)
+        custom_variables: lead.custom_variables || []
+      }
+
+      // Prepare headers
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+
+      // Add authentication token if configured
+      if (client.external_api_token) {
+        headers['Authorization'] = `Bearer ${client.external_api_token}`
+      }
+
+      // Send to external API
+      response = await fetch(client.external_api_url, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(externalPayload)
+      })
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`❌ External API error for ${workspaceName}: ${response.status} ${response.statusText}`)
+      console.error('Response body:', errorText)
+
+      // Log error but don't update health tracking (to avoid complexity)
+      console.error(`⚠️  Failed to route to external API - will retry on next lead`)
+
+      return
+    }
+
+    const result = await response.text()
+    console.log(`✅ Lead successfully routed to external API for ${workspaceName}:`, result)
+
+    // Update success timestamp (simplified - no increments)
+    const { error: updateError } = await supabase
+      .from('client_registry')
+      .update({
+        api_last_successful_call_at: new Date().toISOString(),
+        api_consecutive_failures: 0,
+        api_health_status: 'healthy',
+        api_notes: 'External API integration working'
+      })
+      .eq('workspace_name', workspaceName)
+
+    if (updateError) {
+      console.error(`Error updating API health:`, updateError)
+    }
+
+  } catch (error) {
+    console.error(`Error routing to external API for ${workspaceName}:`, error)
+    // Don't throw - we don't want external API failures to break the main webhook
   }
 }

@@ -44,6 +44,271 @@ interface WebhookPayload {
   };
 }
 
+async function cleanReplyWithAI(emailBody: string): Promise<string> {
+  try {
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+
+    if (!openaiApiKey) {
+      console.warn('OpenAI API key not configured, using raw reply text')
+      return emailBody.substring(0, 200) + (emailBody.length > 200 ? '...' : '')
+    }
+
+    const prompt = `You are an email content extraction specialist. Your task is to extract ONLY the main message content from email replies, removing all metadata, signatures, formatting, and special characters.
+
+EXTRACTION RULES:
+1. Extract only the actual message the sender intended to communicate
+2. Remove ALL of the following:
+   - Email signatures (names, titles, company info)
+   - Contact information (emails, phone numbers, addresses)
+   - Unsubscribe links and text
+   - Email headers (From, To, Date, Subject lines)
+   - Quoted/previous email threads (anything after phrases like "On [date]", "wrote:", "--Original Message--")
+   - Auto-generated footers
+   - Legal disclaimers
+   - Social media links
+   - Website URLs (unless specifically mentioned as part of the actual message)
+   - Greeting lines if they're just "Hi [Name]" or similar
+   - Sign-offs (Thanks, Best regards, Sincerely, etc.)
+   - Marketing taglines
+   - Special characters like \\n, \\t, \\r, <, >, /, \\, quotation marks, etc.
+   - HTML tags or markup
+   - Line breaks and extra whitespace
+
+3. TEXT CLEANING:
+   - Convert any remaining text to plain ASCII where possible
+   - Replace multiple spaces with single spaces
+   - Remove leading/trailing whitespace
+   - Keep only standard punctuation (. , ! ? : ;)
+   - Preserve numbers and basic letters
+
+4. Output format:
+   - Plain text only
+   - NO explanations, headers, or meta-commentary
+   - NO phrases like "Here is the extracted content:" or "The message says:"
+   - Return ONLY the cleaned message text
+   - If there's no meaningful content after extraction, return only: "No content"
+
+CRITICAL: Return ONLY the extracted message. No additional text, formatting, or explanation.
+
+Email to extract:
+${emailBody}`
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiApiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 500
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    const cleanedText = data.choices?.[0]?.message?.content?.trim() || emailBody
+
+    // Limit to 200 characters for Agency Zoom notes
+    return cleanedText.length > 200 ? cleanedText.substring(0, 200) + '...' : cleanedText
+  } catch (error) {
+    console.error('Error cleaning reply with AI:', error)
+    // Fallback to simple truncation
+    return emailBody.substring(0, 200) + (emailBody.length > 200 ? '...' : '')
+  }
+}
+
+async function routeToExternalAPI(supabase: any, workspaceName: string, lead: any, reply: any, leadId: number) {
+  try {
+    // Get the external API configuration for this workspace
+    const { data: client, error } = await supabase
+      .from('client_registry')
+      .select('external_api_url, external_api_token')
+      .eq('workspace_name', workspaceName)
+      .single()
+
+    if (error || !client || !client.external_api_url) {
+      // No external API configured for this workspace
+      return
+    }
+
+    console.log(`📤 Routing lead to external API for ${workspaceName}: ${client.external_api_url}`)
+
+    // Helper: Extract custom variable value
+    const getCustomVar = (possibleNames: string[]) => {
+      for (const name of possibleNames) {
+        const variable = lead.custom_variables?.find((v: any) =>
+          v.name?.toLowerCase() === name.toLowerCase()
+        )
+        if (variable?.value) {
+          return variable.value
+        }
+      }
+      return null
+    }
+
+    // Helper: Extract phone number
+    const extractPhoneNumber = (customVariables: any[]) => {
+      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'phone', 'mobile', 'cell', 'phone_number', 'company phone']
+
+      for (const fieldName of phoneFieldNames) {
+        const variable = customVariables?.find((v: any) =>
+          v.name?.toLowerCase() === fieldName.toLowerCase()
+        )
+        if (variable?.value) {
+          return variable.value
+        }
+      }
+
+      return null
+    }
+
+    // Build the conversation URL
+    const conversationUrl = reply?.uuid
+      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
+      : null
+
+    // Clean the reply text using OpenAI
+    // Note: bison-interested-webhook payload doesn't include reply body, so we'll use a simple note
+    const replyText = reply?.from_email_address ? `Reply from ${reply.from_email_address}` : 'Interested lead from Email Bison'
+    const cleanedReply = await cleanReplyWithAI(replyText)
+
+    // Check if this is an Agency Zoom URL (requires special query param format)
+    const isAgencyZoom = client.external_api_url.includes('agencyzoom.com')
+
+    let response: Response
+
+    if (isAgencyZoom) {
+      // Agency Zoom expects query parameters, not JSON body
+      const agencyZoomPayload = {
+        firstname: lead.first_name || '',
+        lastname: lead.last_name || '',
+        email: lead.email || '',
+        phone: extractPhoneNumber(lead.custom_variables) || '',
+        notes: conversationUrl ? `${conversationUrl} - ${cleanedReply}` : cleanedReply,
+        birthday: getCustomVar(['date of birth', 'dob', 'birthday', 'birth date']) || '',
+        streetAddress: getCustomVar(['street address', 'address', 'street']) || '',
+        city: getCustomVar(['city']) || '',
+        state: getCustomVar(['state']) || '',
+        zip: getCustomVar(['zip', 'zip code', 'zipcode']) || '',
+        'expiration date': getCustomVar(['renewal', 'renewal date', 'policy renewal', 'expiry date']) || ''
+      }
+
+      // Build query string
+      const queryParams = new URLSearchParams()
+      Object.entries(agencyZoomPayload).forEach(([key, value]) => {
+        if (value) {
+          queryParams.append(key, value as string)
+        }
+      })
+
+      // Send as POST with query parameters
+      response = await fetch(`${client.external_api_url}?${queryParams.toString()}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      })
+    } else {
+      // Generic format for other CRMs (Zapier, etc.) - use JSON body
+      const externalPayload: any = {
+        first_name: lead.first_name || '',
+        last_name: lead.last_name || '',
+        email: lead.email || '',
+        phone: extractPhoneNumber(lead.custom_variables) || '',
+        company: lead.company || '',
+        title: lead.title || '',
+        address: getCustomVar(['street address', 'address', 'street']) || '',
+        city: getCustomVar(['city']) || '',
+        state: getCustomVar(['state']) || '',
+        zip: getCustomVar(['zip', 'zip code', 'zipcode']) || '',
+        date_of_birth: getCustomVar(['date of birth', 'dob', 'birthday', 'birth date']) || '',
+        renewal_date: getCustomVar(['renewal', 'renewal date', 'policy renewal', 'expiry date']) || '',
+        reply_text: cleanedReply,
+        reply_date: reply?.date_received || new Date().toISOString(),
+        conversation_url: conversationUrl,
+        source: 'Bison Email Campaign',
+        workspace: workspaceName,
+        bison_lead_id: lead.id ? lead.id.toString() : null,
+        interested: true,
+        custom_variables: lead.custom_variables || []
+      }
+
+      // Prepare headers
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+
+      // Add authentication token if configured
+      if (client.external_api_token) {
+        headers['Authorization'] = `Bearer ${client.external_api_token}`
+      }
+
+      // Send to external API
+      response = await fetch(client.external_api_url, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(externalPayload)
+      })
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`❌ External API error for ${workspaceName}: ${response.status} ${response.statusText}`)
+      console.error('Response body:', errorText)
+      return
+    }
+
+    const result = await response.text()
+    console.log(`✅ Lead successfully routed to external API for ${workspaceName}:`, result)
+
+    // Update success timestamp on client_registry
+    const { error: updateError } = await supabase
+      .from('client_registry')
+      .update({
+        api_last_successful_call_at: new Date().toISOString(),
+        api_consecutive_failures: 0,
+        api_health_status: 'healthy',
+        api_notes: 'External API integration working'
+      })
+      .eq('workspace_name', workspaceName)
+
+    if (updateError) {
+      console.error(`Error updating API health:`, updateError)
+    }
+
+    // Update external_api_sent_at on the lead record
+    if (leadId) {
+      const { error: leadUpdateError } = await supabase
+        .from('client_leads')
+        .update({
+          external_api_sent_at: new Date().toISOString()
+        })
+        .eq('id', leadId)
+
+      if (leadUpdateError) {
+        console.error(`Error updating lead external_api_sent_at:`, leadUpdateError)
+      } else {
+        console.log(`✅ Updated external_api_sent_at for lead ${leadId}`)
+      }
+    }
+
+  } catch (error) {
+    console.error(`Error routing to external API for ${workspaceName}:`, error)
+    // Don't throw - we don't want external API failures to break the main webhook
+  }
+}
+
 serve(async (req) => {
   console.log('=== WEBHOOK REQUEST RECEIVED ===');
   console.log('Method:', req.method);
@@ -199,6 +464,9 @@ serve(async (req) => {
         console.log('✅ Metric incremented successfully');
       }
     }
+
+    // ✨ NEW: Forward to external APIs (Agency Zoom, etc.) if configured
+    await routeToExternalAPI(supabase, leadData.workspace_name, lead, reply, result.data.id);
 
     const response = {
       success: true,

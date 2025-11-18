@@ -1002,6 +1002,22 @@ const SendingAccountsInfrastructure = () => {
     // This prevents duplicate API calls
   }, []);
 
+  // ✅ NEW: Poll for job status every 30 seconds
+  useEffect(() => {
+    // Fetch immediately on mount
+    fetchPollingJobStatus();
+
+    // Set up polling interval (every 30 seconds)
+    const pollingInterval = setInterval(() => {
+      fetchPollingJobStatus();
+    }, 30000); // 30 seconds
+
+    // Cleanup interval on unmount
+    return () => {
+      clearInterval(pollingInterval);
+    };
+  }, []);
+
   useEffect(() => {
     if (emailAccounts.length > 0) {
       generatePriceAnalysisData(emailAccounts);

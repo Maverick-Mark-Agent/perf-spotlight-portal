@@ -181,8 +181,9 @@ async function handleLeadReplied(supabase: any, payload: any) {
 
   // Insert ALL replies into lead_replies table for real-time dashboard
   if (lead && lead.email && reply) {
-    const conversationUrl = payload.event?.instance_url
-      ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
+    // Use inbox URL format with reply_uuid (same format as Slack - this one works!)
+    const conversationUrl = reply?.uuid
+      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
       : null
 
     // Determine sentiment from Bison's classification
@@ -229,8 +230,9 @@ async function handleLeadReplied(supabase: any, payload: any) {
 
   // Update or create lead with replied status (existing logic - keep for backward compatibility)
   if (lead && lead.email) {
-    const conversationUrl = payload.event?.instance_url
-      ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
+    // Use inbox URL format with reply_uuid (same format as Slack - this one works!)
+    const conversationUrl = reply?.uuid
+      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
       : null
 
     await supabase
@@ -276,11 +278,10 @@ async function handleLeadInterested(supabase: any, payload: any) {
 
   // Insert into lead_replies table for real-time dashboard (ALL interested leads)
   if (lead && lead.email && reply) {
+    // Use inbox URL format with reply_uuid (same format as Slack - this one works!)
     const replyConversationUrl = reply?.uuid
       ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
-      : (payload.event?.instance_url
-        ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
-        : null)
+      : null
 
     // Extract reply text (use cleaned version or raw)
     const replyText = reply.text_body || reply.body_plain || reply.text || null
@@ -317,12 +318,10 @@ async function handleLeadInterested(supabase: any, payload: any) {
     }
   }
 
-  // Build conversation URL using reply UUID (same format as n8n workflow)
+  // Build conversation URL using reply UUID (same format as Slack - this one works!)
   const conversationUrl = reply?.uuid
     ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
-    : (payload.event?.instance_url
-      ? `${payload.event.instance_url}/workspaces/${payload.event.workspace_id}/leads/${lead.id}`
-      : null)
+    : null
 
   // Extract phone from custom variables with fallback to multiple field names
   const extractPhoneNumber = (customVariables: any[]) => {

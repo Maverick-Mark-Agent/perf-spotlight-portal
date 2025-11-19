@@ -760,13 +760,13 @@ async function sendGlobalSlackNotification(workspaceName: string, lead: any, rep
 
     // Build simplified Slack message for global channel (matches n8n format)
     const slackMessage = {
-      text: 'New Positive Reply',
+      text: 'New Reply Received',
       blocks: [
         {
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `:fire: *New Lead!*`
+            text: `:email: *New Reply*`
           }
         },
         {

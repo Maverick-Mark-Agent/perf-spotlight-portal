@@ -234,6 +234,10 @@ serve(async (req) => {
         .upsert({
           reply_uuid: reply_uuid,
           workspace_name: workspace_name,
+          lead_name: leadName,
+          lead_email: replyData.lead_email,
+          generated_reply_text: generated_reply_text, // Required field!
+          cc_emails: cc_emails || [],
           status: 'failed',
           sent_by: null,
           error_message: `Email Bison API error: ${errorText}`
@@ -263,6 +267,10 @@ serve(async (req) => {
       .upsert({
         reply_uuid: reply_uuid,
         workspace_name: workspace_name,
+        lead_name: leadName,
+        lead_email: replyData.lead_email,
+        generated_reply_text: generated_reply_text, // Required field!
+        cc_emails: cc_emails || [],
         status: 'sent',
         sent_at: new Date().toISOString(),
         sent_by: null, // Will be populated from RLS/auth context

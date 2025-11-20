@@ -187,14 +187,36 @@ async function handleLeadReplied(supabase: any, payload: any) {
       : null
 
     // Determine sentiment from Bison's classification
-    const sentiment = lead.interested === true
+    // Check BOTH reply.interested and lead.interested (Email Bison might send in either location)
+    const interestedValue = reply?.interested !== undefined
+      ? reply.interested
+      : lead.interested;
+
+    const sentiment = interestedValue === true
       ? 'positive'
-      : lead.interested === false
+      : interestedValue === false
         ? 'negative'
         : 'neutral'
 
+    console.log(`📊 Sentiment for ${lead.email}: reply.interested=${reply?.interested}, lead.interested=${lead.interested}, final=${sentiment}`);
+
     // Extract reply text (use cleaned version or raw)
     const replyText = reply.text_body || reply.body_plain || reply.text || null
+
+    // Extract phone number from custom variables
+    const extractPhoneNumber = (customVariables: any[]) => {
+      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'company phone', 'phone', 'mobile', 'cell', 'phone_number']
+      for (const fieldName of phoneFieldNames) {
+        const variable = customVariables?.find((v: any) =>
+          v.name?.toLowerCase() === fieldName.toLowerCase()
+        )
+        if (variable?.value) {
+          return variable.value
+        }
+      }
+      return null
+    }
+    const phoneValue = extractPhoneNumber(lead.custom_variables)
 
     // Insert into lead_replies (will skip duplicates via bison_reply_id unique constraint)
     const { error: replyInsertError } = await supabase
@@ -206,12 +228,14 @@ async function handleLeadReplied(supabase: any, payload: any) {
         last_name: lead.last_name,
         company: lead.company,
         title: lead.title,
+        phone: phoneValue,
         reply_text: replyText,
         reply_date: reply.date_received || new Date().toISOString(),
         sentiment: sentiment,
-        is_interested: lead.interested === true,
+        is_interested: interestedValue === true,
         bison_lead_id: lead.id ? lead.id.toString() : null,
         bison_reply_id: reply.uuid || reply.id ? (reply.uuid || reply.id.toString()) : null,
+        bison_reply_numeric_id: reply.id || null,  // Numeric ID for Email Bison API
         bison_conversation_url: conversationUrl,
         bison_workspace_id: payload.event?.workspace_id || null,
       })
@@ -286,6 +310,21 @@ async function handleLeadInterested(supabase: any, payload: any) {
     // Extract reply text (use cleaned version or raw)
     const replyText = reply.text_body || reply.body_plain || reply.text || null
 
+    // Extract phone number from custom variables
+    const extractPhoneNumber = (customVariables: any[]) => {
+      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'company phone', 'phone', 'mobile', 'cell', 'phone_number']
+      for (const fieldName of phoneFieldNames) {
+        const variable = customVariables?.find((v: any) =>
+          v.name?.toLowerCase() === fieldName.toLowerCase()
+        )
+        if (variable?.value) {
+          return variable.value
+        }
+      }
+      return null
+    }
+    const phoneValue = extractPhoneNumber(lead.custom_variables)
+
     // Insert into lead_replies (will skip duplicates via bison_reply_id unique constraint)
     const { error: replyInsertError } = await supabase
       .from('lead_replies')
@@ -296,12 +335,14 @@ async function handleLeadInterested(supabase: any, payload: any) {
         last_name: lead.last_name,
         company: lead.company,
         title: lead.title,
+        phone: phoneValue,
         reply_text: replyText,
         reply_date: reply.date_received || new Date().toISOString(),
         sentiment: 'positive', // Interested leads are always positive
         is_interested: true,
         bison_lead_id: lead.id ? lead.id.toString() : null,
         bison_reply_id: reply.uuid || reply.id ? (reply.uuid || reply.id.toString()) : null,
+        bison_reply_numeric_id: reply.id || null,  // Numeric ID for Email Bison API
         bison_conversation_url: replyConversationUrl,
         bison_workspace_id: payload.event?.workspace_id || null,
       })

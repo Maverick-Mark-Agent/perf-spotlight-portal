@@ -17,6 +17,7 @@ export interface LeadReply {
   last_name: string | null;
   company: string | null;
   title: string | null;
+  phone: string | null;
   reply_text: string | null;
   reply_date: string;
   sentiment: 'positive' | 'negative' | 'neutral';

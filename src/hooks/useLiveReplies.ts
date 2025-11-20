@@ -10,6 +10,7 @@ export interface LiveReply {
   last_name: string | null;
   company: string | null;
   title: string | null;
+  phone: string | null;
   reply_text: string | null;
   reply_date: string;
   sentiment: 'positive' | 'negative' | 'neutral' | null;
@@ -109,6 +110,7 @@ export function useLiveReplies(): UseLiveRepliesReturn {
           last_name,
           company,
           title,
+          phone,
           reply_text,
           reply_date,
           sentiment,

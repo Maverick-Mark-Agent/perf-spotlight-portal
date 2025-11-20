@@ -6,7 +6,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import { useRealtimeReplies, useReplyWorkspaces } from '@/hooks/useRealtimeReplies';
+import { useRealtimeReplies, useReplyWorkspaces, type LeadReply } from '@/hooks/useRealtimeReplies';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,12 +18,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, RefreshCw, ExternalLink, Search, Filter } from 'lucide-react';
+import { Loader2, RefreshCw, ExternalLink, Search, Filter, Sparkles, Send, X } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function RepliesDashboard() {
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
   const [selectedSentiment, setSelectedSentiment] = useState<'all' | 'positive' | 'negative' | 'neutral'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedReplyForAI, setSelectedReplyForAI] = useState<LeadReply | null>(null);
+  const [expandedReplyId, setExpandedReplyId] = useState<string | null>(null);
 
   const { workspaces, loading: workspacesLoading } = useReplyWorkspaces();
   const {
@@ -256,56 +268,92 @@ export default function RepliesDashboard() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {filteredReplies.map((reply) => (
-              <Card key={reply.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <CardTitle className="text-lg">
-                          {[reply.first_name, reply.last_name].filter(Boolean).join(' ') || 'Unknown Lead'}
-                        </CardTitle>
-                        {getSentimentBadge(reply.sentiment)}
-                        {reply.is_interested && (
-                          <Badge className="bg-blue-500 hover:bg-blue-600">Interested</Badge>
-                        )}
-                      </div>
-                      <div className="space-y-1 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-4">
-                          <span>{reply.lead_email}</span>
-                          {reply.company && <span>• {reply.company}</span>}
-                          {reply.title && <span>• {reply.title}</span>}
+          <div className="space-y-2">
+            {filteredReplies.map((reply) => {
+              const leadName = [reply.first_name, reply.last_name].filter(Boolean).join(' ') || 'Unknown Lead';
+              const isExpanded = expandedReplyId === reply.id;
+              const replyPreview = reply.reply_text
+                ? reply.reply_text.slice(0, 100) + (reply.reply_text.length > 100 ? '...' : '')
+                : 'No reply text available';
+
+              return (
+                <Card
+                  key={reply.id}
+                  className={`overflow-hidden transition-all cursor-pointer ${
+                    isExpanded ? 'shadow-lg ring-2 ring-blue-500/50' : 'hover:shadow-md hover:bg-gray-50/50 dark:hover:bg-gray-800/50'
+                  }`}
+                  onClick={() => setExpandedReplyId(isExpanded ? null : reply.id)}
+                >
+                  <CardHeader className={`${isExpanded ? 'pb-3' : 'py-3'}`}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <CardTitle className="text-base font-semibold truncate">{leadName}</CardTitle>
+                          {getSentimentBadge(reply.sentiment)}
                         </div>
-                        <div className="flex items-center gap-4">
-                          <span className="font-medium text-gray-600 dark:text-gray-400">
-                            {reply.workspace_name}
-                          </span>
+
+                        {!isExpanded && (
+                          <div className="text-sm text-gray-600 dark:text-gray-400 truncate mb-1">
+                            {replyPreview}
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="font-medium">{reply.workspace_name}</span>
                           <span>•</span>
                           <span>{formatDate(reply.reply_date)}</span>
+                          {reply.company && (
+                            <>
+                              <span>•</span>
+                              <span className="truncate">{reply.company}</span>
+                            </>
+                          )}
                         </div>
                       </div>
+
+                      {isExpanded && (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedReplyForAI(reply);
+                            }}
+                          >
+                            <Sparkles className="h-4 w-4 mr-1" />
+                            AI Reply
+                          </Button>
+                          {reply.bison_conversation_url && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(reply.bison_conversation_url!, '_blank');
+                              }}
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {reply.bison_conversation_url && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => window.open(reply.bison_conversation_url!, '_blank')}
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-                    <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                      {reply.reply_text || 'No reply text available'}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardHeader>
+
+                  {isExpanded && (
+                    <CardContent className="pt-0">
+                      <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                          {reply.reply_text || 'No reply text available'}
+                        </p>
+                      </div>
+                    </CardContent>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         )}
 
@@ -323,7 +371,270 @@ export default function RepliesDashboard() {
             </Button>
           </div>
         )}
+
+        {/* AI Reply Composer Modal */}
+        {selectedReplyForAI && (
+          <AIReplyComposer
+            reply={selectedReplyForAI}
+            onClose={() => setSelectedReplyForAI(null)}
+          />
+        )}
       </div>
     </div>
+  );
+}
+
+// AI Reply Composer Component
+interface AIReplyComposerProps {
+  reply: LeadReply;
+  onClose: () => void;
+}
+
+function AIReplyComposer({ reply, onClose }: AIReplyComposerProps) {
+  const [generatedReply, setGeneratedReply] = useState('');
+  const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const { toast } = useToast();
+
+  const leadName = [reply.first_name, reply.last_name].filter(Boolean).join(' ') || 'Unknown Lead';
+
+  // Generate reply when dialog opens
+  const generateReply = async () => {
+    setIsGenerating(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({
+          title: 'Error',
+          description: 'You must be logged in to generate replies',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ai-reply`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            reply_uuid: reply.id,
+            workspace_name: reply.workspace_name,
+            lead_name: leadName,
+            lead_email: reply.lead_email,
+            lead_phone: reply.phone || undefined,
+            original_message: reply.reply_text || '',
+            preview_mode: true,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to generate reply');
+      }
+
+      const data = await response.json();
+      setGeneratedReply(data.generated_reply);
+      setCcEmails(data.cc_emails || []);
+
+      toast({
+        title: 'Reply Generated',
+        description: 'AI has generated a personalized reply based on the template',
+      });
+    } catch (error: any) {
+      console.error('Error generating reply:', error);
+      toast({
+        title: 'Generation Failed',
+        description: error.message || 'Failed to generate reply',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Auto-generate when component mounts
+  if (!generatedReply && !isGenerating) {
+    generateReply();
+  }
+
+  const handleSend = async () => {
+    if (!generatedReply.trim()) {
+      toast({
+        title: 'Empty Reply',
+        description: 'Please generate a reply first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({
+          title: 'Error',
+          description: 'You must be logged in to send replies',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-reply-via-bison`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            reply_uuid: reply.id,
+            workspace_name: reply.workspace_name,
+            generated_reply_text: generatedReply,
+            cc_emails: ccEmails,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Send reply error response:', errorData);
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      }
+
+      toast({
+        title: 'Reply Sent!',
+        description: `Reply sent to ${leadName} with ${ccEmails.length} CC(s)`,
+      });
+
+      onClose();
+    } catch (error: any) {
+      console.error('Error sending reply:', error);
+      toast({
+        title: 'Send Failed',
+        description: error.message || 'Failed to send reply',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-purple-600" />
+            AI Reply to {leadName}
+          </DialogTitle>
+          <DialogDescription>
+            Review and edit the AI-generated reply before sending. CC emails are automatically included.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-4">
+          {/* Original Message */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              Original Message from {leadName}
+            </label>
+            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                {reply.reply_text || '(No message text)'}
+              </p>
+            </div>
+          </div>
+
+          {/* Generated Reply */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 mb-2 block">
+              AI-Generated Reply
+            </label>
+            {isGenerating ? (
+              <div className="bg-gray-50 rounded-lg p-8 border border-gray-200 flex flex-col items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-purple-600 mb-2" />
+                <p className="text-sm text-gray-600">Generating personalized reply...</p>
+              </div>
+            ) : (
+              <Textarea
+                value={generatedReply}
+                onChange={(e) => setGeneratedReply(e.target.value)}
+                className="min-h-[200px] font-sans text-sm"
+                placeholder="AI-generated reply will appear here..."
+              />
+            )}
+          </div>
+
+          {/* CC Emails */}
+          {ccEmails.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">
+                CC Recipients ({ccEmails.length})
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {ccEmails.map((email, index) => (
+                  <Badge
+                    key={index}
+                    variant="secondary"
+                    className="bg-blue-100 text-blue-800 text-xs"
+                  >
+                    {email}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-between pt-4 border-t">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={generateReply}
+              disabled={isGenerating || isSending}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
+              Regenerate
+            </Button>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                disabled={isSending}
+              >
+                <X className="h-4 w-4 mr-2" />
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSend}
+                disabled={isGenerating || isSending || !generatedReply}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+              >
+                {isSending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Send Reply
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

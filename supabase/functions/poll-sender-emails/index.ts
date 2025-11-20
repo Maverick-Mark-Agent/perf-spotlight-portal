@@ -49,6 +49,7 @@ Deno.serve(async (req) => {
 // Background processing function
 async function processInBackground(jobId: string) {
   const startTime = Date.now()
+  let lockReleaseTimer: number | undefined // ✅ FIX: Declare at function scope so finally block can access it
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -56,6 +57,41 @@ async function processInBackground(jobId: string) {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     console.log('🔄 Starting email account polling for all workspaces...')
+
+    // ✅ CONCURRENCY CONTROL: Try to acquire advisory lock
+    // This prevents multiple sync jobs from running simultaneously
+    const SYNC_LOCK_ID = 123456789 // Unique integer for poll-sender-emails job
+    console.log('🔒 Attempting to acquire advisory lock...')
+
+    const { data: lockAcquired, error: lockError } = await supabase
+      .rpc('try_advisory_lock', { lock_id: SYNC_LOCK_ID })
+
+    if (lockError) {
+      console.error('❌ Failed to check advisory lock:', lockError.message)
+      throw new Error(`Lock check failed: ${lockError.message}`)
+    }
+
+    if (!lockAcquired) {
+      console.warn('⚠️  Another sync is already running. Exiting gracefully.')
+      console.warn('⚠️  Lock ID:', SYNC_LOCK_ID)
+      console.warn('⚠️  This is normal if a sync was recently triggered from another source.')
+      return // Exit without creating job status - another sync is handling it
+    }
+
+    console.log('✅ Advisory lock acquired successfully')
+
+    // 🔧 CRASH PROTECTION: Schedule preemptive lock release before edge function timeout
+    // Edge functions timeout at 10 minutes - release lock at 9 minutes as safety net
+    // This ensures lock is released even if function crashes without executing finally block
+    lockReleaseTimer = setTimeout(async () => {
+      console.warn('⚠️  Function approaching 9-minute mark, releasing lock preemptively')
+      try {
+        await supabase.rpc('release_advisory_lock', { lock_id: SYNC_LOCK_ID })
+        console.log('🔓 Preemptive lock release successful')
+      } catch (err) {
+        console.error('❌ Preemptive lock release failed:', err)
+      }
+    }, 9 * 60 * 1000) // 9 minutes
 
     // Fetch all active workspaces first (to know total count)
     const { data: workspaces, error: workspacesError } = await supabase
@@ -353,7 +389,7 @@ async function processInBackground(jobId: string) {
 
       // ✅ Update progress after each batch for real-time tracking
       if (progressRecord) {
-        await supabase
+        const { error: progressError } = await supabase
           .from('sync_progress')
           .update({
             workspaces_completed: workspacesProcessed,
@@ -362,10 +398,12 @@ async function processInBackground(jobId: string) {
             updated_at: new Date().toISOString()
           })
           .eq('id', progressRecord.id)
-          .then(() => {
-            console.log(`📈 Progress updated: ${workspacesProcessed}/${workspaces.length} workspaces, ${totalAccountsSynced} accounts`)
-          })
-          .catch(err => console.warn('⚠️ Failed to update progress:', err.message))
+
+        if (progressError) {
+          console.warn('⚠️ Failed to update progress:', progressError.message)
+        } else {
+          console.log(`📈 Progress updated: ${workspacesProcessed}/${workspaces.length} workspaces, ${totalAccountsSynced} accounts`)
+        }
       }
 
       // Small delay between batches to avoid rate limiting
@@ -374,9 +412,15 @@ async function processInBackground(jobId: string) {
       }
     }
 
+    console.log('🔍 DEBUG: Workspace loop completed, calculating summary...')
     const totalDuration = Date.now() - startTime
+    console.log(`🔍 DEBUG: Total duration = ${totalDuration}ms`)
+
     const failedCount = results.filter(r => !r.success).length
+    console.log(`🔍 DEBUG: Failed count = ${failedCount}`)
+
     const finalStatus = workspacesSkipped > 0 ? 'partial' : (failedCount > 0 ? 'completed_with_errors' : 'completed')
+    console.log(`🔍 DEBUG: Final status = ${finalStatus}`)
 
     console.log(`✅ Poll complete: ${totalAccountsSynced} accounts synced across ${workspacesProcessed}/${workspaces.length} workspaces in ${totalDuration}ms`)
     if (workspacesSkipped > 0) {
@@ -386,19 +430,76 @@ async function processInBackground(jobId: string) {
       console.warn(`⚠️ ${failedCount} workspaces failed to sync`)
     }
 
+    console.log('🔍 DEBUG: About to update progress for post-processing...')
+    // ✅ Update progress to show post-processing phase
+    if (progressRecord) {
+      console.log(`🔍 DEBUG: progressRecord.id = ${progressRecord.id}`)
+      const { error: viewProgressError } = await supabase
+        .from('sync_progress')
+        .update({
+          current_workspace: 'Refreshing materialized views...',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', progressRecord.id)
+
+      if (viewProgressError) {
+        console.warn('⚠️ Failed to update progress for view refresh:', viewProgressError.message)
+      } else {
+        console.log('🔍 DEBUG: Progress update completed successfully')
+      }
+    } else {
+      console.log('🔍 DEBUG: No progressRecord, skipping')
+    }
+    console.log('🔍 DEBUG: Moving to view refresh...')
+
     // ✅ Refresh materialized view (critical for two-table architecture!)
     // Always refresh, even if partial - users should see updated data
+    // ⚠️ TIMEOUT PROTECTION: View refresh can hang indefinitely if database locks are held
+    const VIEW_REFRESH_TIMEOUT_MS = 30000 // 30 seconds
     console.log('🔄 Refreshing materialized view email_accounts_view...')
+    const viewRefreshStart = Date.now()
     try {
-      const { error: viewError } = await supabase.rpc('refresh_email_accounts_view')
+      const refreshPromise = supabase.rpc('refresh_email_accounts_view')
+      const timeoutPromise = new Promise<{ error: Error }>((_, reject) =>
+        setTimeout(() => reject(new Error('View refresh exceeded 30 second timeout')), VIEW_REFRESH_TIMEOUT_MS)
+      )
+
+      const { error: viewError } = await Promise.race([refreshPromise, timeoutPromise])
+      const viewRefreshDuration = Date.now() - viewRefreshStart
 
       if (viewError) {
-        console.error('❌ Failed to refresh materialized view:', viewError.message)
+        console.error(`❌ Failed to refresh materialized view after ${viewRefreshDuration}ms:`, viewError.message)
       } else {
-        console.log('✅ Materialized view refreshed successfully - frontend will see fresh data!')
+        console.log(`✅ Materialized view refreshed successfully in ${viewRefreshDuration}ms - frontend will see fresh data!`)
       }
-    } catch (viewErr) {
-      console.error('❌ Error refreshing view:', viewErr)
+    } catch (viewErr: any) {
+      const viewRefreshDuration = Date.now() - viewRefreshStart
+      console.error(`❌ Error refreshing view after ${viewRefreshDuration}ms:`, viewErr.message || viewErr)
+      // Continue execution - stale view is better than stuck sync
+    }
+
+    // ✅ Refresh Home Insurance view (filtered subset of main view)
+    // ⚠️ TIMEOUT PROTECTION: Same timeout as main view
+    console.log('🔄 Refreshing Home Insurance materialized view...')
+    const hiViewRefreshStart = Date.now()
+    try {
+      const hiRefreshPromise = supabase.rpc('refresh_home_insurance_view')
+      const hiTimeoutPromise = new Promise<{ error: Error }>((_, reject) =>
+        setTimeout(() => reject(new Error('Home Insurance view refresh exceeded 30 second timeout')), VIEW_REFRESH_TIMEOUT_MS)
+      )
+
+      const { error: hiViewError } = await Promise.race([hiRefreshPromise, hiTimeoutPromise])
+      const hiViewRefreshDuration = Date.now() - hiViewRefreshStart
+
+      if (hiViewError) {
+        console.error(`❌ Failed to refresh Home Insurance view after ${hiViewRefreshDuration}ms:`, hiViewError.message)
+      } else {
+        console.log(`✅ Home Insurance view refreshed successfully in ${hiViewRefreshDuration}ms`)
+      }
+    } catch (hiViewErr: any) {
+      const hiViewRefreshDuration = Date.now() - hiViewRefreshStart
+      console.error(`❌ Error refreshing Home Insurance view after ${hiViewRefreshDuration}ms:`, hiViewErr.message || hiViewErr)
+      // Continue execution - stale view is better than stuck sync
     }
 
     // Update job status record
@@ -445,7 +546,7 @@ async function processInBackground(jobId: string) {
 
     // Update job status to failed
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-    await supabase
+    const { error: jobUpdateError } = await supabase
       .from('polling_job_status')
       .update({
         status: 'failed',
@@ -454,10 +555,13 @@ async function processInBackground(jobId: string) {
         duration_ms: Date.now() - startTime
       })
       .eq('id', jobId)
-      .catch(err => console.error('Failed to update job status:', err))
+
+    if (jobUpdateError) {
+      console.error('Failed to update job status:', jobUpdateError.message)
+    }
 
     // ✅ Update progress record to failed
-    await supabase
+    const { error: failedProgressError } = await supabase
       .from('sync_progress')
       .update({
         status: 'failed',
@@ -465,9 +569,40 @@ async function processInBackground(jobId: string) {
         completed_at: new Date().toISOString()
       })
       .eq('job_id', jobId)
-      .catch(err => console.warn('⚠️ Failed to mark progress as failed:', err.message))
+
+    if (failedProgressError) {
+      console.warn('⚠️ Failed to mark progress as failed:', failedProgressError.message)
+    }
 
     throw error // Re-throw to ensure error is logged
+  } finally {
+    // 🔧 Clear the preemptive lock release timer (function completed normally)
+    if (lockReleaseTimer !== undefined) {
+      clearTimeout(lockReleaseTimer)
+    }
+
+    // ✅ ALWAYS release advisory lock (even if function crashes)
+    // This prevents permanent locks that would block all future syncs
+    const SYNC_LOCK_ID = 123456789
+    try {
+      const supabase = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      )
+
+      const { data: lockReleased, error: releaseError } = await supabase
+        .rpc('release_advisory_lock', { lock_id: SYNC_LOCK_ID })
+
+      if (releaseError) {
+        console.warn('⚠️  Failed to release advisory lock:', releaseError.message)
+      } else if (lockReleased) {
+        console.log('🔓 Advisory lock released successfully')
+      } else {
+        console.warn('⚠️  Lock was not held by this session (may have been released already)')
+      }
+    } catch (err) {
+      console.warn('⚠️  Exception while releasing lock:', err.message)
+    }
   }
 }
 

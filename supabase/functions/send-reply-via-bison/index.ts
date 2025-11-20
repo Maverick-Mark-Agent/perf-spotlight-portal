@@ -218,15 +218,18 @@ serve(async (req) => {
       const errorText = await bisonResponse.text();
       console.error('Email Bison API error:', errorText);
 
-      // Update sent_replies with failure
+      // Upsert sent_replies with failure
       await supabase
         .from('sent_replies')
-        .update({
+        .upsert({
+          reply_uuid: reply_uuid,
+          workspace_name: workspace_name,
           status: 'failed',
+          sent_by: null,
           error_message: `Email Bison API error: ${errorText}`
-        })
-        .eq('reply_uuid', reply_uuid)
-        .eq('workspace_name', workspace_name);
+        }, {
+          onConflict: 'reply_uuid'
+        });
 
       return new Response(
         JSON.stringify({
@@ -243,22 +246,37 @@ serve(async (req) => {
     const bisonData = await bisonResponse.json();
     console.log(`✅ Reply sent successfully via Email Bison`);
 
-    // Step 7: Update sent_replies table with success
-    const { error: updateError } = await supabase
+    // Step 7: Upsert sent_replies table with success
+    // Use upsert to create record if it doesn't exist
+    const { error: upsertError } = await supabase
       .from('sent_replies')
-      .update({
+      .upsert({
+        reply_uuid: reply_uuid,
+        workspace_name: workspace_name,
         status: 'sent',
         sent_at: new Date().toISOString(),
+        sent_by: null, // Will be populated from RLS/auth context
         bison_reply_id: bisonReplyId
-      })
-      .eq('reply_uuid', reply_uuid)
-      .eq('workspace_name', workspace_name);
+      }, {
+        onConflict: 'reply_uuid' // Update if record already exists
+      });
 
-    if (updateError) {
-      console.error('Error updating sent_replies:', updateError);
+    if (upsertError) {
+      console.error('❌ UPSERT FAILED - Error upserting sent_replies:', upsertError);
+      console.error('Error code:', upsertError.code);
+      console.error('Error message:', upsertError.message);
+      console.error('Error details:', upsertError.details);
+      console.error('Error hint:', upsertError.hint);
+      console.error('Data attempted:', JSON.stringify({
+        reply_uuid,
+        workspace_name,
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+      }));
       // Don't fail the request since email was sent successfully
     } else {
-      console.log(`💾 Updated sent_replies table`);
+      console.log(`✅ SUCCESS - Upserted sent_replies table (reply_uuid: ${reply_uuid})`);
+      console.log(`Record created/updated for workspace: ${workspace_name}`);
     }
 
     // Step 8: Return success response

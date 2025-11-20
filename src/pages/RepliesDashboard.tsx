@@ -284,7 +284,7 @@ export default function RepliesDashboard() {
               return (
                 <Card
                   key={reply.id}
-                  className={`overflow-hidden transition-all cursor-pointer border-l-4 ${
+                  className={`overflow-hidden transition-all cursor-pointer border-l-4 relative ${
                     weHaveReplied
                       ? 'border-l-green-500 opacity-70'
                       : 'border-l-blue-500'
@@ -293,6 +293,15 @@ export default function RepliesDashboard() {
                   }`}
                   onClick={() => setExpandedReplyId(isExpanded ? null : reply.id)}
                 >
+                  {/* Replied Indicator Box - Top Right Corner */}
+                  {weHaveReplied && (
+                    <div className="absolute top-3 right-3 z-10">
+                      <Badge className="bg-green-600 text-white border-green-700 shadow-md px-3 py-1.5 text-xs font-semibold">
+                        <Check className="h-3.5 w-3.5 mr-1.5" />
+                        REPLIED
+                      </Badge>
+                    </div>
+                  )}
                   <CardHeader className={`${isExpanded ? 'pb-3' : 'py-3'}`}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">

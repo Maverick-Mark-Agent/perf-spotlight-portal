@@ -143,6 +143,19 @@ export function useLiveReplies(): UseLiveRepliesReturn {
 
       if (fetchError) throw fetchError;
 
+      // Debug logging for reply tracking
+      console.log('🔍 useLiveReplies - Fetched', data?.length || 0, 'leads');
+      const repliedLeads = data?.filter(lead => lead.sent_replies) || [];
+      console.log('🔍 useLiveReplies - Leads with sent_replies:', repliedLeads.length);
+      if (repliedLeads.length > 0) {
+        console.log('🔍 First replied lead:', {
+          email: repliedLeads[0].lead_email,
+          sent_replies: repliedLeads[0].sent_replies,
+          isArray: Array.isArray(repliedLeads[0].sent_replies),
+          type: typeof repliedLeads[0].sent_replies
+        });
+      }
+
       setReplies(data || []);
     } catch (err) {
       console.error('Error fetching replies:', err);

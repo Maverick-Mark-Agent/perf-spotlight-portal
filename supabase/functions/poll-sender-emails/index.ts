@@ -13,8 +13,9 @@ const LONGRUN_BASE_URL = 'https://send.longrun.agency/api'
 
 // Processing limits (to prevent timeouts)
 const MAX_FUNCTION_RUNTIME_MS = 9 * 60 * 1000 // 9 minutes (Edge Function has 10min limit)
+const WORKSPACE_TIMEOUT_MS = 30 * 1000 // 30 seconds max per workspace (prevents hanging on bad API keys)
 const WORKSPACE_BATCH_DELAY_MS = 100 // Small delay between workspaces to avoid rate limits
-const PARALLEL_WORKSPACE_COUNT = 3 // Process 3 workspaces simultaneously to speed up sync
+const PARALLEL_WORKSPACE_COUNT = 1 // Process 1 workspace at a time to prevent hangs from blocking others
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -148,7 +149,7 @@ async function processInBackground(jobId: string) {
     let workspacesSkipped = 0
 
     // Helper function to process a single workspace
-    const processWorkspace = async (workspace: any) => {
+    const processWorkspace = async (workspace: any, abortSignal?: AbortSignal) => {
       try {
         const workspaceStart = Date.now()
 
@@ -171,7 +172,8 @@ async function processInBackground(jobId: string) {
               'Authorization': `Bearer ${apiKey}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ team_id: workspace.bison_workspace_id })
+            body: JSON.stringify({ team_id: workspace.bison_workspace_id }),
+            signal: abortSignal
           })
 
           if (!switchResponse.ok) {
@@ -197,7 +199,8 @@ async function processInBackground(jobId: string) {
             headers: {
               'Authorization': `Bearer ${apiKey}`,
               'Accept': 'application/json'
-            }
+            },
+            signal: abortSignal
           })
 
           if (!response.ok) {
@@ -302,7 +305,7 @@ async function processInBackground(jobId: string) {
           const { error: batchError, count } = await supabase
             .from('email_accounts_raw')  // ✅ CHANGED: Use staging table
             .upsert(accountRecords, {
-              onConflict: 'bison_account_id,bison_instance',  // ✅ CHANGED: Use correct unique constraint
+              onConflict: 'bison_account_id,bison_instance,workspace_id',  // ✅ CHANGED: Allow same account in multiple workspaces
               count: 'exact'
             })
 
@@ -377,8 +380,36 @@ async function processInBackground(jobId: string) {
       const batch = workspaces.slice(i, i + PARALLEL_WORKSPACE_COUNT)
       console.log(`Processing batch ${Math.floor(i / PARALLEL_WORKSPACE_COUNT) + 1}: ${batch.map(w => w.workspace_name).join(', ')}`)
 
-      // Process batch in parallel
-      const batchResults = await Promise.all(batch.map(processWorkspace))
+      // Process batch in parallel with per-workspace timeout protection
+      const batchResults = await Promise.all(batch.map(async (workspace) => {
+        // Create AbortController for this workspace to cancel hanging API calls
+        const abortController = new AbortController()
+        let timeoutId: number | undefined
+
+        try {
+          // Set timeout to abort the request if it takes too long
+          timeoutId = setTimeout(() => {
+            console.warn(`⏱️ ${workspace.workspace_name} exceeded ${WORKSPACE_TIMEOUT_MS}ms timeout, aborting...`)
+            abortController.abort()
+          }, WORKSPACE_TIMEOUT_MS)
+
+          // Process workspace with abort signal
+          const result = await processWorkspace(workspace, abortController.signal)
+          clearTimeout(timeoutId)
+          return result
+        } catch (error) {
+          // If timeout or error, return failed result
+          if (timeoutId) clearTimeout(timeoutId)
+          console.error(`❌ ${workspace.workspace_name} failed or timed out:`, error.message)
+          return {
+            workspace: workspace.workspace_name,
+            instance: workspace.bison_instance,
+            accounts_synced: 0,
+            error: error.message || 'Timeout or fetch aborted',
+            success: false
+          }
+        }
+      }))
 
       // Aggregate results
       for (const result of batchResults) {

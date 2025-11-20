@@ -24,7 +24,7 @@ async function findMissingWorkspaces() {
 
   // Get accounts per workspace
   const { data: accountWorkspaces, error: accountsError } = await supabase
-    .from('sender_emails_cache')
+    .from('email_accounts_view')
     .select('workspace_name');
 
   if (accountsError) {

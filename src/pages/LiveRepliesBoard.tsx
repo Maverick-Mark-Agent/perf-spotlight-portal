@@ -189,15 +189,28 @@ function ReplyCard({ reply }: ReplyCardProps) {
           </div>
           <div className="flex items-center gap-2">
             {!weHaveReplied ? (
-              <Button
-                variant="default"
-                size="sm"
-                className="h-7 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                onClick={() => setShowComposer(true)}
-              >
-                <Sparkles className="h-3 w-3 mr-1" />
-                AI Reply
-              </Button>
+              !reply.bison_reply_numeric_id ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled
+                  title="This reply was received before November 20, 2025 and cannot be responded to via AI. Please ask the lead to reply again."
+                >
+                  <Sparkles className="h-3 w-3 mr-1 opacity-50" />
+                  AI Reply Unavailable
+                </Button>
+              ) : (
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="h-7 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                  onClick={() => setShowComposer(true)}
+                >
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  AI Reply
+                </Button>
+              )
             ) : (
               <Badge variant="secondary" className="bg-gray-100 text-gray-600">
                 <CheckCircle className="h-3 w-3 mr-1" />

@@ -105,14 +105,24 @@ serve(async (req) => {
     // Email Bison API requires INTEGER reply_id, not UUID
     const bisonReplyId = replyData.bison_reply_numeric_id;
 
-    if (!bisonReplyId) {
-      console.error('No bison_reply_numeric_id found in lead_replies');
-      console.error('  Reply UUID:', replyData.bison_reply_id);
-      console.error('  This reply may have been created before numeric ID tracking was added');
+    console.log(`🔍 Checking bison_reply_numeric_id...`);
+    console.log(`   Value: ${bisonReplyId}`);
+    console.log(`   Type: ${typeof bisonReplyId}`);
+    console.log(`   Is null: ${bisonReplyId === null}`);
+    console.log(`   Is undefined: ${bisonReplyId === undefined}`);
+
+    if (!bisonReplyId || bisonReplyId === null || bisonReplyId === undefined) {
+      console.error('❌ VALIDATION FAILED: No bison_reply_numeric_id found');
+      console.error('  Reply UUID:', reply_uuid);
+      console.error('  Lead Email:', replyData.lead_email);
+      console.error('  Workspace:', workspace_name);
+      console.error('  This reply was created before numeric ID tracking was enabled (Nov 20, 2025)');
+      console.error('  Cannot send reply - Email Bison API requires numeric reply ID');
+
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Missing numeric reply ID - cannot send reply via Email Bison API. This reply needs to be re-synced from Email Bison webhook.'
+          error: 'This reply cannot be responded to because it\'s missing the required Email Bison reply ID. This happens for replies received before November 20, 2025. Please ask the lead to reply again, and the new reply will be compatible with our AI reply system.'
         }),
         {
           status: 400,

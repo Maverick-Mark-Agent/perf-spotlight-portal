@@ -16,6 +16,7 @@ export interface LiveReply {
   sentiment: 'positive' | 'negative' | 'neutral' | null;
   is_interested: boolean;
   bison_conversation_url: string | null;
+  bison_reply_numeric_id: number | null;
   created_at: string;
   sent_replies?: Array<{
     id: number;
@@ -122,6 +123,7 @@ export function useLiveReplies(): UseLiveRepliesReturn {
           sentiment,
           is_interested,
           bison_conversation_url,
+          bison_reply_numeric_id,
           created_at,
           sent_replies (
             id,

@@ -186,15 +186,25 @@ async function handleLeadReplied(supabase: any, payload: any) {
       ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
       : null
 
-    // Determine sentiment from Bison's classification
-    // Email Bison only sets interested=true for explicit positive signals
-    // Most replies have interested=false or undefined - treat as neutral (not negative)
-    // This prevents misclassifying "I'm available now" type replies as negative
-    const isExplicitlyInterested = reply?.interested === true || lead?.interested === true;
+    // Determine sentiment using Email Bison's classification directly
+    // Use the interested and automated_reply flags to determine sentiment
+    let sentiment: 'positive' | 'negative' | 'neutral';
 
-    const sentiment = isExplicitlyInterested ? 'positive' : 'neutral';
+    if (reply?.automated_reply === true) {
+      // Automated replies (out-of-office, vacation) are neutral
+      sentiment = 'neutral';
+    } else if (reply?.interested === true || lead?.interested === true) {
+      // Explicitly marked as interested by Email Bison
+      sentiment = 'positive';
+    } else if (reply?.interested === false) {
+      // Explicitly marked as NOT interested by Email Bison
+      sentiment = 'negative';
+    } else {
+      // Unclassified or unknown - default to neutral
+      sentiment = 'neutral';
+    }
 
-    console.log(`📊 Sentiment for ${lead.email}: reply.interested=${reply?.interested}, lead.interested=${lead.interested}, isExplicitlyInterested=${isExplicitlyInterested}, final=${sentiment}`);
+    console.log(`📊 Sentiment for ${lead.email}: reply.interested=${reply?.interested}, reply.automated_reply=${reply?.automated_reply}, lead.interested=${lead.interested}, final=${sentiment}`);
 
     // Extract reply text (use cleaned version or raw)
     const replyText = reply.text_body || reply.body_plain || reply.text || null
@@ -228,7 +238,7 @@ async function handleLeadReplied(supabase: any, payload: any) {
         reply_text: replyText,
         reply_date: reply.date_received || new Date().toISOString(),
         sentiment: sentiment,
-        is_interested: interestedValue === true,
+        is_interested: isExplicitlyInterested,
         bison_lead_id: lead.id ? lead.id.toString() : null,
         bison_reply_id: reply.uuid || reply.id ? (reply.uuid || reply.id.toString()) : null,
         bison_reply_numeric_id: reply.id || null,  // Numeric ID for Email Bison API
@@ -1089,15 +1099,52 @@ async function routeToAllstateAPI(workspaceName: string, lead: any) {
 
 async function routeToExternalAPI(supabase: any, workspaceName: string, lead: any, reply: any) {
   try {
-    // Get the external API configuration for this workspace
-    const { data: client, error } = await supabase
-      .from('client_registry')
-      .select('external_api_url, external_api_token')
-      .eq('workspace_name', workspaceName)
-      .single()
+    // Get the external API configuration for this workspace with retry logic
+    let client: any = null
+    let error: any = null
+    const maxRetries = 3
+    const retryDelay = 100 // ms
 
-    if (error || !client || !client.external_api_url) {
-      // No external API configured for this workspace
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const result = await supabase
+        .from('client_registry')
+        .select('external_api_url, external_api_token')
+        .eq('workspace_name', workspaceName)
+        .single()
+
+      client = result.data
+      error = result.error
+
+      if (!error) {
+        break // Success - exit retry loop
+      }
+
+      // Log retry attempt
+      console.warn(`⚠️  Database query failed for ${workspaceName} (attempt ${attempt}/${maxRetries}):`, error)
+
+      if (attempt < maxRetries) {
+        console.log(`   Retrying in ${retryDelay}ms...`)
+        await new Promise(resolve => setTimeout(resolve, retryDelay))
+      }
+    }
+
+    // Handle errors with detailed logging
+    if (error) {
+      console.error(`❌ Database error after ${maxRetries} attempts for ${workspaceName}:`)
+      console.error(`   Error code: ${error.code}`)
+      console.error(`   Error message: ${error.message}`)
+      console.error(`   Lead email: ${lead?.email || 'unknown'}`)
+      console.error(`   This lead will NOT be forwarded to external API`)
+      return
+    }
+
+    if (!client) {
+      console.log(`ℹ️  No client_registry entry found for ${workspaceName} (lead: ${lead?.email || 'unknown'})`)
+      return
+    }
+
+    if (!client.external_api_url) {
+      // No external API configured for this workspace - this is normal
       return
     }
 
@@ -1268,6 +1315,21 @@ async function routeToExternalAPI(supabase: any, workspaceName: string, lead: an
 
     if (updateError) {
       console.error(`Error updating API health:`, updateError)
+    }
+
+    // Mark lead as sent to external API with timestamp
+    const { error: leadUpdateError } = await supabase
+      .from('client_leads')
+      .update({
+        external_api_sent_at: new Date().toISOString()
+      })
+      .eq('workspace_name', workspaceName)
+      .eq('lead_email', lead.email)
+
+    if (leadUpdateError) {
+      console.error(`⚠️  Error updating external_api_sent_at for ${lead.email}:`, leadUpdateError)
+    } else {
+      console.log(`✅ Marked lead ${lead.email} as sent to external API`)
     }
 
   } catch (error) {

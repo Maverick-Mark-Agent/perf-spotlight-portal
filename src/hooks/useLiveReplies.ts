@@ -18,7 +18,13 @@ export interface LiveReply {
   bison_conversation_url: string | null;
   bison_reply_numeric_id: number | null;
   created_at: string;
-  sent_replies?: Array<{
+  // PostgREST returns object for one-to-one (UNIQUE constraint), array for one-to-many
+  sent_replies?: {
+    id: number;
+    sent_at: string;
+    status: string;
+    sent_by: string | null;
+  } | Array<{
     id: number;
     sent_at: string;
     status: string;

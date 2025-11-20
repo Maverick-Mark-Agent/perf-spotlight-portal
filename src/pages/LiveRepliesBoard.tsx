@@ -106,8 +106,11 @@ function ReplyCard({ reply }: ReplyCardProps) {
   const timeAgo = formatDistanceToNow(new Date(reply.reply_date), { addSuffix: true });
 
   // Check if we've replied to this conversation
-  const weHaveReplied = reply.sent_replies && reply.sent_replies.length > 0;
-  const replyStatus = reply.sent_replies?.[0];
+  // PostgREST returns object for one-to-one, array for one-to-many
+  const weHaveReplied = reply.sent_replies && (
+    Array.isArray(reply.sent_replies) ? reply.sent_replies.length > 0 : !!reply.sent_replies
+  );
+  const replyStatus = Array.isArray(reply.sent_replies) ? reply.sent_replies[0] : reply.sent_replies;
 
   const getSentimentBadge = () => {
     if (!reply.sentiment) return null;

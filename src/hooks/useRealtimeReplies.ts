@@ -32,6 +32,12 @@ export interface LeadReply {
   handled_at: string | null;
   created_at: string;
   updated_at: string;
+  sent_replies?: Array<{
+    id: number;
+    sent_at: string;
+    status: string;
+    sent_by: string | null;
+  }>;
 }
 
 interface UseRealtimeRepliesOptions {
@@ -58,7 +64,15 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
 
         let query = supabase
           .from('lead_replies')
-          .select('*')
+          .select(`
+            *,
+            sent_replies (
+              id,
+              sent_at,
+              status,
+              sent_by
+            )
+          `)
           .order('reply_date', { ascending: false })
           .limit(limit);
 
@@ -206,7 +220,15 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
     try {
       let query = supabase
         .from('lead_replies')
-        .select('*')
+        .select(`
+          *,
+          sent_replies (
+            id,
+            sent_at,
+            status,
+            sent_by
+          )
+        `)
         .order('reply_date', { ascending: false })
         .limit(limit);
 

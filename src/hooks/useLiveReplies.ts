@@ -17,6 +17,12 @@ export interface LiveReply {
   is_interested: boolean;
   bison_conversation_url: string | null;
   created_at: string;
+  sent_replies?: Array<{
+    id: number;
+    sent_at: string;
+    status: string;
+    sent_by: string | null;
+  }>;
 }
 
 interface UseLiveRepliesReturn {
@@ -116,7 +122,13 @@ export function useLiveReplies(): UseLiveRepliesReturn {
           sentiment,
           is_interested,
           bison_conversation_url,
-          created_at
+          created_at,
+          sent_replies (
+            id,
+            sent_at,
+            status,
+            sent_by
+          )
         `)
         .order('reply_date', { ascending: false })
         .limit(100); // Show last 100 replies

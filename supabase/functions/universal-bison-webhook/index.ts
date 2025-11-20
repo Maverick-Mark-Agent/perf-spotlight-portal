@@ -187,18 +187,14 @@ async function handleLeadReplied(supabase: any, payload: any) {
       : null
 
     // Determine sentiment from Bison's classification
-    // Check BOTH reply.interested and lead.interested (Email Bison might send in either location)
-    const interestedValue = reply?.interested !== undefined
-      ? reply.interested
-      : lead.interested;
+    // Email Bison only sets interested=true for explicit positive signals
+    // Most replies have interested=false or undefined - treat as neutral (not negative)
+    // This prevents misclassifying "I'm available now" type replies as negative
+    const isExplicitlyInterested = reply?.interested === true || lead?.interested === true;
 
-    const sentiment = interestedValue === true
-      ? 'positive'
-      : interestedValue === false
-        ? 'negative'
-        : 'neutral'
+    const sentiment = isExplicitlyInterested ? 'positive' : 'neutral';
 
-    console.log(`📊 Sentiment for ${lead.email}: reply.interested=${reply?.interested}, lead.interested=${lead.interested}, final=${sentiment}`);
+    console.log(`📊 Sentiment for ${lead.email}: reply.interested=${reply?.interested}, lead.interested=${lead.interested}, isExplicitlyInterested=${isExplicitlyInterested}, final=${sentiment}`);
 
     // Extract reply text (use cleaned version or raw)
     const replyText = reply.text_body || reply.body_plain || reply.text || null

@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, RefreshCw, ExternalLink, Search, Filter, Sparkles, Send, X } from 'lucide-react';
+import { Loader2, RefreshCw, ExternalLink, Search, Filter, Sparkles, Send, X, Check, CheckCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -29,6 +29,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { formatDistanceToNow } from 'date-fns';
 
 export default function RepliesDashboard() {
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
@@ -276,10 +277,18 @@ export default function RepliesDashboard() {
                 ? reply.reply_text.slice(0, 100) + (reply.reply_text.length > 100 ? '...' : '')
                 : 'No reply text available';
 
+              // Check if we've replied to this conversation
+              const weHaveReplied = reply.sent_replies && reply.sent_replies.length > 0;
+              const replyStatus = reply.sent_replies?.[0];
+
               return (
                 <Card
                   key={reply.id}
-                  className={`overflow-hidden transition-all cursor-pointer ${
+                  className={`overflow-hidden transition-all cursor-pointer border-l-4 ${
+                    weHaveReplied
+                      ? 'border-l-green-500 opacity-70'
+                      : 'border-l-blue-500'
+                  } ${
                     isExpanded ? 'shadow-lg ring-2 ring-blue-500/50' : 'hover:shadow-md hover:bg-gray-50/50 dark:hover:bg-gray-800/50'
                   }`}
                   onClick={() => setExpandedReplyId(isExpanded ? null : reply.id)}
@@ -290,6 +299,12 @@ export default function RepliesDashboard() {
                         <div className="flex items-center gap-2 mb-1">
                           <CardTitle className="text-base font-semibold truncate">{leadName}</CardTitle>
                           {getSentimentBadge(reply.sentiment)}
+                          {weHaveReplied && replyStatus && (
+                            <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                              <Check className="h-3 w-3 mr-1" />
+                              Replied {formatDistanceToNow(new Date(replyStatus.sent_at), { addSuffix: true })}
+                            </Badge>
+                          )}
                         </div>
 
                         {!isExpanded && (
@@ -313,18 +328,25 @@ export default function RepliesDashboard() {
 
                       {isExpanded && (
                         <div className="flex items-center gap-2 shrink-0">
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedReplyForAI(reply);
-                            }}
-                          >
-                            <Sparkles className="h-4 w-4 mr-1" />
-                            AI Reply
-                          </Button>
+                          {!weHaveReplied ? (
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedReplyForAI(reply);
+                              }}
+                            >
+                              <Sparkles className="h-4 w-4 mr-1" />
+                              AI Reply
+                            </Button>
+                          ) : (
+                            <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Conversation Handled
+                            </Badge>
+                          )}
                           {reply.bison_conversation_url && (
                             <Button
                               variant="ghost"

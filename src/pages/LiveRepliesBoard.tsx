@@ -8,7 +8,7 @@ import { useLiveReplies, type LiveReply } from '@/hooks/useLiveReplies';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Send, RefreshCw, X } from 'lucide-react';
+import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Send, RefreshCw, X, Check, CheckCircle } from 'lucide-react';
 import { useState } from 'react';
 import {
   Dialog,
@@ -105,6 +105,10 @@ function ReplyCard({ reply }: ReplyCardProps) {
 
   const timeAgo = formatDistanceToNow(new Date(reply.reply_date), { addSuffix: true });
 
+  // Check if we've replied to this conversation
+  const weHaveReplied = reply.sent_replies && reply.sent_replies.length > 0;
+  const replyStatus = reply.sent_replies?.[0];
+
   const getSentimentBadge = () => {
     if (!reply.sentiment) return null;
 
@@ -123,18 +127,34 @@ function ReplyCard({ reply }: ReplyCardProps) {
   };
 
   return (
-    <Card className="hover:shadow-md transition-shadow duration-200 border-l-4 border-l-blue-500">
+    <Card className={`hover:shadow-md transition-shadow duration-200 border-l-4 ${
+      weHaveReplied
+        ? 'border-l-green-500 opacity-70'
+        : 'border-l-blue-500'
+    }`}>
       <div className="p-5">
         {/* Header Row */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3 flex-1">
-            <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-              <User className="h-5 w-5 text-blue-600" />
+            <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
+              weHaveReplied ? 'bg-green-100' : 'bg-blue-100'
+            }`}>
+              {weHaveReplied ? (
+                <Check className="h-5 w-5 text-green-600" />
+              ) : (
+                <User className="h-5 w-5 text-blue-600" />
+              )}
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="font-semibold text-gray-900">{leadName}</h3>
                 {getSentimentBadge()}
+                {weHaveReplied && replyStatus && (
+                  <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                    <Check className="h-3 w-3 mr-1" />
+                    Replied {formatDistanceToNow(new Date(replyStatus.sent_at), { addSuffix: true })}
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-4 text-sm text-gray-600">
                 <span className="flex items-center gap-1">
@@ -168,15 +188,22 @@ function ReplyCard({ reply }: ReplyCardProps) {
             <span>{timeAgo}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              className="h-7 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-              onClick={() => setShowComposer(true)}
-            >
-              <Sparkles className="h-3 w-3 mr-1" />
-              AI Reply
-            </Button>
+            {!weHaveReplied ? (
+              <Button
+                variant="default"
+                size="sm"
+                className="h-7 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                onClick={() => setShowComposer(true)}
+              >
+                <Sparkles className="h-3 w-3 mr-1" />
+                AI Reply
+              </Button>
+            ) : (
+              <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Conversation Handled
+              </Badge>
+            )}
             {reply.bison_conversation_url && (
               <Button
                 variant="ghost"

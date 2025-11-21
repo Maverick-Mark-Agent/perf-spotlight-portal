@@ -368,7 +368,7 @@ function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyComposerProp
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-reply-via-bison`,
+        `https://gjqbbgrfhijescaouqkx.supabase.co/functions/v1/send-reply-via-bison`,
         {
           method: 'POST',
           headers: {

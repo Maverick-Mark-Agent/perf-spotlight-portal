@@ -291,7 +291,7 @@ function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyComposerProp
       }
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ai-reply`,
+        `https://gjqbbgrfhijescaouqkx.supabase.co/functions/v1/generate-ai-reply`,
         {
           method: 'POST',
           headers: {

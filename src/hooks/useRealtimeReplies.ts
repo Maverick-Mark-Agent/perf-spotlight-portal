@@ -32,7 +32,13 @@ export interface LeadReply {
   handled_at: string | null;
   created_at: string;
   updated_at: string;
-  sent_replies?: Array<{
+  // PostgREST returns object for one-to-one (UNIQUE constraint), array for one-to-many
+  sent_replies?: {
+    id: number;
+    sent_at: string;
+    status: string;
+    sent_by: string | null;
+  } | Array<{
     id: number;
     sent_at: string;
     status: string;
@@ -92,6 +98,17 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
 
         setData(replies || []);
         console.log(`[Realtime Replies] Loaded ${replies?.length || 0} initial replies`);
+
+        // Debug: Check for sent_replies data
+        const repliesWithSentReplies = replies?.filter(r => r.sent_replies) || [];
+        console.log(`[Realtime Replies] ${repliesWithSentReplies.length} replies have sent_replies data`);
+        if (repliesWithSentReplies.length > 0) {
+          console.log('[Realtime Replies] First reply with sent_replies:', {
+            email: repliesWithSentReplies[0].lead_email,
+            sent_replies: repliesWithSentReplies[0].sent_replies,
+            isArray: Array.isArray(repliesWithSentReplies[0].sent_replies)
+          });
+        }
       } catch (err: any) {
         console.error('[Realtime Replies] Error fetching initial data:', err);
         setError(err.message);

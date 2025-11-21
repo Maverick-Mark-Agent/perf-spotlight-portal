@@ -278,8 +278,22 @@ export default function RepliesDashboard() {
                 : 'No reply text available';
 
               // Check if we've replied to this conversation
-              const weHaveReplied = reply.sent_replies && reply.sent_replies.length > 0;
-              const replyStatus = reply.sent_replies?.[0];
+              // PostgREST returns object for one-to-one (UNIQUE constraint), array for one-to-many
+              const weHaveReplied = reply.sent_replies && (
+                Array.isArray(reply.sent_replies) ? reply.sent_replies.length > 0 : !!reply.sent_replies
+              );
+              const replyStatus = Array.isArray(reply.sent_replies) ? reply.sent_replies[0] : reply.sent_replies;
+
+              // Debug logging for first few replies
+              if (filteredReplies.indexOf(reply) < 3) {
+                console.log(`🔍 RepliesDashboard - Reply for ${reply.lead_email}:`, {
+                  has_sent_replies: !!reply.sent_replies,
+                  sent_replies_type: reply.sent_replies ? (Array.isArray(reply.sent_replies) ? 'array' : 'object') : 'null',
+                  sent_replies_data: reply.sent_replies,
+                  weHaveReplied,
+                  replyStatus
+                });
+              }
 
               return (
                 <Card

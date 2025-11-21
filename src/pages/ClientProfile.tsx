@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, Save, RefreshCw, Building2, CheckCircle2, XCircle, Activity, AlertCircle, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ReplyTemplatesTab } from '@/components/client-profile/ReplyTemplatesTab';
 
 interface ClientFullData {
   // Identity
@@ -361,13 +362,14 @@ const ClientProfile: React.FC = () => {
 
       {/* Tabs */}
       <Tabs defaultValue="general" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="targets">Targets</TabsTrigger>
           <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
           <TabsTrigger value="territory">Territory</TabsTrigger>
           <TabsTrigger value="costs">Costs</TabsTrigger>
+          <TabsTrigger value="templates">Reply Templates</TabsTrigger>
           <TabsTrigger value="api">API & Webhooks</TabsTrigger>
           <TabsTrigger value="advanced">Advanced</TabsTrigger>
         </TabsList>
@@ -1145,6 +1147,14 @@ const ClientProfile: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Reply Templates Tab */}
+        <TabsContent value="templates" className="space-y-4">
+          <ReplyTemplatesTab
+            workspaceName={client.workspace_name}
+            clientDisplayName={client.display_name || client.workspace_name}
+          />
         </TabsContent>
 
         {/* Advanced Tab */}

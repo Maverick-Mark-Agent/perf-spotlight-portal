@@ -4,6 +4,7 @@ import { logger } from '@lib/logger';
 import { AuthenticationError, SelectorNotFoundError } from '@lib/errors';
 import { parse } from 'csv-parse/sync';
 import fs from 'fs/promises';
+import { coleSelectors } from '../config/connectors/cole-selectors';
 
 export interface ColeQueryParams {
   state: string;
@@ -24,22 +25,22 @@ export interface ColeResult {
 
 const SELECTORS = {
   // Login
-  usernameInput: '#username',
-  passwordInput: '#password',
-  submitButton: 'button[type="submit"]',
-  successIndicator: '.dashboard, .search-form',
+  usernameInput: coleSelectors.login.usernameInput,
+  passwordInput: coleSelectors.login.passwordInput,
+  submitButton: coleSelectors.login.submitButton,
+  successIndicator: coleSelectors.login.successIndicator,
 
   // Query building
-  stateDropdown: '#state-select',
-  listTypeRadio: 'input[value="emailing"]',
-  zipInput: '#zip-codes',
-  fieldCheckboxes: '.field-selector input[type="checkbox"]',
+  stateDropdown: coleSelectors.query.stateDropdown,
+  listTypeRadio: coleSelectors.query.listTypeRadio,
+  zipInput: coleSelectors.query.zipInput,
+  fieldCheckboxes: coleSelectors.query.fieldCheckboxes,
 
   // Results
-  resultCount: '.result-count',
-  selectAllCheckbox: '#select-all',
-  downloadButton: '.download-csv',
-  exportFormatRadio: 'input[value="csv"]',
+  resultCount: coleSelectors.results.resultCount,
+  selectAllCheckbox: coleSelectors.results.selectAllCheckbox,
+  downloadButton: coleSelectors.results.downloadButton,
+  exportFormatRadio: coleSelectors.results.exportFormatRadio,
 };
 
 export class ColeConnector {

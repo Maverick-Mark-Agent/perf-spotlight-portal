@@ -3,6 +3,7 @@ import { secrets } from '@lib/secrets';
 import { logger } from '@lib/logger';
 import { parse } from 'csv-parse/sync';
 import fs from 'fs/promises';
+import { claySelectors, clayDynamicSelectors } from '../config/connectors/clay-selectors';
 
 export interface ClayImportParams {
   clientName: string;
@@ -30,53 +31,53 @@ export interface ClayExportParams {
 
 const SELECTORS = {
   // Login
-  emailInput: 'input[name="email"]',
-  passwordInput: 'input[name="password"]',
-  loginButton: 'button[type="submit"]',
-  successIndicator: '.workspace-nav, .folder-tree',
+  emailInput: claySelectors.login.emailInput,
+  passwordInput: claySelectors.login.passwordInput,
+  loginButton: claySelectors.login.loginButton,
+  successIndicator: claySelectors.login.successIndicator,
 
   // Navigation
-  folderLink: (name: string) => `a:has-text("${name}")`,
-  newButton: 'button:has-text("New")',
-  newFolderOption: '[role="menuitem"]:has-text("Folder")',
-  newWorkbookOption: '[role="menuitem"]:has-text("Workbook")',
+  folderLink: clayDynamicSelectors.folderLink,
+  newButton: claySelectors.navigation.newButton,
+  newFolderOption: claySelectors.navigation.newFolderOption,
+  newWorkbookOption: claySelectors.navigation.newWorkbookOption,
 
   // Import
-  addButton: 'button:has-text("Add")',
-  importCSVOption: '[role="menuitem"]:has-text("Import from CSV")',
-  fileInput: 'input[type="file"]',
-  delimiterSelect: 'select[name="delimiter"]',
-  addToCurrentTable: 'input[value="add"]',
-  continueButton: 'button:has-text("Continue")',
-  saveAndRunButton: 'button:has-text("Save and run rows")',
+  addButton: claySelectors.import.addButton,
+  importCSVOption: claySelectors.import.importCSVOption,
+  fileInput: claySelectors.import.fileInput,
+  delimiterSelect: claySelectors.import.delimiterSelect,
+  addToCurrentTable: claySelectors.import.addToCurrentTable,
+  continueButton: claySelectors.import.continueButton,
+  saveAndRunButton: claySelectors.import.saveAndRunButton,
 
   // Formulas
-  columnHeader: (name: string) => `th:has-text("${name}")`,
-  insertColumnRight: 'button:has-text("Insert 1 column right")',
-  formulaOption: '[role="menuitem"]:has-text("Formula")',
-  formulaDescriptionInput: 'textarea[placeholder*="Describe"]',
-  generateFormulaButton: 'button:has-text("Generate Formula")',
-  saveButton: 'button:has-text("Save")',
+  columnHeader: clayDynamicSelectors.columnHeader,
+  insertColumnRight: claySelectors.formulas.insertColumnRight,
+  formulaOption: claySelectors.formulas.formulaOption,
+  formulaDescriptionInput: claySelectors.formulas.formulaDescriptionInput,
+  generateFormulaButton: claySelectors.formulas.generateFormulaButton,
+  saveButton: claySelectors.formulas.saveButton,
 
   // Enrichment
-  addEnrichmentButton: 'button:has-text("Add enrichment")',
-  searchEnrichment: 'input[placeholder*="Search"]',
-  debounceOption: '[role="option"]:has-text("Debounce")',
-  validateEmailOption: '[role="option"]:has-text("Validate Email")',
-  columnMappingInput: 'input[placeholder*="column"]',
-  firstSafeToSendToggle: 'input[name="first_safe_to_send_email"]',
+  addEnrichmentButton: claySelectors.enrichment.addEnrichmentButton,
+  searchEnrichment: claySelectors.enrichment.searchEnrichment,
+  debounceOption: claySelectors.enrichment.debounceOption,
+  validateEmailOption: claySelectors.enrichment.validateEmailOption,
+  columnMappingInput: claySelectors.enrichment.columnMappingInput,
+  firstSafeToSendToggle: claySelectors.enrichment.firstSafeToSendToggle,
 
   // Filters
-  filtersButton: 'button:has-text("Filters")',
-  addFilterButton: 'button:has-text("Add filter")',
-  filterColumn: 'select[name="filter_column"]',
-  filterOperator: 'select[name="filter_operator"]',
-  filterValue: 'input[name="filter_value"]',
+  filtersButton: claySelectors.filters.filtersButton,
+  addFilterButton: claySelectors.filters.addFilterButton,
+  filterColumn: claySelectors.filters.filterColumn,
+  filterOperator: claySelectors.filters.filterOperator,
+  filterValue: claySelectors.filters.filterValue,
 
   // Export
-  actionsButton: 'button:has-text("Actions")',
-  exportOption: '[role="menuitem"]:has-text("Export")',
-  downloadCSVButton: 'button:has-text("Download CSV")',
+  actionsButton: claySelectors.export.actionsButton,
+  exportOption: claySelectors.export.exportOption,
+  downloadCSVButton: claySelectors.export.downloadCSVButton,
 };
 
 export class ClayConnector {

@@ -206,6 +206,9 @@ async function handleLeadReplied(supabase: any, payload: any) {
 
     console.log(`📊 Sentiment for ${lead.email}: reply.interested=${reply?.interested}, reply.automated_reply=${reply?.automated_reply}, lead.interested=${lead.interested}, final=${sentiment}`);
 
+    // Determine if explicitly interested for is_interested field
+    const isExplicitlyInterested = reply?.interested === true || lead?.interested === true;
+
     // Extract reply text (use cleaned version or raw)
     const replyText = reply.text_body || reply.body_plain || reply.text || null
 
@@ -274,7 +277,7 @@ async function handleLeadReplied(supabase: any, payload: any) {
         last_name: lead.last_name,
         company: lead.company,
         title: lead.title,
-        pipeline_stage: 'replied',
+        pipeline_stage: 'interested',  // Map "replied" to "interested" for portal compatibility
         bison_conversation_url: conversationUrl,
         date_received: reply?.date_received || new Date().toISOString(),
       }, {

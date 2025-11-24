@@ -257,8 +257,8 @@ export function identifyProblemAccounts(
       });
     }
 
-    // Zero replies with 100+ sent
-    if (sent >= 100 && replies === 0) {
+    // Zero replies with 150+ sent
+    if (sent >= 150 && replies === 0) {
       problems.push({
         email_address: account.email_address,
         workspace_name: account.workspace_name,
@@ -270,8 +270,8 @@ export function identifyProblemAccounts(
       });
     }
 
-    // Low reply rate (<3%) with 100+ sent
-    if (sent >= 100 && replyRate < 3 && replyRate > 0) {
+    // Low reply rate (<3%) with 150+ sent
+    if (sent >= 150 && replyRate < 3 && replyRate > 0) {
       problems.push({
         email_address: account.email_address,
         workspace_name: account.workspace_name,

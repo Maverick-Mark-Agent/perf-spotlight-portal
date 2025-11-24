@@ -107,9 +107,9 @@ export function useAlerts(accounts: EmailAccount[] | null): AlertsResult {
       });
     }
 
-    // 4. WARNING: Zero Reply Rate with 100+ Sent
+    // 4. WARNING: Zero Reply Rate with 150+ Sent
     const zeroReplyAccounts = accounts.filter(a =>
-      a.emails_sent_count >= 100 &&
+      a.emails_sent_count >= 150 &&
       a.total_replied_count === 0
     );
     if (zeroReplyAccounts.length > 0) {
@@ -117,8 +117,8 @@ export function useAlerts(accounts: EmailAccount[] | null): AlertsResult {
         id: `alert-${++alertId}`,
         type: 'warning',
         category: 'performance',
-        title: `${zeroReplyAccounts.length} Account${zeroReplyAccounts.length === 1 ? '' : 's'} with 0% Reply Rate (100+ Sent)`,
-        description: 'Accounts with no replies after 100+ emails sent may indicate poor email quality or targeting issues.',
+        title: `${zeroReplyAccounts.length} Account${zeroReplyAccounts.length === 1 ? '' : 's'} with 0% Reply Rate (150+ Sent)`,
+        description: 'Accounts with no replies after 150+ emails sent may indicate poor email quality or targeting issues.',
         count: zeroReplyAccounts.length,
         accounts: zeroReplyAccounts.slice(0, 5).map(a => a.email_address),
         actionable: true,

@@ -397,8 +397,8 @@ const SendingAccountsInfrastructure = () => {
           totalRepliesQualifying: 0,    // Sum of replies from accounts with ≥50 sent
           totalSentQualifying: 0,       // Sum of sent from accounts with ≥50 sent
           qualifyingAccountCount: 0,    // Count of accounts with ≥50 sent
-          noReplyAccountCount: 0,       // Count of accounts with 100+ sent, 0 replies
-          totalSentNoReply: 0,          // Total sent from 100+ sent, 0 reply accounts
+          noReplyAccountCount: 0,       // Count of accounts with 150+ sent, 0 replies
+          totalSentNoReply: 0,          // Total sent from 150+ sent, 0 reply accounts
           totalAccountCount: 0,         // Total account count
           avgReplyRate: 0
         };
@@ -426,8 +426,8 @@ const SendingAccountsInfrastructure = () => {
         providerGroups[provider].qualifyingAccountCount += 1;
       }
 
-      // Track accounts with 100+ sent and 0 replies
-      if (totalSent >= 100 && totalReplied === 0) {
+      // Track accounts with 150+ sent and 0 replies
+      if (totalSent >= 150 && totalReplied === 0) {
         providerGroups[provider].noReplyAccountCount += 1;
         providerGroups[provider].totalSentNoReply += totalSent;
       }
@@ -472,7 +472,7 @@ const SendingAccountsInfrastructure = () => {
       case 'Accounts 50+':
         sortedData = providerData.sort((a, b) => b.avgReplyRate - a.avgReplyRate);
         break;
-      case '100+ No Replies':
+      case '150+ No Replies':
         sortedData = providerData.sort((a, b) => b.noReplyAccountCount - a.noReplyAccountCount);
         break;
       case 'Daily Availability':
@@ -569,7 +569,7 @@ const SendingAccountsInfrastructure = () => {
       .sort((a, b) => b.calculatedReplyRate - a.calculatedReplyRate)
       .slice(0, 100);
 
-    // 100+ NO REPLIES: Accounts with 100+ sent and 0 replies, grouped by reseller
+    // 150+ NO REPLIES: Accounts with 150+ sent and 0 replies, grouped by reseller
     const noReplyResellerGroups = {};
     const noReplyEspGroups = {};
     
@@ -577,7 +577,7 @@ const SendingAccountsInfrastructure = () => {
       .filter(account => {
         const totalSent = parseFloat(account.fields['Total Sent']) || 0;
         const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-        return totalSent >= 100 && totalReplied === 0;
+        return totalSent >= 150 && totalReplied === 0;
       })
       .forEach(account => {
         const reseller = account.fields['Tag - Reseller'] || 'Unknown';
@@ -638,7 +638,7 @@ const SendingAccountsInfrastructure = () => {
     const noReplyAllAccounts = accounts.filter(account => {
       const totalSent = parseFloat(account.fields['Total Sent']) || 0;
       const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-      return totalSent >= 100 && totalReplied === 0;
+      return totalSent >= 150 && totalReplied === 0;
     }).sort((a, b) => {
       const aSent = parseFloat(a.fields['Total Sent']) || 0;
       const bSent = parseFloat(b.fields['Total Sent']) || 0;
@@ -651,7 +651,7 @@ const SendingAccountsInfrastructure = () => {
       allAccounts: noReplyAllAccounts,
     };
     
-    console.log('[Performance] Generated 100+ No Replies data:', {
+    console.log('[Performance] Generated 150+ No Replies data:', {
       totalAccounts: noReplyAllAccounts.length,
       resellerGroups: noReplyResellerStats.length,
       espGroups: noReplyEspStats.length,
@@ -895,11 +895,11 @@ const SendingAccountsInfrastructure = () => {
         const totalSent = parseFloat(account.fields['Total Sent']) || 0;
         return totalSent >= 50;
       });
-    } else if (viewType === '100+ No Replies') {
+    } else if (viewType === '150+ No Replies') {
       accountsToExport = provider.accounts.filter(account => {
         const totalSent = parseFloat(account.fields['Total Sent']) || 0;
         const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-        return totalSent >= 100 && totalReplied === 0;
+        return totalSent >= 150 && totalReplied === 0;
       });
     } else {
       accountsToExport = provider.accounts; // All accounts for Total Email Sent
@@ -952,8 +952,8 @@ const SendingAccountsInfrastructure = () => {
     let filenameSuffix;
     if (viewType === 'Accounts 50+') {
       filenameSuffix = '50plus';
-    } else if (viewType === '100+ No Replies') {
-      filenameSuffix = '100plus_no_replies';
+    } else if (viewType === '150+ No Replies') {
+      filenameSuffix = '150plus_no_replies';
     } else {
       filenameSuffix = 'all_accounts';
     }

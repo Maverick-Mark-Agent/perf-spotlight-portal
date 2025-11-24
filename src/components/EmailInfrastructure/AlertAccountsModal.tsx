@@ -74,9 +74,9 @@ export function AlertAccountsModal({
             const bounceRate = a.emails_sent_count > 0 ? a.bounced_count / a.emails_sent_count : 0;
             return bounceRate > 0.05 && a.emails_sent_count > 50;
           });
-        } else if (alert.title.includes('0% Reply Rate') || alert.title.includes('100+')) {
+        } else if (alert.title.includes('0% Reply Rate') || alert.title.includes('150+')) {
           accounts = allAccounts.filter(a =>
-            a.emails_sent_count >= 100 && a.total_replied_count === 0
+            a.emails_sent_count >= 150 && a.total_replied_count === 0
           );
         } else if (alert.title.includes('Low Reply Rate')) {
           accounts = allAccounts.filter(a => {

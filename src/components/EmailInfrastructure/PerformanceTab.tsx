@@ -65,7 +65,7 @@ export function PerformanceTab({
                 <SelectItem value="esp">Stats by ESP</SelectItem>
                 <SelectItem value="top100">Top 100 Performers (50+ sent)</SelectItem>
                 <SelectItem value="accounts50">Accounts 50+ (Enhanced)</SelectItem>
-                <SelectItem value="no-replies">100+ No Replies</SelectItem>
+                <SelectItem value="no-replies">150+ No Replies</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -413,11 +413,11 @@ export function PerformanceTab({
                 </div>
               )}
 
-              {/* VIEW 5: 100+ No Replies */}
+              {/* VIEW 5: 150+ No Replies */}
               {(providerPerformanceView === 'no-replies' || providerPerformanceView === 'no-replies-reseller' || providerPerformanceView === 'no-replies-esp' || providerPerformanceView === 'no-replies-all') && (
                 <div className="space-y-4">
                   {(() => {
-                    console.log('[PerformanceTab] 100+ No Replies view - Debug:', {
+                    console.log('[PerformanceTab] 150+ No Replies view - Debug:', {
                       providerPerformanceView,
                       hasNoReplyData: !!noReplyAccountsData,
                       noReplyDataKeys: noReplyAccountsData ? Object.keys(noReplyAccountsData) : [],
@@ -429,9 +429,9 @@ export function PerformanceTab({
                   })()}
                   {!noReplyAccountsData || !noReplyAccountsData.allAccounts || noReplyAccountsData.allAccounts.length === 0 ? (
                     <div className="text-white/70 text-center py-8">
-                      {!noReplyAccountsData || !noReplyAccountsData.allAccounts 
-                        ? 'Loading 100+ No Replies data...' 
-                        : 'No accounts found with 100+ sent and 0 replies'}
+                      {!noReplyAccountsData || !noReplyAccountsData.allAccounts
+                        ? 'Loading 150+ No Replies data...'
+                        : 'No accounts found with 150+ sent and 0 replies'}
                     </div>
                   ) : (
                     <>
@@ -504,7 +504,7 @@ export function PerformanceTab({
                   {(providerPerformanceView === 'no-replies' || providerPerformanceView === 'no-replies-reseller') && (
                     <div className="space-y-4">
                       {noReplyAccountsData.resellerStats.length === 0 ? (
-                        <div className="text-white/70 text-center py-8">No accounts with 100+ sent and 0 replies</div>
+                        <div className="text-white/70 text-center py-8">No accounts with 150+ sent and 0 replies</div>
                       ) : (
                         noReplyAccountsData.resellerStats.map((reseller: any) => (
                           <Collapsible key={reseller.name} className="bg-white/5 rounded-lg border border-white/10">
@@ -591,7 +591,7 @@ export function PerformanceTab({
                   {providerPerformanceView === 'no-replies-esp' && (
                     <div className="space-y-4">
                       {noReplyAccountsData.espStats.length === 0 ? (
-                        <div className="text-white/70 text-center py-8">No accounts with 100+ sent and 0 replies</div>
+                        <div className="text-white/70 text-center py-8">No accounts with 150+ sent and 0 replies</div>
                       ) : (
                         noReplyAccountsData.espStats.map((esp: any) => (
                           <Collapsible key={esp.name} className="bg-white/5 rounded-lg border border-white/10">
@@ -679,7 +679,7 @@ export function PerformanceTab({
                     <div>
                       <div className="space-y-2 max-h-[600px] overflow-y-auto">
                         {noReplyAccountsData.allAccounts.length === 0 ? (
-                          <div className="text-white/70 text-center py-8">No accounts with 100+ sent and 0 replies</div>
+                          <div className="text-white/70 text-center py-8">No accounts with 150+ sent and 0 replies</div>
                         ) : (
                           noReplyAccountsData.allAccounts.map((account: any, idx: number) => {
                             const totalSent = parseFloat(account.fields['Total Sent']) || 0;

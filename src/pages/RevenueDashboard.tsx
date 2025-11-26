@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   LineChart, Line, AreaChart, Area, Legend
@@ -16,16 +17,19 @@ import {
   RefreshCw,
   Target,
   Activity,
-  AlertCircle
+  AlertCircle,
+  Receipt
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { useToast } from "@/hooks/use-toast";
+import ExpensesTab from "@/components/expenses/ExpensesTab";
 
 const RevenueDashboard = () => {
   const { toast } = useToast();
   const { revenueDashboard, refreshRevenueDashboard } = useDashboardContext();
   const { clients, totals, loading, lastUpdated } = revenueDashboard;
+  const [activeTab, setActiveTab] = useState("overview");
 
   const handleRefresh = async () => {
     await refreshRevenueDashboard(true);
@@ -154,8 +158,22 @@ const RevenueDashboard = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Key Metrics - 6 Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="mb-4">
+            <TabsTrigger value="overview" className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              Revenue Overview
+            </TabsTrigger>
+            <TabsTrigger value="expenses" className="flex items-center gap-2">
+              <Receipt className="h-4 w-4" />
+              Expenses
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-8">
+            {/* Key Metrics - 6 Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -484,6 +502,12 @@ const RevenueDashboard = () => {
             </Table>
           </CardContent>
         </Card>
+          </TabsContent>
+
+          <TabsContent value="expenses">
+            <ExpensesTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

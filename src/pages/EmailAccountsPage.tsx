@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign, Download, AlertTriangle, Info } from "lucide-react";
+import { ArrowLeft, Mail, Users, CheckCircle, XCircle, RefreshCw, Activity, ChevronDown, ChevronRight, DollarSign, Download, AlertTriangle, Info, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Link } from "react-router-dom";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
@@ -15,6 +16,8 @@ import { TabNavigation, type TabValue } from "@/components/EmailInfrastructure/T
 import { OverviewTab } from "@/components/EmailInfrastructure/OverviewTab";
 import { PerformanceTab } from "@/components/EmailInfrastructure/PerformanceTab";
 import { HomeInsuranceTab } from "@/components/EmailInfrastructure/HomeInsuranceTab";
+import { InfraAssistantFAB, InfraAssistantSheet } from "@/components/EmailInfrastructure/assistant";
+import { useInfraAssistant } from "@/hooks/useInfraAssistant";
 
 // Removed localStorage caching due to quota limits with large dataset (4000+ accounts)
 // Data is now fetched fresh on each page load for real-time accuracy
@@ -67,8 +70,21 @@ const SendingAccountsInfrastructure = () => {
   const [clientSendingData, setClientSendingData] = useState([]);
   const [pollingJobStatus, setPollingJobStatus] = useState<any>(null);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+
+  // Global search state
+  const [globalSearchTerm, setGlobalSearchTerm] = useState('');
+  const [expandedSearchAccount, setExpandedSearchAccount] = useState<string | null>(null);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
+  const [noReplyAccountsData, setNoReplyAccountsData] = useState<{
+    resellerStats: any[];
+    espStats: any[];
+    allAccounts: any[];
+  }>({
+    resellerStats: [],
+    espStats: [],
+    allAccounts: []
+  });
 
   // ✅ NEW: Track active sync job for progress bar
   const [activeSyncJobId, setActiveSyncJobId] = useState<string | null>(null);
@@ -76,16 +92,15 @@ const SendingAccountsInfrastructure = () => {
   // ✅ NEW: Tab navigation state
   const [activeTab, setActiveTab] = useState<TabValue>('overview');
 
+  // ✅ NEW: AI Infrastructure Assistant
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const infraAssistant = useInfraAssistant();
+
   // ✅ NEW: Email Provider Performance section state
   const [providerPerformanceView, setProviderPerformanceView] = useState('reseller');
   const [resellerStatsData, setResellerStatsData] = useState([]);
   const [espStatsData, setEspStatsData] = useState([]);
   const [top100AccountsData, setTop100AccountsData] = useState([]);
-  const [noReplyAccountsData, setNoReplyAccountsData] = useState({
-    resellerStats: [],
-    espStats: [],
-    allAccounts: [],
-  });
 
   const formatLastUpdated = () => {
     if (!lastUpdated) return '';
@@ -134,6 +149,18 @@ const SendingAccountsInfrastructure = () => {
 
     return `${diffHours}h ${diffMins}m`;
   };
+
+  // Global search results - search across all accounts
+  const globalSearchResults = useMemo(() => {
+    if (!globalSearchTerm || globalSearchTerm.length < 2) return [];
+    const term = globalSearchTerm.toLowerCase();
+    return emailAccounts.filter(account =>
+      account.fields?.Email?.toLowerCase().includes(term) ||
+      account.fields?.Name?.toLowerCase().includes(term) ||
+      account.fields?.Domain?.toLowerCase().includes(term) ||
+      account.workspace_name?.toLowerCase().includes(term)
+    ).slice(0, 50); // Limit to 50 results for performance
+  }, [emailAccounts, globalSearchTerm]);
 
   // Function to download accounts with 0% reply rate and 50+ emails sent as CSV
   const downloadZeroReplyRateAccounts = useCallback(() => {
@@ -219,10 +246,11 @@ const SendingAccountsInfrastructure = () => {
 
     try {
       setIsManualRefreshing(true);
-      setLoadingMessage('Triggering email sync job...');
+      setLoadingMessage('Starting full email sync (this takes ~4 minutes)...');
 
-      // Trigger the polling job via Edge Function
-      const { data, error } = await supabase.functions.invoke('poll-sender-emails');
+      // ✅ Use the new orchestrator that handles batching automatically
+      // This prevents EarlyDrop crashes by processing workspaces in smaller batches
+      const { data, error } = await supabase.functions.invoke('trigger-full-email-sync');
 
       if (error) {
         console.error('Error triggering manual refresh:', error);
@@ -231,12 +259,25 @@ const SendingAccountsInfrastructure = () => {
         return;
       }
 
-      console.log('Manual refresh triggered successfully:', data);
+      console.log('Full sync completed:', data);
 
-      // ✅ Track the job ID for progress bar
-      if (data?.job_id) {
-        setActiveSyncJobId(data.job_id);
+      // Handle "another sync running" error
+      if (data?.error?.includes('Another sync')) {
+        alert('Another sync is already in progress. Please wait for it to complete.');
+        setIsManualRefreshing(false);
+        return;
       }
+
+      // Show results
+      if (data?.success) {
+        alert(`✅ Sync complete!\n\n${data.total_accounts_synced} accounts synced across ${data.total_workspaces} workspaces\n(${data.successful_batches}/${data.total_batches} batches successful)`);
+        // Refresh dashboard data
+        await refreshInfrastructure(true);
+      } else {
+        alert(`⚠️ Sync completed with errors:\n${data?.error || 'Unknown error'}`);
+      }
+
+      setIsManualRefreshing(false);
 
       // Set cooldown (5 minutes)
       const COOLDOWN_SECONDS = 300; // 5 minutes
@@ -253,8 +294,7 @@ const SendingAccountsInfrastructure = () => {
         });
       }, 1000);
 
-      // Don't wait - let the progress bar handle UI updates
-      setLoadingMessage('Sync in progress - see progress bar below');
+      setLoadingMessage('');
 
     } catch (error) {
       console.error('Error during manual refresh:', error);
@@ -378,6 +418,21 @@ const SendingAccountsInfrastructure = () => {
   const generateEmailProviderData = (accounts) => {
     const providerGroups = {};
     
+    // Debug: Check for Mailr accounts
+    const mailrAccounts = accounts.filter(acc => {
+      const esp = (acc.fields['Tag - Email Provider'] || '').toLowerCase();
+      return esp.includes('mailr');
+    });
+    console.log(`📧 Email Provider Data: Found ${mailrAccounts.length} Mailr accounts out of ${accounts.length} total`);
+    if (mailrAccounts.length > 0) {
+      console.log('Sample Mailr account:', {
+        email: mailrAccounts[0].fields['Email'] || mailrAccounts[0].fields['Email Account'],
+        esp: mailrAccounts[0].fields['Tag - Email Provider'],
+        totalSent: mailrAccounts[0].fields['Total Sent'],
+        totalReplied: mailrAccounts[0].fields['Total Replied']
+      });
+    }
+    
     accounts.forEach(account => {
       // Use Tag - Email Provider field specifically
       const provider = account.fields['Tag - Email Provider'] || 'Unknown';
@@ -397,8 +452,8 @@ const SendingAccountsInfrastructure = () => {
           totalRepliesQualifying: 0,    // Sum of replies from accounts with ≥50 sent
           totalSentQualifying: 0,       // Sum of sent from accounts with ≥50 sent
           qualifyingAccountCount: 0,    // Count of accounts with ≥50 sent
-          noReplyAccountCount: 0,       // Count of accounts with 150+ sent, 0 replies
-          totalSentNoReply: 0,          // Total sent from 150+ sent, 0 reply accounts
+          noReplyAccountCount: 0,       // Count of accounts with 100+ sent, 0 replies
+          totalSentNoReply: 0,          // Total sent from 100+ sent, 0 reply accounts
           totalAccountCount: 0,         // Total account count
           avgReplyRate: 0
         };
@@ -463,6 +518,15 @@ const SendingAccountsInfrastructure = () => {
       };
     }).filter(provider => provider.hasData);
     
+    // Debug: Log all provider names after filtering
+    console.log('📊 Email Provider groups after filtering:', providerData.map(p => p.name).sort());
+    const mailrProvider = providerData.find(p => p.name.toLowerCase().includes('mailr'));
+    if (mailrProvider) {
+      console.log(`✅ Mailr provider found: "${mailrProvider.name}" with ${mailrProvider.totalAccountCount} accounts, ${mailrProvider.noReplyAccountCount} with 100+ no replies`);
+    } else {
+      console.warn('⚠️ Mailr provider NOT found in emailProviderData after filtering');
+    }
+    
     // Sort based on selected view (highest to lowest)
     let sortedData;
     switch (selectedProviderView) {
@@ -472,7 +536,7 @@ const SendingAccountsInfrastructure = () => {
       case 'Accounts 50+':
         sortedData = providerData.sort((a, b) => b.avgReplyRate - a.avgReplyRate);
         break;
-      case '150+ No Replies':
+      case '100+ No Replies':
         sortedData = providerData.sort((a, b) => b.noReplyAccountCount - a.noReplyAccountCount);
         break;
       case 'Daily Availability':
@@ -489,6 +553,31 @@ const SendingAccountsInfrastructure = () => {
   const generateProviderPerformanceData = (accounts) => {
     const resellerGroups = {};
     const espGroups = {};
+
+    // Debug: Log all unique ESP values to help identify Mailr
+    const uniqueESPs = new Set<string>();
+    accounts.forEach(account => {
+      const esp = account.fields['Tag - Email Provider'] || 'Unknown';
+      uniqueESPs.add(esp);
+    });
+    console.log('📊 All ESP values found:', Array.from(uniqueESPs).sort());
+    const mailrVariations = Array.from(uniqueESPs).filter(esp => 
+      esp.toLowerCase().includes('mailr') || esp.toLowerCase().includes('mailer')
+    );
+    if (mailrVariations.length > 0) {
+      console.log('🔍 Mailr variations found:', mailrVariations);
+    } else {
+      console.warn('⚠️ No Mailr ESP found. Checking if Mailr accounts exist...');
+      const mailrAccounts = accounts.filter(acc => {
+        const email = (acc.fields['Email'] || acc.fields['Email Account'] || '').toLowerCase();
+        const name = (acc.fields['Name'] || '').toLowerCase();
+        return email.includes('mailr') || name.includes('mailr');
+      });
+      console.log(`Found ${mailrAccounts.length} accounts with "mailr" in email/name`);
+      if (mailrAccounts.length > 0) {
+        console.log('Sample Mailr account ESP value:', mailrAccounts[0].fields['Tag - Email Provider']);
+      }
+    }
 
     accounts.forEach(account => {
       const reseller = account.fields['Tag - Reseller'] || 'Unknown';
@@ -569,95 +658,98 @@ const SendingAccountsInfrastructure = () => {
       .sort((a, b) => b.calculatedReplyRate - a.calculatedReplyRate)
       .slice(0, 100);
 
-    // 150+ NO REPLIES: Accounts with 150+ sent and 0 replies, grouped by reseller
-    const noReplyResellerGroups = {};
-    const noReplyEspGroups = {};
-
-    accounts
-      .filter(account => {
-        const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-        const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-        return totalSent >= 150 && totalReplied === 0;
-      })
-      .forEach(account => {
-        const reseller = account.fields['Tag - Reseller'] || 'Unknown';
-        const esp = account.fields['Tag - Email Provider'] || 'Unknown';
-        const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-        const bounced = parseFloat(account.fields['Bounced']) || 0;
-
-        // Group by reseller
-        if (!noReplyResellerGroups[reseller]) {
-          noReplyResellerGroups[reseller] = {
-            name: reseller,
-            accounts: [],
-            totalAccounts: 0,
-            totalSent: 0,
-            totalBounces: 0,
-          };
-        }
-        noReplyResellerGroups[reseller].accounts.push(account);
-        noReplyResellerGroups[reseller].totalAccounts += 1;
-        noReplyResellerGroups[reseller].totalSent += totalSent;
-        noReplyResellerGroups[reseller].totalBounces += bounced;
-
-        // Group by ESP
-        if (!noReplyEspGroups[esp]) {
-          noReplyEspGroups[esp] = {
-            name: esp,
-            accounts: [],
-            totalAccounts: 0,
-            totalSent: 0,
-            totalBounces: 0,
-          };
-        }
-        noReplyEspGroups[esp].accounts.push(account);
-        noReplyEspGroups[esp].totalAccounts += 1;
-        noReplyEspGroups[esp].totalSent += totalSent;
-        noReplyEspGroups[esp].totalBounces += bounced;
-      });
-
-    // Calculate metrics and sort by account count (most problematic first)
-    const noReplyResellerStats = Object.values(noReplyResellerGroups)
-      .map((group: any) => ({
-        ...group,
-        bounceRate: group.totalSent > 0 ? ((group.totalBounces / group.totalSent) * 100).toFixed(2) : '0.00',
-      }))
-      .sort((a: any, b: any) => b.totalAccounts - a.totalAccounts);
-
-    const noReplyEspStats = Object.values(noReplyEspGroups)
-      .map((group: any) => ({
-        ...group,
-        bounceRate: group.totalSent > 0 ? ((group.totalBounces / group.totalSent) * 100).toFixed(2) : '0.00',
-      }))
-      .sort((a: any, b: any) => b.totalAccounts - a.totalAccounts);
-
     setResellerStatsData(resellerStats);
     setEspStatsData(espStats);
     setTop100AccountsData(top100);
-    
-    const noReplyAllAccounts = accounts.filter(account => {
+
+    // Generate 150+ No Replies data (filtered accounts with 150+ sent and 0 replies)
+    const noReplyAccounts = accounts.filter(account => {
       const totalSent = parseFloat(account.fields['Total Sent']) || 0;
       const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
       return totalSent >= 150 && totalReplied === 0;
-    }).sort((a, b) => {
-      const aSent = parseFloat(a.fields['Total Sent']) || 0;
-      const bSent = parseFloat(b.fields['Total Sent']) || 0;
-      return bSent - aSent; // Sort by sent count descending
     });
-    
-    const noReplyData = {
+
+    console.log(`📧 150+ No Replies: Found ${noReplyAccounts.length} accounts`);
+    const mailrNoReply = noReplyAccounts.filter(acc => {
+      const esp = (acc.fields['Tag - Email Provider'] || '').toLowerCase();
+      return esp.includes('mailr');
+    });
+    if (mailrNoReply.length > 0) {
+      console.log(`✅ Found ${mailrNoReply.length} Mailr accounts in 150+ No Replies`);
+    }
+
+    // Group by reseller
+    const noReplyResellerGroups = {};
+    noReplyAccounts.forEach(account => {
+      const reseller = account.fields['Tag - Reseller'] || 'Unknown';
+      if (!noReplyResellerGroups[reseller]) {
+        noReplyResellerGroups[reseller] = {
+          name: reseller,
+          accounts: [],
+          totalAccounts: 0,
+          totalSent: 0,
+          totalBounces: 0,
+          bounceRateSum: 0,
+        };
+      }
+      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+      const bounced = parseFloat(account.fields['Bounced']) || 0;
+      const accountBounceRate = totalSent > 0 ? (bounced / totalSent) * 100 : 0;
+      
+      noReplyResellerGroups[reseller].accounts.push(account);
+      noReplyResellerGroups[reseller].totalAccounts += 1;
+      noReplyResellerGroups[reseller].totalSent += totalSent;
+      noReplyResellerGroups[reseller].totalBounces += bounced;
+      noReplyResellerGroups[reseller].bounceRateSum += accountBounceRate;
+    });
+
+    // Group by ESP
+    const noReplyEspGroups = {};
+    noReplyAccounts.forEach(account => {
+      const esp = account.fields['Tag - Email Provider'] || 'Unknown';
+      if (!noReplyEspGroups[esp]) {
+        noReplyEspGroups[esp] = {
+          name: esp,
+          accounts: [],
+          totalAccounts: 0,
+          totalSent: 0,
+          totalBounces: 0,
+          bounceRateSum: 0,
+        };
+      }
+      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+      const bounced = parseFloat(account.fields['Bounced']) || 0;
+      const accountBounceRate = totalSent > 0 ? (bounced / totalSent) * 100 : 0;
+      
+      noReplyEspGroups[esp].accounts.push(account);
+      noReplyEspGroups[esp].totalAccounts += 1;
+      noReplyEspGroups[esp].totalSent += totalSent;
+      noReplyEspGroups[esp].totalBounces += bounced;
+      noReplyEspGroups[esp].bounceRateSum += accountBounceRate;
+    });
+
+    // Calculate metrics
+    const noReplyResellerStats = Object.values(noReplyResellerGroups).map((group: any) => ({
+      ...group,
+      bounceRate: group.totalSent > 0 ? ((group.totalBounces / group.totalSent) * 100).toFixed(2) : '0.00',
+    }));
+
+    const noReplyEspStats = Object.values(noReplyEspGroups).map((group: any) => ({
+      ...group,
+      bounceRate: group.totalSent > 0 ? ((group.totalBounces / group.totalSent) * 100).toFixed(2) : '0.00',
+    }));
+
+    console.log(`📊 ESP groups in 150+ No Replies:`, Object.keys(noReplyEspGroups).sort());
+    const mailrEspInNoReply = Object.keys(noReplyEspGroups).find(esp => esp.toLowerCase().includes('mailr'));
+    if (mailrEspInNoReply) {
+      console.log(`✅ Mailr ESP found in 150+ No Replies: "${mailrEspInNoReply}" with ${noReplyEspGroups[mailrEspInNoReply].totalAccounts} accounts`);
+    }
+
+    setNoReplyAccountsData({
       resellerStats: noReplyResellerStats,
       espStats: noReplyEspStats,
-      allAccounts: noReplyAllAccounts,
-    };
-    
-    console.log('[Performance] Generated 150+ No Replies data:', {
-      totalAccounts: noReplyAllAccounts.length,
-      resellerGroups: noReplyResellerStats.length,
-      espGroups: noReplyEspStats.length,
+      allAccounts: noReplyAccounts
     });
-    
-    setNoReplyAccountsData(noReplyData);
   };
 
   const downloadFailedAccounts = () => {
@@ -895,11 +987,11 @@ const SendingAccountsInfrastructure = () => {
         const totalSent = parseFloat(account.fields['Total Sent']) || 0;
         return totalSent >= 50;
       });
-    } else if (viewType === '150+ No Replies') {
+    } else if (viewType === '100+ No Replies') {
       accountsToExport = provider.accounts.filter(account => {
         const totalSent = parseFloat(account.fields['Total Sent']) || 0;
         const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-        return totalSent >= 150 && totalReplied === 0;
+        return totalSent >= 100 && totalReplied === 0;
       });
     } else {
       accountsToExport = provider.accounts; // All accounts for Total Email Sent
@@ -952,8 +1044,8 @@ const SendingAccountsInfrastructure = () => {
     let filenameSuffix;
     if (viewType === 'Accounts 50+') {
       filenameSuffix = '50plus';
-    } else if (viewType === '150+ No Replies') {
-      filenameSuffix = '150plus_no_replies';
+    } else if (viewType === '100+ No Replies') {
+      filenameSuffix = '100plus_no_replies';
     } else {
       filenameSuffix = 'all_accounts';
     }
@@ -1000,22 +1092,6 @@ const SendingAccountsInfrastructure = () => {
 
     // Don't fetch here - DashboardContext already fetches on mount
     // This prevents duplicate API calls
-  }, []);
-
-  // ✅ NEW: Poll for job status every 30 seconds
-  useEffect(() => {
-    // Fetch immediately on mount
-    fetchPollingJobStatus();
-
-    // Set up polling interval (every 30 seconds)
-    const pollingInterval = setInterval(() => {
-      fetchPollingJobStatus();
-    }, 30000); // 30 seconds
-
-    // Cleanup interval on unmount
-    return () => {
-      clearInterval(pollingInterval);
-    };
   }, []);
 
   useEffect(() => {
@@ -1132,30 +1208,6 @@ const SendingAccountsInfrastructure = () => {
     setAccountTypeData(accountTypeChartData);
   }, [emailAccounts]);
 
-  // ✅ Memoize client chart data for Overview tab to ensure it updates when emailAccounts changes
-  const clientChartData = useMemo(() => {
-    if (emailAccounts.length === 0) return [];
-    
-    const clientCounts: { [key: string]: number } = {};
-    emailAccounts.forEach(account => {
-      const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
-      clientCounts[clientName] = (clientCounts[clientName] || 0) + 1;
-    });
-    
-    const sortedData = Object.entries(clientCounts)
-      .map(([name, count]) => ({ name, count: count as number }))
-      .sort((a, b) => b.count - a.count);
-    
-    return sortedData.map((item, index) => ({
-      ...item,
-      rank: index + 1,
-      fill: index < 3 ? '#10B981' : // Top 3 - bright green
-            index >= sortedData.length - 3 ? '#6B7280' : // Bottom 3 - gray
-            '#3B82F6', // Middle - blue
-      isTop3: index < 3
-    }));
-  }, [emailAccounts]);
-
   return (
     <div className="min-h-screen bg-muted/30">
       {/* Header */}
@@ -1188,6 +1240,24 @@ const SendingAccountsInfrastructure = () => {
               </div>
             </div>
             <div className="flex items-center space-x-3">
+              {/* Global Account Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search accounts..."
+                  value={globalSearchTerm}
+                  onChange={(e) => setGlobalSearchTerm(e.target.value)}
+                  className="pl-9 pr-8 w-64 bg-background/50 border-border/50 focus:border-primary"
+                />
+                {globalSearchTerm && (
+                  <button
+                    onClick={() => setGlobalSearchTerm('')}
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
               <Badge variant="secondary" className="bg-success/10 text-success border-success/40">
                 <Activity className="h-3 w-3 mr-1" />
                 All Systems Operational
@@ -1235,6 +1305,136 @@ const SendingAccountsInfrastructure = () => {
             jobId={activeSyncJobId}
             onComplete={handleSyncComplete}
           />
+        </div>
+      )}
+
+      {/* Global Search Results Panel */}
+      {globalSearchResults.length > 0 && (
+        <div className="max-w-7xl mx-auto px-6 pt-4">
+          <Card className="bg-card/95 backdrop-blur-md border-primary/20">
+            <CardHeader className="py-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Search className="h-4 w-4 text-primary" />
+                  Found {globalSearchResults.length} account{globalSearchResults.length !== 1 ? 's' : ''} matching "{globalSearchTerm}"
+                  {globalSearchResults.length === 50 && <span className="text-muted-foreground">(showing first 50)</span>}
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setGlobalSearchTerm('')}
+                  className="h-6 px-2"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="py-2 max-h-96 overflow-y-auto">
+              <div className="space-y-1">
+                {globalSearchResults.map((account, index) => {
+                  const accountKey = `${account.fields?.Email}-${index}`;
+                  const isExpanded = expandedSearchAccount === accountKey;
+
+                  return (
+                    <div key={index} className="rounded-lg border border-transparent hover:border-border/50 transition-colors">
+                      {/* Main Row */}
+                      <div
+                        onClick={() => setExpandedSearchAccount(isExpanded ? null : accountKey)}
+                        className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors text-sm"
+                      >
+                        <div className="col-span-4 flex items-center gap-2">
+                          {isExpanded ? (
+                            <ChevronDown className="h-3 w-3 text-primary flex-shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                          )}
+                          <Mail className="h-3 w-3 text-primary flex-shrink-0" />
+                          <span className="truncate font-medium">{account.fields?.Email || 'N/A'}</span>
+                        </div>
+                        <div className="col-span-2 text-muted-foreground truncate">
+                          {account.fields?.Domain || 'N/A'}
+                        </div>
+                        <div className="col-span-3 text-muted-foreground truncate">
+                          {account.workspace_name || 'N/A'}
+                        </div>
+                        <div className="col-span-2 text-muted-foreground truncate">
+                          {account.fields?.['Tag - Email Provider'] || 'N/A'}
+                        </div>
+                        <div className="col-span-1 text-right">
+                          <Badge variant="outline" className={`text-xs ${
+                            account.fields?.Status === 'Connected'
+                              ? 'bg-success/20 text-success border-success/40'
+                              : 'bg-warning/20 text-warning border-warning/40'
+                          }`}>
+                            {account.fields?.Status === 'Connected' ? 'On' : 'Off'}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Expanded Details Panel */}
+                      {isExpanded && (
+                        <div className="mx-2 mb-2 p-3 bg-accent/30 rounded-lg border border-border/50">
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            {/* Performance Metrics */}
+                            <div>
+                              <h4 className="font-semibold text-foreground mb-2 flex items-center gap-1">
+                                <Activity className="h-3 w-3" />
+                                Performance
+                              </h4>
+                              <div className="space-y-1 text-muted-foreground">
+                                <div className="flex justify-between">
+                                  <span>Total Sent:</span>
+                                  <span className="font-medium text-foreground">{Number(account.fields?.['Total Sent'] || 0).toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Total Replies:</span>
+                                  <span className="font-medium text-foreground">{Number(account.fields?.['Total Replied'] || 0).toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Reply Rate:</span>
+                                  <span className="font-medium text-foreground">{(Number(account.fields?.['Reply Rate Per Account %'] || 0)).toFixed(1)}%</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Bounced:</span>
+                                  <span className="font-medium text-foreground">{Number(account.fields?.['Bounced'] || 0).toLocaleString()}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Configuration */}
+                            <div>
+                              <h4 className="font-semibold text-foreground mb-2 flex items-center gap-1">
+                                <Info className="h-3 w-3" />
+                                Configuration
+                              </h4>
+                              <div className="space-y-1 text-muted-foreground">
+                                <div className="flex justify-between">
+                                  <span>Daily Limit:</span>
+                                  <span className="font-medium text-foreground">{account.fields?.['Daily Limit'] || 'N/A'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Volume:</span>
+                                  <span className="font-medium text-foreground">{account.fields?.['Volume Per Account'] || 'N/A'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Provider:</span>
+                                  <span className="font-medium text-foreground">{account.fields?.['Tag - Email Provider'] || 'N/A'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Price:</span>
+                                  <span className="font-medium text-foreground">${Number(account.fields?.['Price'] || 0).toFixed(2)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -1338,7 +1538,183 @@ const SendingAccountsInfrastructure = () => {
           />
         )}
 
+        {/* ==================================================================
+            ALL CLIENTS TAB CONTENT
+            ================================================================== */}
 
+        {activeTab === 'all-clients' && (
+          <>
+            {/* Status Overview - 4 Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Card 1: Total Email Accounts Owned */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <Mail className="h-6 w-6 text-dashboard-primary" />
+                <Badge variant="outline" className="bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40">
+                  Active
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.total}</div>
+              <p className="text-white/70 text-sm">{loading ? loadingMessage : 'Total Email Accounts Owned'}</p>
+            </CardContent>
+          </Card>
+
+          {/* Card 2: Average Email Accounts per Client */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <Users className="h-6 w-6 text-dashboard-accent" />
+                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                  Balanced
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">{loading ? '...' : accountStats.avgPerClient}</div>
+              <p className="text-white/70 text-sm">Avg Accounts per Client</p>
+            </CardContent>
+          </Card>
+
+          {/* Card 3: Total Accounts Value */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <DollarSign className="h-6 w-6 text-dashboard-primary" />
+                <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                  Value
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">
+                ${loading ? '...' : accountStats.totalPrice.toFixed(2)}
+              </div>
+              <p className="text-white/70 text-sm">Total Accounts Value</p>
+            </CardContent>
+          </Card>
+
+          {/* Card 4: Average Cost per Client */}
+          <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <DollarSign className="h-6 w-6 text-dashboard-accent" />
+                <Badge variant="outline" className="bg-dashboard-accent/20 text-dashboard-accent border-dashboard-accent/40">
+                  Average
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white mb-1">
+                ${loading ? '...' : accountStats.avgCostPerClient}
+              </div>
+              <p className="text-white/70 text-sm">Avg Cost per Client</p>
+            </CardContent>
+          </Card>
+            </div>
+          </>
+        )}
+
+        {/* Accounts Per Client Bar Chart - Overview Tab Only */}
+        {activeTab === 'overview' && (
+          <div className="mt-8 mb-8">
+            <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-primary" />
+                <span>Total Accounts Per Client</span>
+              </CardTitle>
+              <p className="text-white/60 text-sm mt-1">
+                Distribution of email accounts across all clients
+              </p>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-96 flex items-center justify-center">
+                  <div className="text-white/70">Loading client data...</div>
+                </div>
+              ) : (
+                <div className="h-96">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={(() => {
+                        const clientCounts: { [key: string]: number } = {};
+                        emailAccounts.forEach(account => {
+                          const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
+                          clientCounts[clientName] = (clientCounts[clientName] || 0) + 1;
+                        });
+                        
+                        const sortedData = Object.entries(clientCounts)
+                          .map(([name, count]) => ({ name, count: count as number }))
+                          .sort((a, b) => b.count - a.count); // Show ALL clients
+                        
+                        // Add ranking and colors
+                        return sortedData.map((item, index) => ({
+                          ...item,
+                          rank: index + 1,
+                          fill: index < 3 ? '#10B981' : // Top 3 - bright green
+                                index >= sortedData.length - 3 ? '#6B7280' : // Bottom 3 - gray
+                                '#3B82F6', // Middle - blue
+                          isTop3: index < 3
+                        }));
+                      })()}
+                      margin={{ top: 40, right: 30, left: 20, bottom: 80 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis 
+                        dataKey="name" 
+                        stroke="rgba(255,255,255,0.7)"
+                        angle={-45}
+                        textAnchor="end"
+                        height={100}
+                        interval={0}
+                        fontSize={11}
+                      />
+                      <YAxis stroke="rgba(255,255,255,0.7)" />
+                      <Bar 
+                        dataKey="count" 
+                        radius={[4, 4, 0, 0]}
+                        label={{
+                          position: 'top',
+                          fill: 'white',
+                          fontSize: 12,
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        {(() => {
+                          const clientCounts: { [key: string]: number } = {};
+                          emailAccounts.forEach(account => {
+                            const clientName = account.fields['Client Name (from Client)']?.[0] || 'Unknown Client';
+                            clientCounts[clientName] = (clientCounts[clientName] || 0) + 1;
+                          });
+                          
+                          const sortedData = Object.entries(clientCounts)
+                            .map(([name, count]) => ({ name, count: count as number }))
+                            .sort((a, b) => b.count - a.count); // Show ALL clients
+                          
+                          return sortedData.map((item, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={index < 3 ? '#10B981' : // Top 3 - bright green
+                                    index >= sortedData.length - 3 ? '#6B7280' : // Bottom 3 - gray
+                                    '#3B82F6'} // Middle - blue
+                            />
+                          ));
+                        })()}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  
+                  {/* Top 3 Legend */}
+                  <div className="mt-1"></div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          </div>
+        )}
 
         {/* Simplified Price Analysis - Performance Tab Only */}
         {activeTab === 'performance' && (
@@ -1438,13 +1814,286 @@ const SendingAccountsInfrastructure = () => {
         )}
 
 
+        {/* Client Sending Capacity Comparison - All Clients Tab Only */}
+        {activeTab === 'all-clients' && (
+          <div className="mt-8">
+            <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-accent" />
+                <span>Client Sending Capacity Analysis</span>
+              </CardTitle>
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-white/60 text-sm">Compare maximum sending capacity vs available sending per client</p>
+                <div className="flex items-center space-x-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setInfrastructureFilter('selectedClientForSending', 'Insufficient Capacity')}
+                    className={`border-dashboard-warning/40 text-dashboard-warning hover:bg-dashboard-warning/10 ${
+                      selectedClientForSending === 'Insufficient Capacity' ? 'bg-dashboard-warning/20' : ''
+                    }`}
+                  >
+                    Show Insufficient Capacity
+                  </Button>
+                  <Select value={selectedClientForSending} onValueChange={(value) => setInfrastructureFilter('selectedClientForSending', value)}>
+                    <SelectTrigger className="bg-white/10 border-white/20 text-white w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All Clients">All Clients</SelectItem>
+                      {clientSendingData.map((client, index) => (
+                        <SelectItem key={index} value={client.clientName}>
+                          {client.clientName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-96 flex items-center justify-center">
+                  <div className="text-white/70">Loading capacity analysis...</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {(() => {
+                    if (!clientSendingData || clientSendingData.length === 0) {
+                      return <div className="col-span-3 text-center text-white/70 py-8">No client data available</div>;
+                    }
+
+                    let displayData;
+                    if (selectedClientForSending === 'All Clients') {
+                      displayData = clientSendingData.slice(0, 6); // Show top 6 clients
+                    } else if (selectedClientForSending === 'Insufficient Capacity') {
+                      displayData = clientSendingData.filter(client => (client.medianDailyTarget || 0) > (client.availableSending || 0));
+                    } else {
+                      displayData = clientSendingData.filter(client => client.clientName === selectedClientForSending);
+                    }
+
+                    if (!displayData || displayData.length === 0) {
+                      return <div className="col-span-3 text-center text-white/70 py-8">No clients match the selected filter</div>;
+                    }
+
+                    return displayData.map((client: any, index) => (
+                      <div key={index} className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <div className="flex justify-between items-start mb-3">
+                          <h4 className="text-white font-medium text-sm">{client.clientName}</h4>
+                          <Badge variant="outline" className="bg-dashboard-primary/20 text-dashboard-primary border-dashboard-primary/40">
+                            {client.accountCount} accounts
+                          </Badge>
+                        </div>
+                        
+                        {/* Capacity Bar Chart */}
+                        <div className="space-y-2 mb-3">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-white/70">Maximum Capacity</span>
+                            <span className="text-white font-semibold">{(client.maxSending || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="w-full bg-white/10 rounded-full h-2">
+                            <div 
+                              className="bg-dashboard-success h-2 rounded-full" 
+                              style={{ width: '100%' }}
+                            ></div>
+                          </div>
+                          
+                          <div className="flex justify-between text-xs">
+                            <span className="text-white/70">Available Sending</span>
+                            <span className="text-white font-semibold">{(client.availableSending || 0).toLocaleString()}</span>
+                          </div>
+                          <div className="w-full bg-white/10 rounded-full h-2">
+                            <div 
+                              className="bg-dashboard-accent h-2 rounded-full" 
+                              style={{ width: `${client.utilizationPercentage || 0}%` }}
+                            ></div>
+                          </div>
+                          
+                          <div className="flex justify-between text-xs">
+                            <span className="text-white/70">Daily Target</span>
+                            <span className={`font-semibold ${
+                              (client.medianDailyTarget || 0) > (client.availableSending || 0)
+                                ? 'text-dashboard-warning'
+                                : 'text-dashboard-success'
+                            }`}>
+                              {(client.medianDailyTarget || 0).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="w-full bg-white/10 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${
+                                (client.medianDailyTarget || 0) > (client.availableSending || 0)
+                                  ? 'bg-dashboard-warning'
+                                  : 'bg-dashboard-success'
+                              }`}
+                              style={{
+                                width: `${(client.maxSending || 0) > 0 ? Math.min(((client.medianDailyTarget || 0) / client.maxSending) * 100, 100) : 0}%`
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                        
+                        {/* Metrics */}
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-white/70">Utilization:</span>
+                            <div className="text-white font-semibold">{client.utilizationPercentage || 0}%</div>
+                          </div>
+                          <div>
+                            <span className="text-white/70">Shortfall:</span>
+                            <div className="text-dashboard-warning font-semibold">{client.shortfallPercentage || 0}%</div>
+                          </div>
+                          <div>
+                            <span className="text-white/70">Daily Target:</span>
+                            <div className="text-white font-semibold">{(client.medianDailyTarget || 0).toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <span className="text-white/70">Gap:</span>
+                            <div className="text-dashboard-warning font-semibold">{(client.shortfall || 0).toLocaleString()}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          </div>
+        )}
+
+        {/* Client Accounts View - All Clients Tab Only */}
+        {activeTab === 'all-clients' && (
+          <>
+            <div className="mt-8">
+              <Card className="bg-white/5 backdrop-blur-sm border-white/10">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center space-x-2">
+                <Users className="h-5 w-5 text-dashboard-accent" />
+                <span>Client Email Accounts</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-white/70">Loading client data...</div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {clientAccountsData.map((client: any, index) => (
+                    <div 
+                      key={index}
+                      onClick={() => openClientModal(client)}
+                      className="bg-white/5 rounded-lg p-3 border border-white/10 hover:bg-white/10 cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <ChevronRight className="h-4 w-4 text-white/70" />
+                          <div>
+                            <h3 className="text-white font-medium text-sm">{client.clientName}</h3>
+                            <p className="text-white/60 text-xs">{client.totalAccounts} accounts</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                          <div className="text-right">
+                            <div className="text-white font-medium text-sm">${client.totalPrice.toFixed(2)}</div>
+                            <div className="text-white/60 text-xs">Total Value</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white font-medium text-sm">{client.maxSendingVolume.toLocaleString()}</div>
+                            <div className="text-white/60 text-xs">Max Volume</div>
+                          </div>
+                           <div className="text-right">
+                             <div className="text-white font-medium text-sm">{client.currentAvailableSending.toLocaleString()}</div>
+                             <div className="text-white/60 text-xs">Daily Limit</div>
+                           </div>
+                           <div 
+                             className="text-right cursor-pointer hover:bg-white/10 rounded px-2 py-1 transition-colors"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               openClientModalWithFilter(client, 'zeroReplyRate');
+                             }}
+                           >
+                             <div className={`text-white font-medium text-sm ${parseFloat(client.zeroReplyRatePercentage) > 0 ? 'text-dashboard-warning' : 'text-dashboard-success'}`}>
+                               {client.zeroReplyRatePercentage}%
+                             </div>
+                             <div className="text-white/60 text-xs">0% Reply Rate</div>
+                           </div>
+                          <Badge variant="outline" className={`text-xs ${
+                            client.connectedAccounts === client.totalAccounts 
+                              ? 'bg-dashboard-success/20 text-dashboard-success border-dashboard-success/40'
+                              : 'bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40'
+                          }`}>
+                            {client.connectedAccounts}/{client.totalAccounts}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+              </Card>
+            </div>
+
+            {/* Client Detail Modal */}
+            <Dialog open={isClientModalOpen} onOpenChange={setInfrastructureModalOpen}>
+              <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden bg-gray-900 border-white/20 flex flex-col">
+                <DialogHeader className="flex-shrink-0">
+                  <DialogTitle className="text-white flex items-center space-x-2">
+                    <Users className="h-5 w-5 text-dashboard-accent" />
+                    <span>{selectedClient?.clientName} - Email Accounts</span>
+                    {clientAccountFilter === 'zeroReplyRate' && (
+                      <Badge variant="outline" className="bg-dashboard-warning/20 text-dashboard-warning border-dashboard-warning/40 ml-2">
+                        0% Reply Rate Filter
+                      </Badge>
+                    )}
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="overflow-y-auto flex-1 pr-2 space-y-4">
+                  {selectedClient && (
+                    <ClientAccountsModal 
+                      client={selectedClient}
+                      expandedAccountTypes={expandedAccountTypes}
+                      expandedStatuses={expandedStatuses}
+                      toggleAccountType={toggleAccountType}
+                      toggleStatus={toggleStatus}
+                      filter={clientAccountFilter}
+                    />
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </>
+        )}
       </div>
+
+      {/* AI Infrastructure Assistant */}
+      <InfraAssistantFAB
+        onClick={() => setIsAssistantOpen(true)}
+        hasIssues={infraAssistant.detectedIssues.length > 0}
+        issueCount={infraAssistant.detectedIssues.length}
+      />
+      <InfraAssistantSheet
+        isOpen={isAssistantOpen}
+        onClose={() => setIsAssistantOpen(false)}
+        messages={infraAssistant.messages}
+        isLoading={infraAssistant.isLoading}
+        onSendMessage={infraAssistant.sendMessage}
+        onClearHistory={infraAssistant.clearHistory}
+        detectedIssues={infraAssistant.detectedIssues}
+      />
     </div>
   );
 };
 
 // Separate component for better performance
 const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, toggleAccountType, toggleStatus, filter }) => {
+  // Modal search state
+  const [modalSearchTerm, setModalSearchTerm] = useState('');
+
   // Ensure we have Set objects (convert if needed)
   const accountTypesSet = useMemo(() => {
     if (expandedAccountTypes instanceof Set) return expandedAccountTypes;
@@ -1464,6 +2113,9 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
     return new Set();
   }, [expandedStatuses]);
 
+  // Count total accounts before filtering
+  const totalAccountCount = client.accounts?.length || 0;
+
   const organizedAccounts = useMemo(() => {
     if (!client.accounts || client.accounts.length === 0) {
       return {};
@@ -1482,6 +2134,16 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
       });
     }
 
+    // Apply modal search filter
+    if (modalSearchTerm && modalSearchTerm.length >= 2) {
+      const term = modalSearchTerm.toLowerCase();
+      accountsToProcess = accountsToProcess.filter(account =>
+        account.fields?.Email?.toLowerCase().includes(term) ||
+        account.fields?.Name?.toLowerCase().includes(term) ||
+        account.fields?.Domain?.toLowerCase().includes(term)
+      );
+    }
+
     accountsToProcess.forEach(account => {
       const accountType = account.fields['Account Type'] || 'Unknown';
 
@@ -1497,9 +2159,16 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
     });
 
     return accountsByType;
-  }, [client.accounts, filter]);
+  }, [client.accounts, filter, modalSearchTerm]);
 
-  if (Object.keys(organizedAccounts).length === 0) {
+  // Count filtered accounts
+  const filteredAccountCount = useMemo(() => {
+    return Object.values(organizedAccounts).reduce((total: number, statusGroups: any) => {
+      return total + (statusGroups.Connected?.length || 0) + (statusGroups.Disconnected?.length || 0);
+    }, 0);
+  }, [organizedAccounts]);
+
+  if (Object.keys(organizedAccounts).length === 0 && !modalSearchTerm) {
     return (
       <div className="text-center py-8">
         <p className="text-white/70">No accounts found for this client.</p>
@@ -1509,6 +2178,40 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
 
   return (
     <div className="space-y-3">
+      {/* Modal Search Input */}
+      <div className="flex items-center gap-3 pb-2 border-b border-white/10">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/50" />
+          <Input
+            placeholder="Filter accounts by email, name, or domain..."
+            value={modalSearchTerm}
+            onChange={(e) => setModalSearchTerm(e.target.value)}
+            className="pl-9 pr-8 bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-dashboard-primary"
+          />
+          {modalSearchTerm && (
+            <button
+              onClick={() => setModalSearchTerm('')}
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <div className="text-sm text-white/60">
+          {modalSearchTerm ? (
+            <span>Showing {filteredAccountCount} of {totalAccountCount}</span>
+          ) : (
+            <span>{totalAccountCount} accounts</span>
+          )}
+        </div>
+      </div>
+
+      {/* No results message */}
+      {Object.keys(organizedAccounts).length === 0 && modalSearchTerm && (
+        <div className="text-center py-8">
+          <p className="text-white/70">No accounts match "{modalSearchTerm}"</p>
+        </div>
+      )}
       {Object.entries(organizedAccounts).map(([accountType, statusGroups]) => (
         <Collapsible
           key={accountType}

@@ -16,8 +16,6 @@ import { TabNavigation, type TabValue } from "@/components/EmailInfrastructure/T
 import { OverviewTab } from "@/components/EmailInfrastructure/OverviewTab";
 import { PerformanceTab } from "@/components/EmailInfrastructure/PerformanceTab";
 import { HomeInsuranceTab } from "@/components/EmailInfrastructure/HomeInsuranceTab";
-import { InfraAssistantFAB, InfraAssistantSheet } from "@/components/EmailInfrastructure/assistant";
-import { useInfraAssistant } from "@/hooks/useInfraAssistant";
 
 // Removed localStorage caching due to quota limits with large dataset (4000+ accounts)
 // Data is now fetched fresh on each page load for real-time accuracy
@@ -70,37 +68,36 @@ const SendingAccountsInfrastructure = () => {
   const [clientSendingData, setClientSendingData] = useState([]);
   const [pollingJobStatus, setPollingJobStatus] = useState<any>(null);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
-
-  // Global search state
-  const [globalSearchTerm, setGlobalSearchTerm] = useState('');
-  const [expandedSearchAccount, setExpandedSearchAccount] = useState<string | null>(null);
   const [refreshCooldown, setRefreshCooldown] = useState(0);
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
-  const [noReplyAccountsData, setNoReplyAccountsData] = useState<{
-    resellerStats: any[];
-    espStats: any[];
-    allAccounts: any[];
-  }>({
-    resellerStats: [],
-    espStats: [],
-    allAccounts: []
-  });
 
   // ✅ NEW: Track active sync job for progress bar
   const [activeSyncJobId, setActiveSyncJobId] = useState<string | null>(null);
 
+  // ✅ NEW: Global account search
+  const [globalSearchTerm, setGlobalSearchTerm] = useState('');
+  const [expandedSearchAccount, setExpandedSearchAccount] = useState<string | null>(null);
+
   // ✅ NEW: Tab navigation state
   const [activeTab, setActiveTab] = useState<TabValue>('overview');
-
-  // ✅ NEW: AI Infrastructure Assistant
-  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
-  const infraAssistant = useInfraAssistant();
 
   // ✅ NEW: Email Provider Performance section state
   const [providerPerformanceView, setProviderPerformanceView] = useState('reseller');
   const [resellerStatsData, setResellerStatsData] = useState([]);
   const [espStatsData, setEspStatsData] = useState([]);
   const [top100AccountsData, setTop100AccountsData] = useState([]);
+
+  // ✅ Global search results - filter accounts across all workspaces
+  const globalSearchResults = useMemo(() => {
+    if (!globalSearchTerm || globalSearchTerm.length < 2) return [];
+    const term = globalSearchTerm.toLowerCase();
+    return emailAccounts.filter(account =>
+      account.fields?.Email?.toLowerCase().includes(term) ||
+      account.fields?.Name?.toLowerCase().includes(term) ||
+      account.fields?.Domain?.toLowerCase().includes(term) ||
+      account.workspace_name?.toLowerCase().includes(term)
+    ).slice(0, 50); // Limit results for performance
+  }, [emailAccounts, globalSearchTerm]);
 
   const formatLastUpdated = () => {
     if (!lastUpdated) return '';
@@ -149,18 +146,6 @@ const SendingAccountsInfrastructure = () => {
 
     return `${diffHours}h ${diffMins}m`;
   };
-
-  // Global search results - search across all accounts
-  const globalSearchResults = useMemo(() => {
-    if (!globalSearchTerm || globalSearchTerm.length < 2) return [];
-    const term = globalSearchTerm.toLowerCase();
-    return emailAccounts.filter(account =>
-      account.fields?.Email?.toLowerCase().includes(term) ||
-      account.fields?.Name?.toLowerCase().includes(term) ||
-      account.fields?.Domain?.toLowerCase().includes(term) ||
-      account.workspace_name?.toLowerCase().includes(term)
-    ).slice(0, 50); // Limit to 50 results for performance
-  }, [emailAccounts, globalSearchTerm]);
 
   // Function to download accounts with 0% reply rate and 50+ emails sent as CSV
   const downloadZeroReplyRateAccounts = useCallback(() => {
@@ -246,11 +231,10 @@ const SendingAccountsInfrastructure = () => {
 
     try {
       setIsManualRefreshing(true);
-      setLoadingMessage('Starting full email sync (this takes ~4 minutes)...');
+      setLoadingMessage('Triggering email sync job...');
 
-      // ✅ Use the new orchestrator that handles batching automatically
-      // This prevents EarlyDrop crashes by processing workspaces in smaller batches
-      const { data, error } = await supabase.functions.invoke('trigger-full-email-sync');
+      // Trigger the polling job via Edge Function
+      const { data, error } = await supabase.functions.invoke('poll-sender-emails');
 
       if (error) {
         console.error('Error triggering manual refresh:', error);
@@ -259,25 +243,12 @@ const SendingAccountsInfrastructure = () => {
         return;
       }
 
-      console.log('Full sync completed:', data);
+      console.log('Manual refresh triggered successfully:', data);
 
-      // Handle "another sync running" error
-      if (data?.error?.includes('Another sync')) {
-        alert('Another sync is already in progress. Please wait for it to complete.');
-        setIsManualRefreshing(false);
-        return;
+      // ✅ Track the job ID for progress bar
+      if (data?.job_id) {
+        setActiveSyncJobId(data.job_id);
       }
-
-      // Show results
-      if (data?.success) {
-        alert(`✅ Sync complete!\n\n${data.total_accounts_synced} accounts synced across ${data.total_workspaces} workspaces\n(${data.successful_batches}/${data.total_batches} batches successful)`);
-        // Refresh dashboard data
-        await refreshInfrastructure(true);
-      } else {
-        alert(`⚠️ Sync completed with errors:\n${data?.error || 'Unknown error'}`);
-      }
-
-      setIsManualRefreshing(false);
 
       // Set cooldown (5 minutes)
       const COOLDOWN_SECONDS = 300; // 5 minutes
@@ -294,7 +265,8 @@ const SendingAccountsInfrastructure = () => {
         });
       }, 1000);
 
-      setLoadingMessage('');
+      // Don't wait - let the progress bar handle UI updates
+      setLoadingMessage('Sync in progress - see progress bar below');
 
     } catch (error) {
       console.error('Error during manual refresh:', error);
@@ -418,21 +390,6 @@ const SendingAccountsInfrastructure = () => {
   const generateEmailProviderData = (accounts) => {
     const providerGroups = {};
     
-    // Debug: Check for Mailr accounts
-    const mailrAccounts = accounts.filter(acc => {
-      const esp = (acc.fields['Tag - Email Provider'] || '').toLowerCase();
-      return esp.includes('mailr');
-    });
-    console.log(`📧 Email Provider Data: Found ${mailrAccounts.length} Mailr accounts out of ${accounts.length} total`);
-    if (mailrAccounts.length > 0) {
-      console.log('Sample Mailr account:', {
-        email: mailrAccounts[0].fields['Email'] || mailrAccounts[0].fields['Email Account'],
-        esp: mailrAccounts[0].fields['Tag - Email Provider'],
-        totalSent: mailrAccounts[0].fields['Total Sent'],
-        totalReplied: mailrAccounts[0].fields['Total Replied']
-      });
-    }
-    
     accounts.forEach(account => {
       // Use Tag - Email Provider field specifically
       const provider = account.fields['Tag - Email Provider'] || 'Unknown';
@@ -518,15 +475,6 @@ const SendingAccountsInfrastructure = () => {
       };
     }).filter(provider => provider.hasData);
     
-    // Debug: Log all provider names after filtering
-    console.log('📊 Email Provider groups after filtering:', providerData.map(p => p.name).sort());
-    const mailrProvider = providerData.find(p => p.name.toLowerCase().includes('mailr'));
-    if (mailrProvider) {
-      console.log(`✅ Mailr provider found: "${mailrProvider.name}" with ${mailrProvider.totalAccountCount} accounts, ${mailrProvider.noReplyAccountCount} with 100+ no replies`);
-    } else {
-      console.warn('⚠️ Mailr provider NOT found in emailProviderData after filtering');
-    }
-    
     // Sort based on selected view (highest to lowest)
     let sortedData;
     switch (selectedProviderView) {
@@ -553,31 +501,6 @@ const SendingAccountsInfrastructure = () => {
   const generateProviderPerformanceData = (accounts) => {
     const resellerGroups = {};
     const espGroups = {};
-
-    // Debug: Log all unique ESP values to help identify Mailr
-    const uniqueESPs = new Set<string>();
-    accounts.forEach(account => {
-      const esp = account.fields['Tag - Email Provider'] || 'Unknown';
-      uniqueESPs.add(esp);
-    });
-    console.log('📊 All ESP values found:', Array.from(uniqueESPs).sort());
-    const mailrVariations = Array.from(uniqueESPs).filter(esp => 
-      esp.toLowerCase().includes('mailr') || esp.toLowerCase().includes('mailer')
-    );
-    if (mailrVariations.length > 0) {
-      console.log('🔍 Mailr variations found:', mailrVariations);
-    } else {
-      console.warn('⚠️ No Mailr ESP found. Checking if Mailr accounts exist...');
-      const mailrAccounts = accounts.filter(acc => {
-        const email = (acc.fields['Email'] || acc.fields['Email Account'] || '').toLowerCase();
-        const name = (acc.fields['Name'] || '').toLowerCase();
-        return email.includes('mailr') || name.includes('mailr');
-      });
-      console.log(`Found ${mailrAccounts.length} accounts with "mailr" in email/name`);
-      if (mailrAccounts.length > 0) {
-        console.log('Sample Mailr account ESP value:', mailrAccounts[0].fields['Tag - Email Provider']);
-      }
-    }
 
     accounts.forEach(account => {
       const reseller = account.fields['Tag - Reseller'] || 'Unknown';
@@ -661,95 +584,6 @@ const SendingAccountsInfrastructure = () => {
     setResellerStatsData(resellerStats);
     setEspStatsData(espStats);
     setTop100AccountsData(top100);
-
-    // Generate 150+ No Replies data (filtered accounts with 150+ sent and 0 replies)
-    const noReplyAccounts = accounts.filter(account => {
-      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-      const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
-      return totalSent >= 150 && totalReplied === 0;
-    });
-
-    console.log(`📧 150+ No Replies: Found ${noReplyAccounts.length} accounts`);
-    const mailrNoReply = noReplyAccounts.filter(acc => {
-      const esp = (acc.fields['Tag - Email Provider'] || '').toLowerCase();
-      return esp.includes('mailr');
-    });
-    if (mailrNoReply.length > 0) {
-      console.log(`✅ Found ${mailrNoReply.length} Mailr accounts in 150+ No Replies`);
-    }
-
-    // Group by reseller
-    const noReplyResellerGroups = {};
-    noReplyAccounts.forEach(account => {
-      const reseller = account.fields['Tag - Reseller'] || 'Unknown';
-      if (!noReplyResellerGroups[reseller]) {
-        noReplyResellerGroups[reseller] = {
-          name: reseller,
-          accounts: [],
-          totalAccounts: 0,
-          totalSent: 0,
-          totalBounces: 0,
-          bounceRateSum: 0,
-        };
-      }
-      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-      const bounced = parseFloat(account.fields['Bounced']) || 0;
-      const accountBounceRate = totalSent > 0 ? (bounced / totalSent) * 100 : 0;
-      
-      noReplyResellerGroups[reseller].accounts.push(account);
-      noReplyResellerGroups[reseller].totalAccounts += 1;
-      noReplyResellerGroups[reseller].totalSent += totalSent;
-      noReplyResellerGroups[reseller].totalBounces += bounced;
-      noReplyResellerGroups[reseller].bounceRateSum += accountBounceRate;
-    });
-
-    // Group by ESP
-    const noReplyEspGroups = {};
-    noReplyAccounts.forEach(account => {
-      const esp = account.fields['Tag - Email Provider'] || 'Unknown';
-      if (!noReplyEspGroups[esp]) {
-        noReplyEspGroups[esp] = {
-          name: esp,
-          accounts: [],
-          totalAccounts: 0,
-          totalSent: 0,
-          totalBounces: 0,
-          bounceRateSum: 0,
-        };
-      }
-      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
-      const bounced = parseFloat(account.fields['Bounced']) || 0;
-      const accountBounceRate = totalSent > 0 ? (bounced / totalSent) * 100 : 0;
-      
-      noReplyEspGroups[esp].accounts.push(account);
-      noReplyEspGroups[esp].totalAccounts += 1;
-      noReplyEspGroups[esp].totalSent += totalSent;
-      noReplyEspGroups[esp].totalBounces += bounced;
-      noReplyEspGroups[esp].bounceRateSum += accountBounceRate;
-    });
-
-    // Calculate metrics
-    const noReplyResellerStats = Object.values(noReplyResellerGroups).map((group: any) => ({
-      ...group,
-      bounceRate: group.totalSent > 0 ? ((group.totalBounces / group.totalSent) * 100).toFixed(2) : '0.00',
-    }));
-
-    const noReplyEspStats = Object.values(noReplyEspGroups).map((group: any) => ({
-      ...group,
-      bounceRate: group.totalSent > 0 ? ((group.totalBounces / group.totalSent) * 100).toFixed(2) : '0.00',
-    }));
-
-    console.log(`📊 ESP groups in 150+ No Replies:`, Object.keys(noReplyEspGroups).sort());
-    const mailrEspInNoReply = Object.keys(noReplyEspGroups).find(esp => esp.toLowerCase().includes('mailr'));
-    if (mailrEspInNoReply) {
-      console.log(`✅ Mailr ESP found in 150+ No Replies: "${mailrEspInNoReply}" with ${noReplyEspGroups[mailrEspInNoReply].totalAccounts} accounts`);
-    }
-
-    setNoReplyAccountsData({
-      resellerStats: noReplyResellerStats,
-      espStats: noReplyEspStats,
-      allAccounts: noReplyAccounts
-    });
   };
 
   const downloadFailedAccounts = () => {
@@ -1240,24 +1074,6 @@ const SendingAccountsInfrastructure = () => {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              {/* Global Account Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search accounts..."
-                  value={globalSearchTerm}
-                  onChange={(e) => setGlobalSearchTerm(e.target.value)}
-                  className="pl-9 pr-8 w-64 bg-background/50 border-border/50 focus:border-primary"
-                />
-                {globalSearchTerm && (
-                  <button
-                    onClick={() => setGlobalSearchTerm('')}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
               <Badge variant="secondary" className="bg-success/10 text-success border-success/40">
                 <Activity className="h-3 w-3 mr-1" />
                 All Systems Operational
@@ -1295,134 +1111,136 @@ const SendingAccountsInfrastructure = () => {
                </Button>
             </div>
           </div>
+
+          {/* ✅ Global Account Search Bar */}
+          <div className="mt-4 pt-4 border-t border-border/50">
+            <div className="relative max-w-xl">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search accounts by email, domain, name, or client..."
+                value={globalSearchTerm}
+                onChange={(e) => setGlobalSearchTerm(e.target.value)}
+                className="pl-10 pr-10 bg-background/50 border-border/50 focus:border-primary"
+              />
+              {globalSearchTerm && (
+                <button
+                  onClick={() => {
+                    setGlobalSearchTerm('');
+                    setExpandedSearchAccount(null);
+                  }}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ✅ NEW: Real-time Sync Progress Bar */}
-      {activeSyncJobId && (
-        <div className="max-w-7xl mx-auto px-6 pt-4">
-          <SyncProgressBar
-            jobId={activeSyncJobId}
-            onComplete={handleSyncComplete}
-          />
-        </div>
-      )}
-
-      {/* Global Search Results Panel */}
+      {/* ✅ Global Search Results Panel */}
       {globalSearchResults.length > 0 && (
         <div className="max-w-7xl mx-auto px-6 pt-4">
-          <Card className="bg-card/95 backdrop-blur-md border-primary/20">
-            <CardHeader className="py-3">
+          <Card className="border-primary/20 bg-card/50">
+            <CardHeader className="py-3 px-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Search className="h-4 w-4 text-primary" />
+                <CardTitle className="text-sm font-medium">
                   Found {globalSearchResults.length} account{globalSearchResults.length !== 1 ? 's' : ''} matching "{globalSearchTerm}"
-                  {globalSearchResults.length === 50 && <span className="text-muted-foreground">(showing first 50)</span>}
+                  {globalSearchResults.length === 50 && <span className="text-muted-foreground ml-2">(showing first 50)</span>}
                 </CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setGlobalSearchTerm('')}
-                  className="h-6 px-2"
+                <button
+                  onClick={() => {
+                    setGlobalSearchTerm('');
+                    setExpandedSearchAccount(null);
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
                 >
-                  <X className="h-3 w-3" />
-                </Button>
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             </CardHeader>
-            <CardContent className="py-2 max-h-96 overflow-y-auto">
-              <div className="space-y-1">
+            <CardContent className="p-0">
+              <div className="max-h-96 overflow-y-auto">
                 {globalSearchResults.map((account, index) => {
-                  const accountKey = `${account.fields?.Email}-${index}`;
-                  const isExpanded = expandedSearchAccount === accountKey;
+                  const accountId = account.fields?.Email || `account-${index}`;
+                  const isExpanded = expandedSearchAccount === accountId;
+                  const status = account.fields?.Status || 'Unknown';
+                  const statusColor = status === 'Connected' ? 'text-green-500' : status === 'Disconnected' ? 'text-red-500' : 'text-yellow-500';
 
                   return (
-                    <div key={index} className="rounded-lg border border-transparent hover:border-border/50 transition-colors">
-                      {/* Main Row */}
-                      <div
-                        onClick={() => setExpandedSearchAccount(isExpanded ? null : accountKey)}
-                        className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors text-sm"
+                    <div key={accountId} className="border-b border-border/30 last:border-b-0">
+                      <button
+                        onClick={() => setExpandedSearchAccount(isExpanded ? null : accountId)}
+                        className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/50 transition-colors text-left"
                       >
-                        <div className="col-span-4 flex items-center gap-2">
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
                           {isExpanded ? (
-                            <ChevronDown className="h-3 w-3 text-primary flex-shrink-0" />
+                            <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           ) : (
-                            <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                           )}
-                          <Mail className="h-3 w-3 text-primary flex-shrink-0" />
-                          <span className="truncate font-medium">{account.fields?.Email || 'N/A'}</span>
+                          <div className="flex-1 min-w-0 grid grid-cols-4 gap-4">
+                            <span className="text-sm font-medium truncate">{account.fields?.Email || 'N/A'}</span>
+                            <span className="text-sm text-muted-foreground truncate">{account.fields?.Domain || 'N/A'}</span>
+                            <span className="text-sm text-muted-foreground truncate">{account.workspace_name || 'N/A'}</span>
+                            <span className={`text-sm font-medium ${statusColor}`}>{status}</span>
+                          </div>
                         </div>
-                        <div className="col-span-2 text-muted-foreground truncate">
-                          {account.fields?.Domain || 'N/A'}
-                        </div>
-                        <div className="col-span-3 text-muted-foreground truncate">
-                          {account.workspace_name || 'N/A'}
-                        </div>
-                        <div className="col-span-2 text-muted-foreground truncate">
-                          {account.fields?.['Tag - Email Provider'] || 'N/A'}
-                        </div>
-                        <div className="col-span-1 text-right">
-                          <Badge variant="outline" className={`text-xs ${
-                            account.fields?.Status === 'Connected'
-                              ? 'bg-success/20 text-success border-success/40'
-                              : 'bg-warning/20 text-warning border-warning/40'
-                          }`}>
-                            {account.fields?.Status === 'Connected' ? 'On' : 'Off'}
-                          </Badge>
-                        </div>
-                      </div>
+                      </button>
 
-                      {/* Expanded Details Panel */}
+                      {/* Expanded Account Details */}
                       {isExpanded && (
-                        <div className="mx-2 mb-2 p-3 bg-accent/30 rounded-lg border border-border/50">
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            {/* Performance Metrics */}
+                        <div className="px-4 pb-4 pt-2 bg-muted/30">
+                          <div className="grid grid-cols-2 gap-6 pl-8">
+                            {/* Performance Column */}
                             <div>
-                              <h4 className="font-semibold text-foreground mb-2 flex items-center gap-1">
-                                <Activity className="h-3 w-3" />
-                                Performance
-                              </h4>
-                              <div className="space-y-1 text-muted-foreground">
+                              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Performance</h4>
+                              <div className="space-y-1.5 text-sm">
                                 <div className="flex justify-between">
-                                  <span>Total Sent:</span>
-                                  <span className="font-medium text-foreground">{Number(account.fields?.['Total Sent'] || 0).toLocaleString()}</span>
+                                  <span className="text-muted-foreground">Total Sent:</span>
+                                  <span className="font-medium">{account.fields?.['Total Sent'] || '0'}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span>Total Replies:</span>
-                                  <span className="font-medium text-foreground">{Number(account.fields?.['Total Replied'] || 0).toLocaleString()}</span>
+                                  <span className="text-muted-foreground">Total Replies:</span>
+                                  <span className="font-medium">{account.fields?.['Total Replied'] || '0'}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span>Reply Rate:</span>
-                                  <span className="font-medium text-foreground">{(Number(account.fields?.['Reply Rate Per Account %'] || 0)).toFixed(1)}%</span>
+                                  <span className="text-muted-foreground">Reply Rate:</span>
+                                  <span className="font-medium">
+                                    {typeof account.fields?.['Reply Rate Per Account %'] === 'number'
+                                      ? `${account.fields['Reply Rate Per Account %'].toFixed(1)}%`
+                                      : account.fields?.['Reply Rate Per Account %'] || '0%'}
+                                  </span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span>Bounced:</span>
-                                  <span className="font-medium text-foreground">{Number(account.fields?.['Bounced'] || 0).toLocaleString()}</span>
+                                  <span className="text-muted-foreground">Bounced:</span>
+                                  <span className="font-medium">{account.fields?.Bounced || '0'}</span>
                                 </div>
                               </div>
                             </div>
 
-                            {/* Configuration */}
+                            {/* Configuration Column */}
                             <div>
-                              <h4 className="font-semibold text-foreground mb-2 flex items-center gap-1">
-                                <Info className="h-3 w-3" />
-                                Configuration
-                              </h4>
-                              <div className="space-y-1 text-muted-foreground">
+                              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Configuration</h4>
+                              <div className="space-y-1.5 text-sm">
                                 <div className="flex justify-between">
-                                  <span>Daily Limit:</span>
-                                  <span className="font-medium text-foreground">{account.fields?.['Daily Limit'] || 'N/A'}</span>
+                                  <span className="text-muted-foreground">Daily Limit:</span>
+                                  <span className="font-medium">{account.fields?.['Daily Limit'] || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span>Volume:</span>
-                                  <span className="font-medium text-foreground">{account.fields?.['Volume Per Account'] || 'N/A'}</span>
+                                  <span className="text-muted-foreground">Volume/Account:</span>
+                                  <span className="font-medium">{account.fields?.['Volume Per Account'] || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span>Provider:</span>
-                                  <span className="font-medium text-foreground">{account.fields?.['Tag - Email Provider'] || 'N/A'}</span>
+                                  <span className="text-muted-foreground">Provider:</span>
+                                  <span className="font-medium">{account.fields?.['Email Provider'] || 'N/A'}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                  <span>Price:</span>
-                                  <span className="font-medium text-foreground">${Number(account.fields?.['Price'] || 0).toFixed(2)}</span>
+                                  <span className="text-muted-foreground">Price:</span>
+                                  <span className="font-medium">
+                                    {account.fields?.Price ? `$${parseFloat(account.fields.Price).toFixed(2)}` : 'N/A'}
+                                  </span>
                                 </div>
                               </div>
                             </div>
@@ -1435,6 +1253,16 @@ const SendingAccountsInfrastructure = () => {
               </div>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* ✅ NEW: Real-time Sync Progress Bar */}
+      {activeSyncJobId && (
+        <div className="max-w-7xl mx-auto px-6 pt-4">
+          <SyncProgressBar
+            jobId={activeSyncJobId}
+            onComplete={handleSyncComplete}
+          />
         </div>
       )}
 
@@ -1531,7 +1359,6 @@ const SendingAccountsInfrastructure = () => {
             resellerStatsData={resellerStatsData}
             espStatsData={espStatsData}
             top100AccountsData={top100AccountsData}
-            noReplyAccountsData={noReplyAccountsData}
             loading={loading}
             expandedProviders={expandedProviders}
             toggleProvider={toggleProvider}
@@ -2069,31 +1896,12 @@ const SendingAccountsInfrastructure = () => {
           </>
         )}
       </div>
-
-      {/* AI Infrastructure Assistant */}
-      <InfraAssistantFAB
-        onClick={() => setIsAssistantOpen(true)}
-        hasIssues={infraAssistant.detectedIssues.length > 0}
-        issueCount={infraAssistant.detectedIssues.length}
-      />
-      <InfraAssistantSheet
-        isOpen={isAssistantOpen}
-        onClose={() => setIsAssistantOpen(false)}
-        messages={infraAssistant.messages}
-        isLoading={infraAssistant.isLoading}
-        onSendMessage={infraAssistant.sendMessage}
-        onClearHistory={infraAssistant.clearHistory}
-        detectedIssues={infraAssistant.detectedIssues}
-      />
     </div>
   );
 };
 
 // Separate component for better performance
 const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, toggleAccountType, toggleStatus, filter }) => {
-  // Modal search state
-  const [modalSearchTerm, setModalSearchTerm] = useState('');
-
   // Ensure we have Set objects (convert if needed)
   const accountTypesSet = useMemo(() => {
     if (expandedAccountTypes instanceof Set) return expandedAccountTypes;
@@ -2113,9 +1921,6 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
     return new Set();
   }, [expandedStatuses]);
 
-  // Count total accounts before filtering
-  const totalAccountCount = client.accounts?.length || 0;
-
   const organizedAccounts = useMemo(() => {
     if (!client.accounts || client.accounts.length === 0) {
       return {};
@@ -2134,16 +1939,6 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
       });
     }
 
-    // Apply modal search filter
-    if (modalSearchTerm && modalSearchTerm.length >= 2) {
-      const term = modalSearchTerm.toLowerCase();
-      accountsToProcess = accountsToProcess.filter(account =>
-        account.fields?.Email?.toLowerCase().includes(term) ||
-        account.fields?.Name?.toLowerCase().includes(term) ||
-        account.fields?.Domain?.toLowerCase().includes(term)
-      );
-    }
-
     accountsToProcess.forEach(account => {
       const accountType = account.fields['Account Type'] || 'Unknown';
 
@@ -2159,16 +1954,9 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
     });
 
     return accountsByType;
-  }, [client.accounts, filter, modalSearchTerm]);
+  }, [client.accounts, filter]);
 
-  // Count filtered accounts
-  const filteredAccountCount = useMemo(() => {
-    return Object.values(organizedAccounts).reduce((total: number, statusGroups: any) => {
-      return total + (statusGroups.Connected?.length || 0) + (statusGroups.Disconnected?.length || 0);
-    }, 0);
-  }, [organizedAccounts]);
-
-  if (Object.keys(organizedAccounts).length === 0 && !modalSearchTerm) {
+  if (Object.keys(organizedAccounts).length === 0) {
     return (
       <div className="text-center py-8">
         <p className="text-white/70">No accounts found for this client.</p>
@@ -2178,40 +1966,6 @@ const ClientAccountsModal = ({ client, expandedAccountTypes, expandedStatuses, t
 
   return (
     <div className="space-y-3">
-      {/* Modal Search Input */}
-      <div className="flex items-center gap-3 pb-2 border-b border-white/10">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/50" />
-          <Input
-            placeholder="Filter accounts by email, name, or domain..."
-            value={modalSearchTerm}
-            onChange={(e) => setModalSearchTerm(e.target.value)}
-            className="pl-9 pr-8 bg-white/5 border-white/10 text-white placeholder:text-white/40 focus:border-dashboard-primary"
-          />
-          {modalSearchTerm && (
-            <button
-              onClick={() => setModalSearchTerm('')}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-white/50 hover:text-white"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-        <div className="text-sm text-white/60">
-          {modalSearchTerm ? (
-            <span>Showing {filteredAccountCount} of {totalAccountCount}</span>
-          ) : (
-            <span>{totalAccountCount} accounts</span>
-          )}
-        </div>
-      </div>
-
-      {/* No results message */}
-      {Object.keys(organizedAccounts).length === 0 && modalSearchTerm && (
-        <div className="text-center py-8">
-          <p className="text-white/70">No accounts match "{modalSearchTerm}"</p>
-        </div>
-      )}
       {Object.entries(organizedAccounts).map(([accountType, statusGroups]) => (
         <Collapsible
           key={accountType}

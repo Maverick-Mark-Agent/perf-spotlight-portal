@@ -1,6 +1,7 @@
 import { BrowserController, AuthManager } from '@agents/browser';
 import { secrets } from '@lib/secrets';
 import { logger } from '@lib/logger';
+import { bisonSelectors, bisonDynamicSelectors } from '../config/connectors/bison-selectors';
 
 export interface BisonImportParams {
   workspace: string;
@@ -36,15 +37,15 @@ export class BisonConnector {
     await this.authManager.login(
       { username: secrets.bison.email, password: secrets.bison.password },
       {
-        usernameInput: 'input[name="email"]',
-        passwordInput: 'input[name="password"]',
-        submitButton: 'button[type="submit"]',
-        successIndicator: '.workspace-selector',
+        usernameInput: bisonSelectors.login.emailInput,
+        passwordInput: bisonSelectors.login.passwordInput,
+        submitButton: bisonSelectors.login.submitButton,
+        successIndicator: bisonSelectors.login.successIndicator,
       }
     );
 
     // Navigate to workspace
-    await page.click(`a:has-text("${workspace}")`);
+    await page.click(bisonDynamicSelectors.workspaceLink(workspace));
     await page.waitForTimeout(1000);
 
     logger.info('Successfully connected to Bison workspace');
@@ -55,15 +56,15 @@ export class BisonConnector {
 
     const page = this.browser.getPage();
 
-    await page.click('a:has-text("Contacts")');
-    await page.click('button:has-text("Import new contacts")');
+    await page.click(bisonSelectors.navigation.contactsTab);
+    await page.click(bisonSelectors.contacts.importButton);
 
     // Upload CSV
-    const fileInput = await page.$('input[type="file"]');
+    const fileInput = await page.$(bisonSelectors.contacts.fileInput);
     await fileInput?.setInputFiles(params.csvPath);
 
     // Name the list
-    await page.fill('input[name="list_name"]', params.listName);
+    await page.fill(bisonSelectors.contacts.listNameInput, params.listName);
 
     // Map fields
     for (const [csvField, bisonField] of Object.entries(params.fieldMapping)) {
@@ -71,12 +72,12 @@ export class BisonConnector {
     }
 
     // Submit import
-    await page.click('button:has-text("Import")');
+    await page.click(bisonSelectors.contacts.importSubmitButton);
 
     // Wait for completion
-    await page.waitForSelector('.import-complete', { timeout: 60000 });
+    await page.waitForSelector(bisonSelectors.contacts.importCompleteIndicator, { timeout: 60000 });
 
-    const countText = await page.textContent('.contact-count');
+    const countText = await page.textContent(bisonSelectors.contacts.contactCount);
     const count = parseInt(countText?.match(/\d+/)?.[0] || '0');
 
     logger.info('Contacts imported successfully', { count });
@@ -87,13 +88,13 @@ export class BisonConnector {
     logger.info('Finding campaign', { titlePattern });
 
     const page = this.browser.getPage();
-    await page.click('a:has-text("Campaigns")');
+    await page.click(bisonSelectors.navigation.campaignsTab);
 
     // Search for campaign
-    await page.fill('input[placeholder*="Search"]', titlePattern);
+    await page.fill(bisonSelectors.campaigns.searchInput, titlePattern);
     await page.waitForTimeout(1000);
 
-    const campaignLink = await page.$('a.campaign-title');
+    const campaignLink = await page.$(bisonSelectors.campaigns.campaignLink);
     if (!campaignLink) {
       logger.warn('Campaign not found', { titlePattern });
       return null;
@@ -110,12 +111,12 @@ export class BisonConnector {
 
     const page = this.browser.getPage();
 
-    await page.click(`a[data-campaign-id="${campaignId}"]`);
-    await page.click('button:has-text("Actions")');
-    await page.click('button:has-text("Add more contacts")');
+    await page.click(bisonDynamicSelectors.campaignById(campaignId));
+    await page.click(bisonSelectors.campaigns.actionsButton);
+    await page.click(bisonSelectors.campaigns.addContactsOption);
 
-    await page.click(`input[value="${listName}"]`);
-    await page.click('button:has-text("Add")');
+    await page.click(bisonDynamicSelectors.listCheckbox(listName));
+    await page.click(bisonSelectors.campaigns.addButton);
 
     logger.info('Contacts added to campaign successfully');
   }
@@ -125,12 +126,12 @@ export class BisonConnector {
 
     const page = this.browser.getPage();
 
-    await page.click(`a[data-campaign-id="${campaignId}"]`);
-    await page.click('button:has-text("Actions")');
-    await page.click('button:has-text("Rename")');
+    await page.click(bisonDynamicSelectors.campaignById(campaignId));
+    await page.click(bisonSelectors.campaigns.actionsButton);
+    await page.click(bisonSelectors.campaigns.renameOption);
 
-    await page.fill('input[name="campaign_title"]', newTitle);
-    await page.click('button:has-text("Save")');
+    await page.fill(bisonSelectors.campaigns.campaignTitle, newTitle);
+    await page.click(bisonSelectors.campaigns.saveButton);
 
     logger.info('Campaign renamed successfully');
   }

@@ -5,52 +5,131 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Email Bison API credentials
+// Email Bison API credentials (Maverick only)
 const MAVERICK_BISON_API_KEY = Deno.env.get('MAVERICK_BISON_API_KEY')!
-const LONG_RUN_BISON_API_KEY = Deno.env.get('LONG_RUN_BISON_API_KEY')!
 const MAVERICK_BASE_URL = 'https://send.maverickmarketingllc.com/api'
-const LONGRUN_BASE_URL = 'https://send.longrun.agency/api'
+const EMAIL_BISON_PAGE_SIZE = 15 // API returns max 15 accounts per page
 
-// Processing limits (to prevent timeouts)
+// Processing limits (to prevent timeouts and EarlyDrop crashes)
 const MAX_FUNCTION_RUNTIME_MS = 9 * 60 * 1000 // 9 minutes (Edge Function has 10min limit)
 const WORKSPACE_TIMEOUT_MS = 30 * 1000 // 30 seconds max per workspace (prevents hanging on bad API keys)
-const WORKSPACE_BATCH_DELAY_MS = 100 // Small delay between workspaces to avoid rate limits
-const PARALLEL_WORKSPACE_COUNT = 1 // Process 1 workspace at a time to prevent hangs from blocking others
+const PARALLEL_WORKSPACE_COUNT = 1 // Must be 1 with shared API key (stateful workspace switching)
+const PROGRESS_UPDATE_INTERVAL = 5 // Update progress every N workspaces (reduce DB writes)
+const MAX_API_RETRIES = 3 // Retry failed API calls up to 3 times
+const DEFAULT_BATCH_SIZE = 8 // Process only 8 workspaces per invocation to avoid EarlyDrop
+
+// Helper function: Retry API calls with exponential backoff
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = MAX_API_RETRIES
+): Promise<Response> {
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options)
+
+      // Success - return immediately
+      if (response.ok) return response
+
+      // Client error (4xx) - don't retry
+      if (response.status >= 400 && response.status < 500) {
+        return response
+      }
+
+      // Server error (5xx) - retry with backoff
+      if (attempt < maxRetries - 1) {
+        const backoffMs = Math.pow(2, attempt) * 1000 // 1s, 2s, 4s
+        console.warn(`  ⚠️  API error ${response.status}, retrying in ${backoffMs}ms... (attempt ${attempt + 1}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, backoffMs))
+        continue
+      }
+
+      return response
+    } catch (err: any) {
+      lastError = err
+      if (attempt < maxRetries - 1) {
+        const backoffMs = Math.pow(2, attempt) * 1000
+        console.warn(`  ⚠️  Network error, retrying in ${backoffMs}ms... (attempt ${attempt + 1}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, backoffMs))
+      }
+    }
+  }
+
+  throw lastError || new Error('Max retries exceeded')
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
+  // Parse batch parameters from request body
+  let batchOffset = 0
+  let batchSize = DEFAULT_BATCH_SIZE
+  let skipViewRefresh = false
+
+  try {
+    if (req.method === 'POST') {
+      const body = await req.json().catch(() => ({}))
+      batchOffset = body.batch_offset ?? 0
+      batchSize = body.batch_size ?? DEFAULT_BATCH_SIZE
+      skipViewRefresh = body.skip_view_refresh ?? false // Skip if another batch will run after
+    }
+  } catch {
+    // Use defaults
+  }
+
   // Generate unique job ID
   const jobId = crypto.randomUUID()
-  console.log(`🆔 Starting job ${jobId}`)
+  console.log(`🆔 Starting job ${jobId} (batch_offset: ${batchOffset}, batch_size: ${batchSize})`)
 
-  // Start background processing (don't await!)
-  processInBackground(jobId).catch(err => {
-    console.error(`❌ Background job ${jobId} failed:`, err)
-  })
+  // ✅ CHANGED: Await the processing instead of running in background
+  // Supabase Edge Functions don't support true background processing - they terminate
+  // after the response is sent, causing "EarlyDrop" errors
+  try {
+    const result = await processInBackground(jobId, batchOffset, batchSize, skipViewRefresh)
 
-  // Return immediately (< 1 second) to avoid gateway timeout
-  return new Response(
-    JSON.stringify({
-      success: true,
-      job_id: jobId,
-      status: 'accepted',
-      message: 'Email sync started in background. Check polling_job_status table for progress.',
-      estimated_duration_minutes: 3
-    }),
-    {
-      status: 202, // 202 Accepted
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    }
-  )
+    return new Response(
+      JSON.stringify({
+        success: true,
+        job_id: jobId,
+        status: 'completed',
+        message: 'Email sync completed successfully',
+        ...result
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  } catch (err: any) {
+    console.error(`❌ Job ${jobId} failed:`, err)
+    return new Response(
+      JSON.stringify({
+        success: false,
+        job_id: jobId,
+        status: 'failed',
+        error: err.message
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
+  }
 })
 
 // Background processing function
-async function processInBackground(jobId: string) {
+async function processInBackground(
+  jobId: string,
+  batchOffset: number = 0,
+  batchSize: number = DEFAULT_BATCH_SIZE,
+  skipViewRefresh: boolean = false
+) {
   const startTime = Date.now()
-  let lockReleaseTimer: number | undefined // ✅ FIX: Declare at function scope so finally block can access it
+  let usingTableLock = false // Track which lock type we're using
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -59,50 +138,55 @@ async function processInBackground(jobId: string) {
 
     console.log('🔄 Starting email account polling for all workspaces...')
 
-    // ✅ CONCURRENCY CONTROL: Try to acquire advisory lock
-    // This prevents multiple sync jobs from running simultaneously
-    const SYNC_LOCK_ID = 123456789 // Unique integer for poll-sender-emails job
-    console.log('🔒 Attempting to acquire advisory lock...')
+    // ✅ CONCURRENCY CONTROL: Try to acquire TABLE-BASED lock
+    // Table-based locks are more reliable than advisory locks with connection pooling
+    // If function crashes (EarlyDrop), the lock auto-expires after 10 minutes
+    const SYNC_LOCK_ID = 'poll-sender-emails'
+    console.log('🔒 Attempting to acquire table-based sync lock...')
 
     const { data: lockAcquired, error: lockError } = await supabase
-      .rpc('try_advisory_lock', { lock_id: SYNC_LOCK_ID })
+      .rpc('try_sync_lock', { p_lock_id: SYNC_LOCK_ID, p_job_id: jobId, p_stale_threshold_minutes: 10 })
 
     if (lockError) {
-      console.error('❌ Failed to check advisory lock:', lockError.message)
-      throw new Error(`Lock check failed: ${lockError.message}`)
-    }
+      // Fallback to advisory lock if table-based lock not yet migrated
+      console.warn('⚠️ Table-based lock not available, trying advisory lock...', lockError.message)
+      const { data: advisoryLock, error: advisoryError } = await supabase
+        .rpc('try_advisory_lock', { lock_id: 123456789 })
 
-    if (!lockAcquired) {
-      console.warn('⚠️  Another sync is already running. Exiting gracefully.')
-      console.warn('⚠️  Lock ID:', SYNC_LOCK_ID)
-      console.warn('⚠️  This is normal if a sync was recently triggered from another source.')
-      return // Exit without creating job status - another sync is handling it
-    }
-
-    console.log('✅ Advisory lock acquired successfully')
-
-    // 🔧 CRASH PROTECTION: Schedule preemptive lock release before edge function timeout
-    // Edge functions timeout at 10 minutes - release lock at 9 minutes as safety net
-    // This ensures lock is released even if function crashes without executing finally block
-    lockReleaseTimer = setTimeout(async () => {
-      console.warn('⚠️  Function approaching 9-minute mark, releasing lock preemptively')
-      try {
-        await supabase.rpc('release_advisory_lock', { lock_id: SYNC_LOCK_ID })
-        console.log('🔓 Preemptive lock release successful')
-      } catch (err) {
-        console.error('❌ Preemptive lock release failed:', err)
+      if (advisoryError || !advisoryLock) {
+        console.error('❌ Failed to acquire any lock')
+        throw new Error(`Lock acquisition failed: ${advisoryError?.message || 'Lock held'}`)
       }
-    }, 9 * 60 * 1000) // 9 minutes
+      console.log('✅ Advisory lock acquired (fallback)')
+    } else if (!lockAcquired) {
+      console.warn('⚠️  Another sync is already running. Exiting gracefully.')
+      console.warn('⚠️  Lock will auto-expire if the other sync crashed.')
+      return { message: 'Another sync is running', skipped: true }
+    } else {
+      console.log('✅ Table-based sync lock acquired successfully')
+      usingTableLock = true
+    }
+
+    // No preemptive timeout needed - table-based locks auto-expire after 10 minutes of no heartbeat
 
     // Fetch all active workspaces first (to know total count)
-    const { data: workspaces, error: workspacesError } = await supabase
+    const { data: allWorkspaces, error: workspacesError } = await supabase
       .from('client_registry')
       .select('workspace_name, bison_workspace_id, bison_instance, bison_api_key')
       .eq('is_active', true)
+      .order('workspace_name') // Consistent ordering for batching
 
     if (workspacesError) throw workspacesError
 
-    console.log(`Found ${workspaces.length} active workspaces to sync`)
+    const totalWorkspaces = allWorkspaces.length
+    const workspaces = allWorkspaces.slice(batchOffset, batchOffset + batchSize)
+    const hasMoreBatches = batchOffset + batchSize < totalWorkspaces
+
+    console.log(`📊 Batch info: Processing workspaces ${batchOffset + 1}-${batchOffset + workspaces.length} of ${totalWorkspaces} total`)
+    console.log(`   Workspaces in this batch: ${workspaces.map(w => w.workspace_name).join(', ')}`)
+    if (hasMoreBatches) {
+      console.log(`   ⚠️  More batches remaining - call with batch_offset=${batchOffset + batchSize} for next batch`)
+    }
 
     // Create job status record
     const { data: jobStatus, error: jobStatusError } = await supabase
@@ -112,7 +196,9 @@ async function processInBackground(jobId: string) {
         job_name: 'poll-sender-emails',
         status: 'running',
         total_workspaces: workspaces.length,
-        started_at: new Date().toISOString()
+        started_at: new Date().toISOString(),
+        // Store batch info in warnings field for visibility
+        warnings: [`Batch ${Math.floor(batchOffset / batchSize) + 1}: workspaces ${batchOffset + 1}-${batchOffset + workspaces.length} of ${totalWorkspaces}`]
       })
       .select()
       .single()
@@ -153,20 +239,18 @@ async function processInBackground(jobId: string) {
       try {
         const workspaceStart = Date.now()
 
-        // Determine API credentials
-        const baseUrl = workspace.bison_instance === 'Long Run' ? LONGRUN_BASE_URL : MAVERICK_BASE_URL
-        const apiKey = workspace.bison_api_key || (
-          workspace.bison_instance === 'Long Run' ? LONG_RUN_BISON_API_KEY : MAVERICK_BISON_API_KEY
-        )
+        // Determine API credentials (Maverick only)
+        const baseUrl = MAVERICK_BASE_URL
+        const apiKey = workspace.bison_api_key || MAVERICK_BISON_API_KEY
         const isWorkspaceSpecificKey = !!workspace.bison_api_key
 
-        console.log(`Processing ${workspace.workspace_name} (${workspace.bison_instance}, ${isWorkspaceSpecificKey ? 'workspace-specific key' : 'global key'})`)
+        console.log(`Processing ${workspace.workspace_name} (${isWorkspaceSpecificKey ? 'workspace-specific key' : 'global key'})`)
 
         // Only switch workspace if using global API key
         // Workspace-specific API keys are already scoped to the correct workspace
         if (!isWorkspaceSpecificKey) {
           console.log(`Switching to workspace ${workspace.bison_workspace_id}...`)
-          const switchResponse = await fetch(`${baseUrl}/workspaces/v1.1/switch-workspace`, {
+          const switchResponse = await fetchWithRetry(`${baseUrl}/workspaces/v1.1/switch-workspace`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${apiKey}`,
@@ -177,25 +261,44 @@ async function processInBackground(jobId: string) {
           })
 
           if (!switchResponse.ok) {
-            throw new Error(`Workspace switch failed: ${switchResponse.status}`)
+            const errorText = await switchResponse.text()
+            throw new Error(`Workspace switch failed: ${switchResponse.status} - ${errorText}`)
           }
         }
 
-        // Fetch ALL sender emails first (needed for accurate pricing calculations)
-        let allWorkspaceAccounts = []
+        // ✅ MEMORY-OPTIMIZED APPROACH: Process each page immediately instead of accumulating
+        // This prevents memory exhaustion when processing 10,000+ accounts across all workspaces
+
         let accountsFetched = 0
-        // NOTE: API returns max 15 accounts per page regardless of per_page parameter
-        // Requesting 1000 to minimize roundtrips, but expect ~15 per response
-        let nextUrl = `${baseUrl}/sender-emails?per_page=1000`
+        let nextUrl = `${baseUrl}/sender-emails?per_page=${EMAIL_BISON_PAGE_SIZE}`
+        const MAX_PAGES = 100 // Safety limit to prevent infinite loops
+        const UPSERT_BATCH_SIZE = 500 // Chunk large upserts to reduce memory pressure
 
-        // Step 1: Fetch all accounts for this workspace
-        console.log(`Fetching all accounts for ${workspace.workspace_name}...`)
+        // Step 1: Mark ALL accounts in this workspace as potentially deleted FIRST
+        // The upsert will set deleted_at = null for active accounts, "un-deleting" them
+        // This eliminates the problematic NOT IN clause that crashes with large arrays
+        console.log(`Marking existing accounts as potentially deleted for ${workspace.workspace_name}...`)
+        const { error: markDeletedError } = await supabase
+          .from('email_accounts_raw')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('workspace_id', workspace.bison_workspace_id)
+          .eq('bison_instance', 'maverick')
+          .is('deleted_at', null)
+
+        if (markDeletedError) {
+          console.warn(`  ⚠️ Failed to mark accounts as deleted: ${markDeletedError.message}`)
+        }
+
+        // Step 2: Fetch and process pages incrementally (don't accumulate in memory)
+        // Keep only domain counts for pricing (small Map instead of huge array of objects)
+        const domainCounts = new Map<string, number>()
+
+        console.log(`Fetching accounts for ${workspace.workspace_name}...`)
         let pageCount = 0
-        while (nextUrl) {
+        while (nextUrl && pageCount < MAX_PAGES) {
           pageCount++
-          console.log(`  Fetching page ${pageCount}`)
 
-          const response = await fetch(nextUrl, {
+          const response = await fetchWithRetry(nextUrl, {
             headers: {
               'Authorization': `Bearer ${apiKey}`,
               'Accept': 'application/json'
@@ -210,138 +313,102 @@ async function processInBackground(jobId: string) {
           }
 
           const data = await response.json()
-          console.log(`  Page ${pageCount}: Retrieved ${data.data?.length || 0} accounts, Total so far: ${allWorkspaceAccounts.length + (data.data?.length || 0)}`)
-
           const accounts = data.data || []
+
+          // Log progress with meta information if available
+          const metaInfo = data.meta ? ` (page ${data.meta.current_page}/${data.meta.last_page})` : ''
+          console.log(`  Page ${pageCount}${metaInfo}: ${accounts.length} accounts`)
+
           if (accounts.length === 0) {
             console.warn(`  Page ${pageCount}: No accounts returned, stopping pagination`)
             break
           }
 
-          allWorkspaceAccounts.push(...accounts)
+          // Update domain counts (for pricing calculation)
+          for (const acc of accounts) {
+            const accDomain = acc.email?.split('@')[1]
+            if (accDomain) {
+              domainCounts.set(accDomain, (domainCounts.get(accDomain) || 0) + 1)
+            }
+          }
 
-          // Check for next page
+          // Transform accounts for this page immediately
+          const pageRecords = accounts.map((account: any) => {
+            const provider = extractProvider(account.tags)
+            const reseller = extractReseller(account.tags)
+            const domain = account.email?.split('@')[1] || null
+            const pricing = calculatePricing(provider, reseller, domain, domainCounts)
+            const replyRate = account.emails_sent_count > 0
+              ? Math.round((account.unique_replied_count / account.emails_sent_count) * 100 * 100) / 100
+              : 0
+
+            return {
+              bison_account_id: account.id,
+              email_address: account.email,
+              workspace_name: workspace.workspace_name,
+              workspace_id: workspace.bison_workspace_id,
+              bison_instance: 'maverick',
+              status: account.status || 'Not connected',
+              account_type: account.type,
+              emails_sent_count: account.emails_sent_count || 0,
+              total_replied_count: account.total_replied_count || 0,
+              unique_replied_count: account.unique_replied_count || 0,
+              bounced_count: account.bounced_count || 0,
+              unsubscribed_count: account.unsubscribed_count || 0,
+              interested_leads_count: account.interested_leads_count || 0,
+              total_opened_count: account.total_opened_count || 0,
+              unique_opened_count: account.unique_opened_count || 0,
+              total_leads_contacted_count: account.total_leads_contacted_count || 0,
+              daily_limit: account.daily_limit || 0,
+              warmup_enabled: account.warmup_enabled || false,
+              reply_rate_percentage: replyRate,
+              email_provider: provider,
+              reseller: reseller,
+              domain: domain,
+              price: pricing.price,
+              price_source: 'calculated',
+              pricing_needs_review: pricing.price === 0 && provider !== null,
+              notes: null,
+              last_synced_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              deleted_at: null  // ✅ This "un-deletes" active accounts
+            }
+          })
+
+          // Upsert this page immediately (chunked if large)
+          for (let i = 0; i < pageRecords.length; i += UPSERT_BATCH_SIZE) {
+            const batch = pageRecords.slice(i, i + UPSERT_BATCH_SIZE)
+            const { error: batchError } = await supabase
+              .from('email_accounts_raw')
+              .upsert(batch, {
+                onConflict: 'bison_account_id,bison_instance,workspace_id',
+                count: 'exact'
+              })
+
+            if (batchError) {
+              console.error(`  ❌ Batch upsert error: ${batchError.message}`)
+            }
+          }
+
+          accountsFetched += accounts.length
+
+          // Check for next page - use links.next first, then fallback to meta pagination
           nextUrl = data.links?.next || null
-          if (!nextUrl) {
-            console.log(`  Pagination complete: No more pages`)
+
+          if (!nextUrl && data.meta && data.meta.current_page < data.meta.last_page) {
+            const nextPage = data.meta.current_page + 1
+            nextUrl = `${baseUrl}/sender-emails?per_page=${EMAIL_BISON_PAGE_SIZE}&page=${nextPage}`
           }
         }
 
-        console.log(`✓ Found ${allWorkspaceAccounts.length} total accounts for ${workspace.workspace_name} (${pageCount} pages)`)
-
-        if (allWorkspaceAccounts.length === 0) {
-          console.warn(`⚠️ ${workspace.workspace_name}: No accounts to sync, skipping database upsert`)
-        } else {
-          console.log(`Starting batch upsert for ${allWorkspaceAccounts.length} accounts...`)
+        if (pageCount >= MAX_PAGES) {
+          console.warn(`  ⚠️ Reached MAX_PAGES limit (${MAX_PAGES}), stopping pagination`)
         }
 
-        // Step 2: Prepare all account records for batch upsert (with pricing)
-        const accountRecords = allWorkspaceAccounts.map(account => {
-          // Extract provider and reseller from tags
-          const provider = extractProvider(account.tags)
-          const reseller = extractReseller(account.tags)
-          const domain = account.email?.split('@')[1] || null
+        console.log(`✓ ${workspace.workspace_name}: ${accountsFetched} accounts synced (${pageCount} pages)`)
 
-          // Calculate pricing with ALL workspace accounts for accurate domain counts
-          const pricing = calculatePricing(provider, reseller, domain, allWorkspaceAccounts)
-
-          // Calculate reply rate
-          const replyRate = account.emails_sent_count > 0
-            ? Math.round((account.unique_replied_count / account.emails_sent_count) * 100 * 100) / 100
-            : 0
-
-          return {
-            // ✅ TWO-TABLE ARCHITECTURE: Write to email_accounts_raw (staging table)
-            bison_account_id: account.id,  // Email Bison sender_email.id
-            email_address: account.email,
-            workspace_name: workspace.workspace_name,
-            workspace_id: workspace.bison_workspace_id,
-            bison_instance: workspace.bison_instance === 'Long Run' ? 'longrun' : 'maverick',
-
-            // Account status
-            status: account.status || 'Not connected',
-            account_type: account.type,
-
-            // Performance metrics (from Email Bison API)
-            emails_sent_count: account.emails_sent_count || 0,
-            total_replied_count: account.total_replied_count || 0,
-            unique_replied_count: account.unique_replied_count || 0,
-            bounced_count: account.bounced_count || 0,
-            unsubscribed_count: account.unsubscribed_count || 0,
-            interested_leads_count: account.interested_leads_count || 0,
-            total_opened_count: account.total_opened_count || 0,
-            unique_opened_count: account.unique_opened_count || 0,
-            total_leads_contacted_count: account.total_leads_contacted_count || 0,
-
-            // Configuration
-            daily_limit: account.daily_limit || 0,
-            warmup_enabled: account.warmup_enabled || false,
-
-            // Calculated fields
-            reply_rate_percentage: replyRate,
-
-            // Tags/categorization
-            email_provider: provider,
-            reseller: reseller,
-            domain: domain,
-
-            // Pricing (calculated)
-            price: pricing.price,
-            price_source: 'calculated',
-            pricing_needs_review: pricing.price === 0 && provider !== null,
-
-            // Metadata
-            notes: null,
-
-            // Timestamps
-            last_synced_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            deleted_at: null  // ✅ Clear deleted_at for active accounts (in case they were re-added)
-          }
-        })
-
-        // Step 3: Batch upsert to email_accounts_raw (staging table)
-        if (accountRecords.length > 0) {
-          const { error: batchError, count } = await supabase
-            .from('email_accounts_raw')  // ✅ CHANGED: Use staging table
-            .upsert(accountRecords, {
-              onConflict: 'bison_account_id,bison_instance,workspace_id',  // ✅ CHANGED: Allow same account in multiple workspaces
-              count: 'exact'
-            })
-
-          if (batchError) {
-            console.error(`  ❌ Batch upsert error: ${batchError.message}`)
-            accountsFetched = 0
-          } else {
-            accountsFetched = accountRecords.length
-            console.log(`✓ Batch upsert to email_accounts_raw complete: ${accountsFetched} accounts`)
-          }
-        }
-
-        // Step 4: Mark deleted accounts (accounts in DB but not in current Bison response)
-        // This implements soft-delete to preserve historical data while showing accurate counts
-        const currentBisonIds = allWorkspaceAccounts.map(acc => acc.id)
-        const instance = workspace.bison_instance === 'Long Run' ? 'longrun' : 'maverick'
-
-        if (currentBisonIds.length > 0) {
-          console.log(`Checking for deleted accounts in ${workspace.workspace_name}...`)
-          const { data: deletedAccounts, error: deleteError } = await supabase
-            .from('email_accounts_raw')
-            .update({ deleted_at: new Date().toISOString() })
-            .eq('workspace_id', workspace.bison_workspace_id)
-            .eq('bison_instance', instance)
-            .not('bison_account_id', 'in', `(${currentBisonIds.join(',')})`)
-            .is('deleted_at', null)  // Only mark previously active accounts
-            .select('bison_account_id')
-
-          if (deleteError) {
-            console.error(`  ⚠️ Failed to mark deleted accounts: ${deleteError.message}`)
-          } else if (deletedAccounts && deletedAccounts.length > 0) {
-            console.log(`  ✓ Marked ${deletedAccounts.length} accounts as deleted`)
-          } else {
-            console.log(`  ✓ No deleted accounts found`)
-          }
-        }
+        // Clear domain counts to help garbage collection
+        domainCounts.clear()
 
         const workspaceDuration = Date.now() - workspaceStart
 
@@ -349,7 +416,6 @@ async function processInBackground(jobId: string) {
 
         return {
           workspace: workspace.workspace_name,
-          instance: workspace.bison_instance,
           accounts_synced: accountsFetched,
           duration_ms: workspaceDuration,
           success: true
@@ -358,7 +424,6 @@ async function processInBackground(jobId: string) {
         console.error(`❌ Failed to sync ${workspace.workspace_name}:`, error)
         return {
           workspace: workspace.workspace_name,
-          instance: workspace.bison_instance,
           accounts_synced: 0,
           error: error.message,
           success: false
@@ -403,7 +468,6 @@ async function processInBackground(jobId: string) {
           console.error(`❌ ${workspace.workspace_name} failed or timed out:`, error.message)
           return {
             workspace: workspace.workspace_name,
-            instance: workspace.bison_instance,
             accounts_synced: 0,
             error: error.message || 'Timeout or fetch aborted',
             success: false
@@ -418,8 +482,8 @@ async function processInBackground(jobId: string) {
         workspacesProcessed++
       }
 
-      // ✅ Update progress after each batch for real-time tracking
-      if (progressRecord) {
+      // ✅ Update progress every N workspaces (reduce DB writes)
+      if (progressRecord && workspacesProcessed % PROGRESS_UPDATE_INTERVAL === 0) {
         const { error: progressError } = await supabase
           .from('sync_progress')
           .update({
@@ -437,21 +501,15 @@ async function processInBackground(jobId: string) {
         }
       }
 
-      // Small delay between batches to avoid rate limiting
-      if (i + PARALLEL_WORKSPACE_COUNT < workspaces.length) {
-        await new Promise(resolve => setTimeout(resolve, WORKSPACE_BATCH_DELAY_MS))
+      // ✅ Update lock heartbeat to prevent stale lock detection
+      if (usingTableLock && workspacesProcessed % PROGRESS_UPDATE_INTERVAL === 0) {
+        await supabase.rpc('update_sync_heartbeat', { p_lock_id: 'poll-sender-emails', p_job_id: jobId })
       }
     }
 
-    console.log('🔍 DEBUG: Workspace loop completed, calculating summary...')
     const totalDuration = Date.now() - startTime
-    console.log(`🔍 DEBUG: Total duration = ${totalDuration}ms`)
-
     const failedCount = results.filter(r => !r.success).length
-    console.log(`🔍 DEBUG: Failed count = ${failedCount}`)
-
     const finalStatus = workspacesSkipped > 0 ? 'partial' : (failedCount > 0 ? 'completed_with_errors' : 'completed')
-    console.log(`🔍 DEBUG: Final status = ${finalStatus}`)
 
     console.log(`✅ Poll complete: ${totalAccountsSynced} accounts synced across ${workspacesProcessed}/${workspaces.length} workspaces in ${totalDuration}ms`)
     if (workspacesSkipped > 0) {
@@ -461,10 +519,8 @@ async function processInBackground(jobId: string) {
       console.warn(`⚠️ ${failedCount} workspaces failed to sync`)
     }
 
-    console.log('🔍 DEBUG: About to update progress for post-processing...')
     // ✅ Update progress to show post-processing phase
     if (progressRecord) {
-      console.log(`🔍 DEBUG: progressRecord.id = ${progressRecord.id}`)
       const { error: viewProgressError } = await supabase
         .from('sync_progress')
         .update({
@@ -475,63 +531,62 @@ async function processInBackground(jobId: string) {
 
       if (viewProgressError) {
         console.warn('⚠️ Failed to update progress for view refresh:', viewProgressError.message)
-      } else {
-        console.log('🔍 DEBUG: Progress update completed successfully')
       }
-    } else {
-      console.log('🔍 DEBUG: No progressRecord, skipping')
     }
-    console.log('🔍 DEBUG: Moving to view refresh...')
 
     // ✅ Refresh materialized view (critical for two-table architecture!)
-    // Always refresh, even if partial - users should see updated data
-    // ⚠️ TIMEOUT PROTECTION: View refresh can hang indefinitely if database locks are held
-    const VIEW_REFRESH_TIMEOUT_MS = 30000 // 30 seconds
-    console.log('🔄 Refreshing materialized view email_accounts_view...')
-    const viewRefreshStart = Date.now()
-    try {
-      const refreshPromise = supabase.rpc('refresh_email_accounts_view')
-      const timeoutPromise = new Promise<{ error: Error }>((_, reject) =>
-        setTimeout(() => reject(new Error('View refresh exceeded 30 second timeout')), VIEW_REFRESH_TIMEOUT_MS)
-      )
+    // Skip if more batches are coming - only refresh on the final batch
+    if (skipViewRefresh) {
+      console.log('⏭️  Skipping view refresh (more batches will follow)')
+    } else {
+      // ⚠️ TIMEOUT PROTECTION: View refresh can hang indefinitely if database locks are held
+      const VIEW_REFRESH_TIMEOUT_MS = 30000 // 30 seconds
+      console.log('🔄 Refreshing materialized view email_accounts_view...')
+      const viewRefreshStart = Date.now()
+      try {
+        const refreshPromise = supabase.rpc('refresh_email_accounts_view')
+        const timeoutPromise = new Promise<{ error: Error }>((_, reject) =>
+          setTimeout(() => reject(new Error('View refresh exceeded 30 second timeout')), VIEW_REFRESH_TIMEOUT_MS)
+        )
 
-      const { error: viewError } = await Promise.race([refreshPromise, timeoutPromise])
-      const viewRefreshDuration = Date.now() - viewRefreshStart
+        const { error: viewError } = await Promise.race([refreshPromise, timeoutPromise])
+        const viewRefreshDuration = Date.now() - viewRefreshStart
 
-      if (viewError) {
-        console.error(`❌ Failed to refresh materialized view after ${viewRefreshDuration}ms:`, viewError.message)
-      } else {
-        console.log(`✅ Materialized view refreshed successfully in ${viewRefreshDuration}ms - frontend will see fresh data!`)
+        if (viewError) {
+          console.error(`❌ Failed to refresh materialized view after ${viewRefreshDuration}ms:`, viewError.message)
+        } else {
+          console.log(`✅ Materialized view refreshed successfully in ${viewRefreshDuration}ms - frontend will see fresh data!`)
+        }
+      } catch (viewErr: any) {
+        const viewRefreshDuration = Date.now() - viewRefreshStart
+        console.error(`❌ Error refreshing view after ${viewRefreshDuration}ms:`, viewErr.message || viewErr)
+        // Continue execution - stale view is better than stuck sync
       }
-    } catch (viewErr: any) {
-      const viewRefreshDuration = Date.now() - viewRefreshStart
-      console.error(`❌ Error refreshing view after ${viewRefreshDuration}ms:`, viewErr.message || viewErr)
-      // Continue execution - stale view is better than stuck sync
-    }
 
-    // ✅ Refresh Home Insurance view (filtered subset of main view)
-    // ⚠️ TIMEOUT PROTECTION: Same timeout as main view
-    console.log('🔄 Refreshing Home Insurance materialized view...')
-    const hiViewRefreshStart = Date.now()
-    try {
-      const hiRefreshPromise = supabase.rpc('refresh_home_insurance_view')
-      const hiTimeoutPromise = new Promise<{ error: Error }>((_, reject) =>
-        setTimeout(() => reject(new Error('Home Insurance view refresh exceeded 30 second timeout')), VIEW_REFRESH_TIMEOUT_MS)
-      )
+      // ✅ Refresh Home Insurance view (filtered subset of main view)
+      // ⚠️ TIMEOUT PROTECTION: Same timeout as main view
+      console.log('🔄 Refreshing Home Insurance materialized view...')
+      const hiViewRefreshStart = Date.now()
+      try {
+        const hiRefreshPromise = supabase.rpc('refresh_home_insurance_view')
+        const hiTimeoutPromise = new Promise<{ error: Error }>((_, reject) =>
+          setTimeout(() => reject(new Error('Home Insurance view refresh exceeded 30 second timeout')), VIEW_REFRESH_TIMEOUT_MS)
+        )
 
-      const { error: hiViewError } = await Promise.race([hiRefreshPromise, hiTimeoutPromise])
-      const hiViewRefreshDuration = Date.now() - hiViewRefreshStart
+        const { error: hiViewError } = await Promise.race([hiRefreshPromise, hiTimeoutPromise])
+        const hiViewRefreshDuration = Date.now() - hiViewRefreshStart
 
-      if (hiViewError) {
-        console.error(`❌ Failed to refresh Home Insurance view after ${hiViewRefreshDuration}ms:`, hiViewError.message)
-      } else {
-        console.log(`✅ Home Insurance view refreshed successfully in ${hiViewRefreshDuration}ms`)
+        if (hiViewError) {
+          console.error(`❌ Failed to refresh Home Insurance view after ${hiViewRefreshDuration}ms:`, hiViewError.message)
+        } else {
+          console.log(`✅ Home Insurance view refreshed successfully in ${hiViewRefreshDuration}ms`)
+        }
+      } catch (hiViewErr: any) {
+        const hiViewRefreshDuration = Date.now() - hiViewRefreshStart
+        console.error(`❌ Error refreshing Home Insurance view after ${hiViewRefreshDuration}ms:`, hiViewErr.message || hiViewErr)
+        // Continue execution - stale view is better than stuck sync
       }
-    } catch (hiViewErr: any) {
-      const hiViewRefreshDuration = Date.now() - hiViewRefreshStart
-      console.error(`❌ Error refreshing Home Insurance view after ${hiViewRefreshDuration}ms:`, hiViewErr.message || hiViewErr)
-      // Continue execution - stale view is better than stuck sync
-    }
+    } // End of else block for skipViewRefresh
 
     // Update job status record
     await supabase
@@ -572,6 +627,20 @@ async function processInBackground(jobId: string) {
 
     console.log('📊 Background job completed successfully!')
 
+    // Return summary for the HTTP response
+    return {
+      total_workspaces_in_batch: workspaces.length,
+      total_workspaces_overall: totalWorkspaces,
+      workspaces_processed: workspacesProcessed,
+      workspaces_skipped: workspacesSkipped,
+      total_accounts_synced: totalAccountsSynced,
+      duration_ms: totalDuration,
+      batch_offset: batchOffset,
+      batch_size: batchSize,
+      has_more_batches: hasMoreBatches,
+      next_batch_offset: hasMoreBatches ? batchOffset + batchSize : null
+    }
+
   } catch (error) {
     console.error('❌ Background job error:', error)
 
@@ -607,31 +676,39 @@ async function processInBackground(jobId: string) {
 
     throw error // Re-throw to ensure error is logged
   } finally {
-    // 🔧 Clear the preemptive lock release timer (function completed normally)
-    if (lockReleaseTimer !== undefined) {
-      clearTimeout(lockReleaseTimer)
-    }
-
-    // ✅ ALWAYS release advisory lock (even if function crashes)
-    // This prevents permanent locks that would block all future syncs
-    const SYNC_LOCK_ID = 123456789
+    // ✅ ALWAYS release lock (table-based or advisory, depending on what was acquired)
     try {
       const supabase = createClient(
         Deno.env.get('SUPABASE_URL')!,
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
       )
 
-      const { data: lockReleased, error: releaseError } = await supabase
-        .rpc('release_advisory_lock', { lock_id: SYNC_LOCK_ID })
+      if (usingTableLock) {
+        // Release table-based lock
+        const { data: lockReleased, error: releaseError } = await supabase
+          .rpc('release_sync_lock', { p_lock_id: 'poll-sender-emails', p_job_id: jobId })
 
-      if (releaseError) {
-        console.warn('⚠️  Failed to release advisory lock:', releaseError.message)
-      } else if (lockReleased) {
-        console.log('🔓 Advisory lock released successfully')
+        if (releaseError) {
+          console.warn('⚠️  Failed to release table lock:', releaseError.message)
+        } else if (lockReleased) {
+          console.log('🔓 Table-based lock released successfully')
+        } else {
+          console.warn('⚠️  Lock was not held by this job (may have been released already)')
+        }
       } else {
-        console.warn('⚠️  Lock was not held by this session (may have been released already)')
+        // Release advisory lock (fallback)
+        const { data: lockReleased, error: releaseError } = await supabase
+          .rpc('release_advisory_lock', { lock_id: 123456789 })
+
+        if (releaseError) {
+          console.warn('⚠️  Failed to release advisory lock:', releaseError.message)
+        } else if (lockReleased) {
+          console.log('🔓 Advisory lock released successfully')
+        } else {
+          console.warn('⚠️  Lock was not held by this session')
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('⚠️  Exception while releasing lock:', err.message)
     }
   }
@@ -655,20 +732,17 @@ function extractReseller(tags: any[]): string | null {
   return found?.name || null
 }
 
-// Helper function to calculate pricing (copied from hybrid-email-accounts-v2)
-function calculatePricing(provider: string | null, reseller: string | null, domain: string | null, allAccounts: any[]): { price: number, dailySendingLimit: number } {
+// Helper function to calculate pricing (optimized - receives pre-calculated domain counts)
+function calculatePricing(
+  provider: string | null,
+  reseller: string | null,
+  domain: string | null,
+  domainCounts: Map<string, number>
+): { price: number, dailySendingLimit: number } {
   const providerLower = provider?.toLowerCase() || ''
   const resellerLower = reseller?.toLowerCase() || ''
 
-  // Calculate domain counts for ScaledMail and Mailr
-  const domainCounts = new Map<string, number>()
-  allAccounts.forEach((acc: any) => {
-    const accDomain = acc.email?.split('@')[1]
-    if (accDomain) {
-      domainCounts.set(accDomain, (domainCounts.get(accDomain) || 0) + 1)
-    }
-  })
-
+  // Use pre-calculated domain counts (fixes O(n²) complexity)
   const mailboxesOnDomain = domain ? (domainCounts.get(domain) || 1) : 1
 
   // Calculate price

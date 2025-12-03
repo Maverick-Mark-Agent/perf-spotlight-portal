@@ -26,12 +26,10 @@ export default function AssistantChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
+  const handleSubmit = async () => {
     const trimmedInput = input.trim();
     if (!trimmedInput && selectedFiles.length === 0) return;
+    if (loading) return;
 
     const message = trimmedInput || (selectedFiles.length > 0 ? "Process these files" : "");
     const files = selectedFiles.length > 0 ? [...selectedFiles] : undefined;
@@ -105,7 +103,7 @@ export default function AssistantChatInterface({
       </div>
 
       {/* Input Area */}
-      <form onSubmit={handleSubmit} action="#" method="post" className="p-4 border-t">
+      <div className="p-4 border-t">
         <div className="flex gap-2">
           <Input
             value={input}
@@ -116,12 +114,13 @@ export default function AssistantChatInterface({
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                handleSubmit(e as any);
+                handleSubmit();
               }
             }}
           />
           <Button
-            type="submit"
+            type="button"
+            onClick={handleSubmit}
             disabled={loading || (!input.trim() && selectedFiles.length === 0)}
             size="icon"
           >
@@ -132,7 +131,7 @@ export default function AssistantChatInterface({
             )}
           </Button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

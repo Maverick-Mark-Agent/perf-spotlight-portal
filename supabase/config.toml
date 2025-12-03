@@ -14,3 +14,12 @@ verify_jwt = false
 
 [functions.airtable-sending-volume]
 verify_jwt = false
+
+[functions.streetsmart-commercial-webhook]
+verify_jwt = false
+
+[functions.streetsmart-trucking-webhook]
+verify_jwt = false
+
+[functions.streetsmart-pc-webhook]
+verify_jwt = false

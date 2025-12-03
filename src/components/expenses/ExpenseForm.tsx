@@ -23,7 +23,15 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { CalendarIcon, Plus, Upload, X, Building2 } from "lucide-react";
+import { CalendarIcon, Plus, Upload, X, Building2, ChevronsUpDown, Check } from "lucide-react";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import type {
   Expense,
@@ -67,6 +75,7 @@ export default function ExpenseForm({
 }: ExpenseFormProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [vendorPopoverOpen, setVendorPopoverOpen] = useState(false);
 
   // Form state
   const [description, setDescription] = useState("");
@@ -370,19 +379,65 @@ export default function ExpenseForm({
             <div className="space-y-2">
               <Label>Vendor</Label>
               <div className="flex gap-2">
-                <Select value={vendorId || "none"} onValueChange={(v) => setVendorId(v === "none" ? "" : v)}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select vendor (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {vendors.map((vendor) => (
-                      <SelectItem key={vendor.id} value={vendor.id}>
-                        {vendor.display_name || vendor.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={vendorPopoverOpen} onOpenChange={setVendorPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={vendorPopoverOpen}
+                      className="flex-1 justify-between font-normal"
+                    >
+                      {vendorId
+                        ? vendors.find((v) => v.id === vendorId)?.display_name ||
+                          vendors.find((v) => v.id === vendorId)?.name
+                        : "Select vendor (optional)"}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search vendors..." />
+                      <CommandList>
+                        <CommandEmpty>No vendor found.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="none"
+                            onSelect={() => {
+                              setVendorId("");
+                              setVendorPopoverOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                !vendorId ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            None
+                          </CommandItem>
+                          {vendors.map((vendor) => (
+                            <CommandItem
+                              key={vendor.id}
+                              value={vendor.display_name || vendor.name}
+                              onSelect={() => {
+                                setVendorId(vendor.id);
+                                setVendorPopoverOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  vendorId === vendor.id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {vendor.display_name || vendor.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 {onCreateVendor && (
                   <Button variant="outline" size="icon" onClick={onCreateVendor} title="Add New Vendor">
                     <Plus className="h-4 w-4" />

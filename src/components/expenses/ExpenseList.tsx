@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { format } from "date-fns";
+import { format, parseISO, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import {
   Table,
   TableBody,
@@ -75,6 +75,20 @@ export default function ExpenseList({
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [vendorFilter, setVendorFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [monthFilter, setMonthFilter] = useState<string>("all");
+
+  // Generate month options for the last 12 months
+  const monthOptions = useMemo(() => {
+    const months = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const date = subMonths(now, i);
+      const value = format(date, "yyyy-MM");
+      const label = format(date, "MMMM yyyy");
+      months.push({ value, label });
+    }
+    return months;
+  }, []);
 
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -110,9 +124,17 @@ export default function ExpenseList({
         return false;
       }
 
+      // Month filter
+      if (monthFilter !== "all") {
+        const expenseMonth = expense.expense_date.substring(0, 7); // YYYY-MM
+        if (expenseMonth !== monthFilter) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [expenses, searchTerm, categoryFilter, vendorFilter, statusFilter]);
+  }, [expenses, searchTerm, categoryFilter, vendorFilter, statusFilter, monthFilter]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -130,9 +152,10 @@ export default function ExpenseList({
     setCategoryFilter("all");
     setVendorFilter("all");
     setStatusFilter("all");
+    setMonthFilter("all");
   };
 
-  const hasActiveFilters = searchTerm || categoryFilter !== "all" || vendorFilter !== "all" || statusFilter !== "all";
+  const hasActiveFilters = searchTerm || categoryFilter !== "all" || vendorFilter !== "all" || statusFilter !== "all" || monthFilter !== "all";
 
   const getAllocationDisplay = (expense: Expense) => {
     if (!expense.allocations || expense.allocations.length === 0) {
@@ -201,7 +224,7 @@ export default function ExpenseList({
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search expenses..."
+            placeholder="Search transactions..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9"
@@ -252,6 +275,20 @@ export default function ExpenseList({
           </SelectContent>
         </Select>
 
+        <Select value={monthFilter} onValueChange={setMonthFilter}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Month" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Months</SelectItem>
+            {monthOptions.map((month) => (
+              <SelectItem key={month.value} value={month.value}>
+                {month.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
             <X className="h-4 w-4 mr-1" />
@@ -262,7 +299,7 @@ export default function ExpenseList({
 
       {/* Results count */}
       <div className="text-sm text-muted-foreground">
-        Showing {filteredExpenses.length} of {expenses.length} expenses
+        Showing {filteredExpenses.length} of {expenses.length} transactions
       </div>
 
       {/* Table */}
@@ -286,8 +323,8 @@ export default function ExpenseList({
               <TableRow>
                 <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   {expenses.length === 0
-                    ? "No expenses recorded yet"
-                    : "No expenses match your filters"}
+                    ? "No transactions recorded yet"
+                    : "No transactions match your filters"}
                 </TableCell>
               </TableRow>
             ) : (
@@ -326,8 +363,8 @@ export default function ExpenseList({
                       <span className="text-muted-foreground text-sm">-</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${expense.amount.toLocaleString(undefined, {
+                  <TableCell className={`text-right font-medium ${expense.category?.slug === 'income' ? 'text-green-600' : ''}`}>
+                    {expense.category?.slug === 'income' ? '+' : ''}${expense.amount.toLocaleString(undefined, {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}

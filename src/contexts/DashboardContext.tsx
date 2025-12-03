@@ -227,7 +227,7 @@ interface DashboardContextType {
 
   // Revenue Dashboard
   revenueDashboard: RevenueDashboardState;
-  refreshRevenueDashboard: (force?: boolean) => Promise<void>;
+  refreshRevenueDashboard: (force?: boolean, month?: string) => Promise<void>;
 
   // Global
   refreshAll: () => Promise<void>;
@@ -619,7 +619,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   // ============= Revenue Dashboard Functions =============
 
-  const fetchRevenueDataInternal = useCallback(async (force: boolean = false) => {
+  const fetchRevenueDataInternal = useCallback(async (force: boolean = false, month?: string) => {
     try {
       if (!force && revenueDashboard.clients.length > 0) {
         // Silent background refresh
@@ -628,7 +628,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       }
 
       // Use new dataService with validation
-      const result = await fetchRevenueData(force);
+      const result = await fetchRevenueData(force, month);
 
       if (result.success && result.data) {
         setRevenueDashboard({
@@ -665,7 +665,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   }, [revenueDashboard.clients.length]);
 
-  const refreshRevenueDashboard = useCallback(async (force: boolean = true) => {
+  const refreshRevenueDashboard = useCallback(async (force: boolean = true, month?: string) => {
     // Rate limiting check
     const now = Date.now();
     if (!force && (now - lastRefreshTime) < MIN_REFRESH_INTERVAL) {
@@ -673,7 +673,7 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       return;
     }
     setLastRefreshTime(now);
-    await fetchRevenueDataInternal(force);
+    await fetchRevenueDataInternal(force, month);
   }, [fetchRevenueDataInternal, lastRefreshTime]);
 
   // ============= Global Functions =============

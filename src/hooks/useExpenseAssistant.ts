@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type {
   AssistantMessage,
@@ -9,20 +9,49 @@ import type {
 
 const SUPABASE_URL = 'https://gjqbbgrfhijescaouqkx.supabase.co';
 
+export type AssistantContext = 'expenses' | 'bank_transactions';
+
+export interface AssistantContextData {
+  pendingCount?: number;
+  categorizedCount?: number;
+  recurringCount?: number;
+  categories?: { id: string; name: string }[];
+}
+
+export interface ConversationSession {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  first_message?: string;
+}
+
+interface UseExpenseAssistantOptions {
+  context?: AssistantContext;
+  contextData?: AssistantContextData;
+}
+
 interface UseExpenseAssistantReturn {
   messages: AssistantMessage[];
   sessionId: string | null;
   loading: boolean;
   error: string | null;
+  sessions: ConversationSession[];
+  sessionsLoading: boolean;
   sendMessage: (message: string, attachments?: File[]) => Promise<void>;
   clearSession: () => void;
+  loadSessions: () => Promise<void>;
+  loadSession: (sessionId: string) => Promise<void>;
 }
 
-export function useExpenseAssistant(): UseExpenseAssistantReturn {
+export function useExpenseAssistant(options: UseExpenseAssistantOptions = {}): UseExpenseAssistantReturn {
+  const { context = 'expenses', contextData } = options;
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ConversationSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
 
   const sendMessage = useCallback(async (message: string, attachments?: File[]) => {
     setLoading(true);
@@ -72,7 +101,9 @@ export function useExpenseAssistant(): UseExpenseAssistantReturn {
           session_id: sessionId,
           message,
           attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
-        } as AssistantChatRequest),
+          context,
+          context_data: contextData,
+        }),
       });
 
       if (!response.ok) {
@@ -116,7 +147,7 @@ export function useExpenseAssistant(): UseExpenseAssistantReturn {
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, context, contextData]);
 
   const clearSession = useCallback(() => {
     setMessages([]);
@@ -124,13 +155,86 @@ export function useExpenseAssistant(): UseExpenseAssistantReturn {
     setError(null);
   }, []);
 
+  const loadSessions = useCallback(async () => {
+    setSessionsLoading(true);
+    try {
+      // Fetch all sessions with their message counts
+      const { data: sessionsData, error: sessionsError } = await supabase
+        .from('expense_assistant_sessions')
+        .select('id, created_at, updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(50);
+
+      if (sessionsError) throw sessionsError;
+
+      if (sessionsData && sessionsData.length > 0) {
+        // For each session, get the first message and count
+        const sessionsWithDetails = await Promise.all(
+          sessionsData.map(async (session) => {
+            const { data: messagesData, count } = await supabase
+              .from('expense_assistant_messages')
+              .select('content', { count: 'exact' })
+              .eq('session_id', session.id)
+              .eq('role', 'user')
+              .order('created_at', { ascending: true })
+              .limit(1);
+
+            return {
+              id: session.id,
+              created_at: session.created_at,
+              updated_at: session.updated_at,
+              message_count: count || 0,
+              first_message: messagesData?.[0]?.content?.slice(0, 100) || 'New conversation',
+            };
+          })
+        );
+
+        // Filter out sessions with no messages
+        setSessions(sessionsWithDetails.filter(s => s.message_count > 0));
+      } else {
+        setSessions([]);
+      }
+    } catch (err: any) {
+      console.error('Error loading sessions:', err);
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, []);
+
+  const loadSession = useCallback(async (targetSessionId: string) => {
+    setLoading(true);
+    try {
+      const { data: messagesData, error: messagesError } = await supabase
+        .from('expense_assistant_messages')
+        .select('*')
+        .eq('session_id', targetSessionId)
+        .order('created_at', { ascending: true });
+
+      if (messagesError) throw messagesError;
+
+      if (messagesData) {
+        setMessages(messagesData as AssistantMessage[]);
+        setSessionId(targetSessionId);
+      }
+    } catch (err: any) {
+      console.error('Error loading session:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   return {
     messages,
     sessionId,
     loading,
     error,
+    sessions,
+    sessionsLoading,
     sendMessage,
     clearSession,
+    loadSessions,
+    loadSession,
   };
 }
 

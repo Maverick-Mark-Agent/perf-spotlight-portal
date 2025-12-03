@@ -67,13 +67,70 @@ function calculateOtherCosts(): number {
 }
 
 /**
- * Get client costs (manual override OR calculated from infrastructure)
+ * Get expense costs from expense tracking system (direct + overhead allocation)
+ */
+async function getExpenseCosts(
+  supabase: any,
+  workspaceName: string,
+  monthYear: string,
+  totalActiveClients: number
+): Promise<{ direct_costs: number; allocated_overhead: number; total_expense_costs: number }> {
+  // Get direct costs allocated to this client
+  const { data: directCosts } = await supabase
+    .from('expense_allocations')
+    .select(`
+      allocated_amount,
+      expenses!inner (
+        status,
+        month_year
+      )
+    `)
+    .eq('workspace_name', workspaceName)
+    .eq('is_overhead', false)
+    .eq('expenses.month_year', monthYear)
+    .eq('expenses.status', 'approved');
+
+  const directCostTotal = (directCosts || []).reduce(
+    (sum: number, alloc: any) => sum + (parseFloat(alloc.allocated_amount) || 0), 0
+  );
+
+  // Get total overhead for the month (to be split equally)
+  const { data: overheadCosts } = await supabase
+    .from('expense_allocations')
+    .select(`
+      allocated_amount,
+      expenses!inner (
+        status,
+        month_year
+      )
+    `)
+    .eq('is_overhead', true)
+    .eq('expenses.month_year', monthYear)
+    .eq('expenses.status', 'approved');
+
+  const totalOverhead = (overheadCosts || []).reduce(
+    (sum: number, alloc: any) => sum + (parseFloat(alloc.allocated_amount) || 0), 0
+  );
+
+  // Equal split of overhead across active clients
+  const allocatedOverhead = totalActiveClients > 0 ? totalOverhead / totalActiveClients : 0;
+
+  return {
+    direct_costs: directCostTotal,
+    allocated_overhead: allocatedOverhead,
+    total_expense_costs: directCostTotal + allocatedOverhead,
+  };
+}
+
+/**
+ * Get client costs (manual override OR calculated from infrastructure + expenses)
  */
 async function getClientCosts(
   supabase: any,
   workspaceName: string,
   monthYear: string,
-  mtdLeads: number
+  mtdLeads: number,
+  totalActiveClients: number = 1
 ): Promise<any> {
   // First, check for manual override in client_costs table
   const { data: manualCosts } = await supabase
@@ -83,10 +140,18 @@ async function getClientCosts(
     .eq('month_year', monthYear)
     .single();
 
+  // Get expense costs from expense tracking system
+  const expenseCosts = await getExpenseCosts(supabase, workspaceName, monthYear, totalActiveClients);
+
   if (manualCosts && manualCosts.total_costs > 0) {
+    // Add expense costs to manual costs
     return {
       ...manualCosts,
-      cost_source: 'manual',
+      expense_direct_costs: expenseCosts.direct_costs,
+      expense_allocated_overhead: expenseCosts.allocated_overhead,
+      expense_total: expenseCosts.total_expense_costs,
+      total_costs: manualCosts.total_costs + expenseCosts.total_expense_costs,
+      cost_source: 'manual+expenses',
     };
   }
 
@@ -98,15 +163,18 @@ async function getClientCosts(
     .is('deleted_at', null); // Only count active accounts (not soft-deleted)
 
   if (!emailAccounts || emailAccounts.length === 0) {
-    // No infrastructure data, return zero costs
+    // No infrastructure data, return expense costs only
     return {
       workspace_name: workspaceName,
       month_year: monthYear,
       email_account_costs: 0,
       labor_costs: 0,
       other_costs: 0,
-      total_costs: 0,
-      cost_source: 'calculated',
+      expense_direct_costs: expenseCosts.direct_costs,
+      expense_allocated_overhead: expenseCosts.allocated_overhead,
+      expense_total: expenseCosts.total_expense_costs,
+      total_costs: expenseCosts.total_expense_costs,
+      cost_source: expenseCosts.total_expense_costs > 0 ? 'expenses' : 'calculated',
       notes: 'No infrastructure data available',
     };
   }
@@ -115,7 +183,7 @@ async function getClientCosts(
   const accountCount = emailAccounts.length;
   const laborCosts = 0; // No estimated labor - only from manual client_costs
   const otherCosts = 0;  // No automatic overhead - only from manual client_costs
-  const totalCosts = emailCosts; // Only infrastructure costs when calculated
+  const totalCosts = emailCosts + expenseCosts.total_expense_costs;
 
   return {
     workspace_name: workspaceName,
@@ -123,8 +191,11 @@ async function getClientCosts(
     email_account_costs: emailCosts,
     labor_costs: laborCosts,
     other_costs: otherCosts,
+    expense_direct_costs: expenseCosts.direct_costs,
+    expense_allocated_overhead: expenseCosts.allocated_overhead,
+    expense_total: expenseCosts.total_expense_costs,
     total_costs: totalCosts,
-    cost_source: 'calculated',
+    cost_source: expenseCosts.total_expense_costs > 0 ? 'calculated+expenses' : 'calculated',
     account_count: accountCount,
   };
 }
@@ -147,7 +218,20 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    console.log('Fetching MTD revenue analytics...');
+    // Parse request body for optional month parameter
+    const body = await req.json().catch(() => ({}));
+    const currentMonthNow = new Date().toISOString().slice(0, 7); // Current month YYYY-MM
+    const requestedMonth = body.month || currentMonthNow;
+    const isCurrentMonth = requestedMonth === currentMonthNow;
+
+    // Calculate days in the requested month
+    const [reqYear, reqMonth] = requestedMonth.split('-').map(Number);
+    const daysInRequestedMonth = new Date(reqYear, reqMonth, 0).getDate();
+
+    // For current month, use today's day; for historical, use full month
+    const effectiveDay = isCurrentMonth ? new Date().getDate() : daysInRequestedMonth;
+
+    console.log(`Fetching revenue analytics for ${requestedMonth} (isCurrentMonth: ${isCurrentMonth}, effectiveDay: ${effectiveDay})...`);
 
     // Step 1: Get client pricing from client_registry
     console.log('📥 Fetching client pricing from client_registry...');
@@ -175,25 +259,66 @@ serve(async (req) => {
       };
     });
 
-    // Step 2: Get MTD KPI data from client_metrics (real-time database query)
-    console.log('📥 Fetching MTD KPI data from client_metrics...');
+    // Step 2: Get MTD KPI data
+    // For current month: use client_metrics table (real-time)
+    // For historical months: query client_leads directly
+    console.log('📥 Fetching MTD KPI data...');
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-    const { data: metricsData, error: metricsError } = await supabase
-      .from('client_metrics')
-      .select('workspace_name, positive_replies_mtd')
-      .eq('metric_date', today)
-      .eq('metric_type', 'mtd');
+    // Use the requested month for all calculations
+    const currentMonthYear = requestedMonth;
 
-    if (metricsError) {
-      throw new Error(`Error fetching client_metrics: ${metricsError.message}`);
+    let metricsData: any[] = [];
+
+    if (isCurrentMonth) {
+      // Current month: use client_metrics for real-time data
+      const { data, error: metricsError } = await supabase
+        .from('client_metrics')
+        .select('workspace_name, positive_replies_mtd')
+        .eq('metric_date', today)
+        .eq('metric_type', 'mtd');
+
+      if (metricsError) {
+        throw new Error(`Error fetching client_metrics: ${metricsError.message}`);
+      }
+      metricsData = data || [];
+      console.log(`  Found ${metricsData.length} client metric records for today`);
+    } else {
+      // Historical month: query client_leads for that specific month
+      const nextMonth = reqMonth === 12 ? 1 : reqMonth + 1;
+      const nextYear = reqMonth === 12 ? reqYear + 1 : reqYear;
+      const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+      const { data: historicalLeads, error: historicalError } = await supabase
+        .from('client_leads')
+        .select('workspace_name')
+        .gte('date_received', `${requestedMonth}-01`)
+        .lt('date_received', nextMonthStr)
+        .eq('interested', true);
+
+      if (historicalError) {
+        throw new Error(`Error fetching historical leads: ${historicalError.message}`);
+      }
+
+      // Group by workspace to get MTD count
+      const workspaceCounts: Record<string, number> = {};
+      (historicalLeads || []).forEach(lead => {
+        workspaceCounts[lead.workspace_name] = (workspaceCounts[lead.workspace_name] || 0) + 1;
+      });
+
+      metricsData = Object.entries(workspaceCounts).map(([workspace_name, count]) => ({
+        workspace_name,
+        positive_replies_mtd: count,
+      }));
+      console.log(`  Found ${metricsData.length} clients with leads in ${requestedMonth}`);
     }
 
-    console.log(`  Found ${metricsData?.length || 0} client metric records for today`);
-
-    // Step 3: Get current month costs (will calculate from infrastructure OR use manual)
-    const currentMonthYear = new Date().toISOString().slice(0, 7); // YYYY-MM
+    // Step 3: Get costs for the requested month
     console.log(`📥 Calculating costs for ${currentMonthYear} (infrastructure + manual overrides)...`);
+
+    // Get total active client count for overhead splitting
+    const totalActiveClients = registryClients.length;
+    console.log(`📊 Total active clients for overhead split: ${totalActiveClients}`);
 
     // Process each client with MTD revenue calculations
     const revenueClients = await Promise.all(
@@ -223,8 +348,8 @@ serve(async (req) => {
           currentMonthRevenue = currentMonthLeads * pricing.price_per_lead;
         }
 
-        // Get MTD costs (calculate from infrastructure OR use manual override)
-        const costData = await getClientCosts(supabase, workspaceName, currentMonthYear, currentMonthLeads);
+        // Get MTD costs (infrastructure + manual + expense tracking)
+        const costData = await getClientCosts(supabase, workspaceName, currentMonthYear, currentMonthLeads, totalActiveClients);
         const currentMonthCosts = costData.total_costs || 0;
 
         // Calculate MTD profit
@@ -265,6 +390,11 @@ serve(async (req) => {
           email_account_costs: costData.email_account_costs || 0,
           labor_costs: costData.labor_costs || 0,
           other_costs: costData.other_costs || 0,
+
+          // Expense tracking costs
+          expense_direct_costs: costData.expense_direct_costs || 0,
+          expense_allocated_overhead: costData.expense_allocated_overhead || 0,
+          expense_total: costData.expense_total || 0,
         };
       })
     );
@@ -291,6 +421,11 @@ serve(async (req) => {
       per_lead_count: acc.per_lead_count + (client.billing_type === 'per_lead' ? 1 : 0),
       retainer_count: acc.retainer_count + (client.billing_type === 'retainer' ? 1 : 0),
       total_kpi_target: acc.total_kpi_target + (client.monthly_kpi || 0),
+      // Expense tracking totals
+      total_expense_direct_costs: acc.total_expense_direct_costs + (client.expense_direct_costs || 0),
+      total_expense_allocated_overhead: acc.total_expense_allocated_overhead + (client.expense_allocated_overhead || 0),
+      total_expense_costs: acc.total_expense_costs + (client.expense_total || 0),
+      total_email_costs: acc.total_email_costs + (client.email_account_costs || 0),
     }), {
       total_mtd_revenue: 0,
       total_mtd_costs: 0,
@@ -301,6 +436,10 @@ serve(async (req) => {
       per_lead_count: 0,
       retainer_count: 0,
       total_kpi_target: 0,
+      total_expense_direct_costs: 0,
+      total_expense_allocated_overhead: 0,
+      total_expense_costs: 0,
+      total_email_costs: 0,
     });
 
     // Calculate overall profit margin
@@ -308,16 +447,20 @@ serve(async (req) => {
       ? (totals.total_mtd_profit / totals.total_mtd_revenue) * 100
       : 0;
 
-    // ============= NEW: Daily Average & Total Possible Revenue =============
-    const todayDate = new Date();
-    const currentDay = todayDate.getDate();
-    const daysInMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate();
+    // ============= Daily Average & Total Possible Revenue =============
+    // Use effectiveDay and daysInRequestedMonth from earlier calculation
+    const currentDay = effectiveDay;
+    const daysInMonth = daysInRequestedMonth;
 
-    // Daily average revenue (total MTD / days elapsed)
-    totals.daily_average_revenue = currentDay > 0 ? totals.total_mtd_revenue / currentDay : 0;
-
-    // Projected end-of-month revenue (linear projection)
-    totals.projected_eom_revenue = totals.daily_average_revenue * daysInMonth;
+    // Daily average revenue and projections - only for current month
+    if (isCurrentMonth) {
+      totals.daily_average_revenue = currentDay > 0 ? totals.total_mtd_revenue / currentDay : 0;
+      totals.projected_eom_revenue = totals.daily_average_revenue * daysInMonth;
+    } else {
+      // Historical months: no projections needed (month is complete)
+      totals.daily_average_revenue = null;
+      totals.projected_eom_revenue = null;
+    }
 
     // Total possible revenue (100% KPI achievement for all per-lead + all retainers)
     totals.total_possible_revenue = validClients.reduce((sum, client) => {
@@ -367,6 +510,7 @@ serve(async (req) => {
       `)
       .gte('date_received', `${currentMonthYear}-01`)
       .lt('date_received', nextMonthStr) // Use < next month instead of <= last day
+      .eq('interested', true) // Only count interested leads (fixes MTD spike bug)
       .order('date_received', { ascending: true });
 
     if (leadError) {
@@ -427,79 +571,95 @@ serve(async (req) => {
     console.log(`💵 Total MTD Billable Revenue: $${totals.total_mtd_billable_revenue.toFixed(2)}`);
     console.log(`📊 Daily billable revenue data: ${dailyBillableRevenue.length} days`);
 
-    // ============= NEW: Revenue Forecasting =============
-    // Calculate average KPI progress for velocity adjustment
-    const avgKPIProgress = validClients.length > 0
-      ? validClients.reduce((sum, c) => sum + c.kpi_progress, 0) / validClients.length
-      : 0;
+    // ============= Revenue Forecasting (Current Month Only) =============
+    if (isCurrentMonth) {
+      // Calculate average KPI progress for velocity adjustment
+      const avgKPIProgress = validClients.length > 0
+        ? validClients.reduce((sum, c) => sum + c.kpi_progress, 0) / validClients.length
+        : 0;
 
-    // Forecast scenarios (ALL REVENUE - including retainers)
-    const forecast = {
-      // Linear: Simple projection based on current daily average
-      linear: totals.daily_average_revenue * daysInMonth,
+      const dailyAvgRevenue = currentDay > 0 ? totals.total_mtd_revenue / currentDay : 0;
 
-      // Velocity-adjusted: Adjusted by KPI progress rate
-      velocity_adjusted: (totals.daily_average_revenue * daysInMonth) * (avgKPIProgress / 100),
+      // Forecast scenarios (ALL REVENUE - including retainers)
+      const forecast = {
+        // Linear: Simple projection based on current daily average
+        linear: dailyAvgRevenue * daysInMonth,
 
-      // Conservative: Use the lower of linear projection and total possible
-      conservative: Math.min(totals.daily_average_revenue * daysInMonth, totals.total_possible_revenue),
+        // Velocity-adjusted: Adjusted by KPI progress rate
+        velocity_adjusted: (dailyAvgRevenue * daysInMonth) * (avgKPIProgress / 100),
 
-      // Optimistic: Assumes current pace continues + slight improvement
-      optimistic: (totals.daily_average_revenue * daysInMonth) * 1.1,
+        // Conservative: Use the lower of linear projection and total possible
+        conservative: Math.min(dailyAvgRevenue * daysInMonth, totals.total_possible_revenue),
 
-      // Confidence level
-      confidence: avgKPIProgress >= 80 ? 'high' : avgKPIProgress >= 60 ? 'medium' : 'low',
+        // Optimistic: Assumes current pace continues + slight improvement
+        optimistic: (dailyAvgRevenue * daysInMonth) * 1.1,
 
-      // Metadata
-      avg_kpi_progress: avgKPIProgress,
-      days_elapsed: currentDay,
-      days_remaining: daysInMonth - currentDay,
-    };
+        // Confidence level
+        confidence: avgKPIProgress >= 80 ? 'high' : avgKPIProgress >= 60 ? 'medium' : 'low',
 
-    totals.forecast = forecast;
+        // Metadata
+        avg_kpi_progress: avgKPIProgress,
+        days_elapsed: currentDay,
+        days_remaining: daysInMonth - currentDay,
+      };
 
-    // ============= BILLABLE LEADS ONLY FORECAST =============
-    const avgBillableKPIProgress = perLeadClients.length > 0
-      ? perLeadClients.reduce((sum, c) => sum + c.kpi_progress, 0) / perLeadClients.length
-      : 0;
+      totals.forecast = forecast;
+    } else {
+      // Historical months: no forecasting needed
+      totals.forecast = null;
+    }
 
-    const dailyBillableAverage = currentDay > 0 ? totals.total_mtd_billable_revenue / currentDay : 0;
+    // ============= BILLABLE LEADS ONLY FORECAST (Current Month Only) =============
+    if (isCurrentMonth) {
+      const avgBillableKPIProgress = perLeadClients.length > 0
+        ? perLeadClients.reduce((sum, c) => sum + c.kpi_progress, 0) / perLeadClients.length
+        : 0;
 
-    const billableForecast = {
-      // Conservative: Current daily average * remaining days, capped at total possible
-      conservative: Math.min(
-        totals.total_mtd_billable_revenue + (dailyBillableAverage * (daysInMonth - currentDay)),
-        totals.total_possible_billable_revenue
-      ),
+      const dailyBillableAverage = currentDay > 0 ? totals.total_mtd_billable_revenue / currentDay : 0;
 
-      // Linear: Simple projection based on current daily average
-      linear: dailyBillableAverage * daysInMonth,
+      const billableForecast = {
+        // Conservative: Current daily average * remaining days, capped at total possible
+        conservative: Math.min(
+          totals.total_mtd_billable_revenue + (dailyBillableAverage * (daysInMonth - currentDay)),
+          totals.total_possible_billable_revenue
+        ),
 
-      // Optimistic: Assumes we'll hit daily target pace for remaining days
-      optimistic: totals.total_mtd_billable_revenue + (totals.daily_billable_revenue_target * (daysInMonth - currentDay)),
+        // Linear: Simple projection based on current daily average
+        linear: dailyBillableAverage * daysInMonth,
 
-      // Confidence level based on billable KPI progress
-      confidence: avgBillableKPIProgress >= 80 ? 'high' : avgBillableKPIProgress >= 60 ? 'medium' : 'low',
+        // Optimistic: Assumes we'll hit daily target pace for remaining days
+        optimistic: totals.total_mtd_billable_revenue + (totals.daily_billable_revenue_target * (daysInMonth - currentDay)),
 
-      // Metadata
-      avg_kpi_progress: avgBillableKPIProgress,
-      daily_average: dailyBillableAverage,
-      days_elapsed: currentDay,
-      days_remaining: daysInMonth - currentDay,
-    };
+        // Confidence level based on billable KPI progress
+        confidence: avgBillableKPIProgress >= 80 ? 'high' : avgBillableKPIProgress >= 60 ? 'medium' : 'low',
 
-    totals.billable_forecast = billableForecast;
+        // Metadata
+        avg_kpi_progress: avgBillableKPIProgress,
+        daily_average: dailyBillableAverage,
+        days_elapsed: currentDay,
+        days_remaining: daysInMonth - currentDay,
+      };
 
-    console.log(`📈 Billable Revenue Forecast - Conservative: $${billableForecast.conservative.toFixed(2)} | Linear: $${billableForecast.linear.toFixed(2)} | Optimistic: $${billableForecast.optimistic.toFixed(2)}`);
+      totals.billable_forecast = billableForecast;
 
-    console.log(`✅ Processed ${validClients.length} clients with MTD revenue data`);
-    console.log(`💰 Total MTD Revenue: $${totals.total_mtd_revenue.toFixed(2)}`);
+      console.log(`📈 Billable Revenue Forecast - Conservative: $${billableForecast.conservative.toFixed(2)} | Linear: $${billableForecast.linear.toFixed(2)} | Optimistic: $${billableForecast.optimistic.toFixed(2)}`);
+    } else {
+      // Historical months: no forecasting needed
+      totals.billable_forecast = null;
+      console.log(`📈 Historical month ${requestedMonth} - no forecast (month complete)`);
+    }
+
+    console.log(`✅ Processed ${validClients.length} clients with revenue data for ${currentMonthYear}`);
+    console.log(`💰 Total Revenue: $${totals.total_mtd_revenue.toFixed(2)}`);
+    console.log(`💸 Total Expense Costs: $${totals.total_expense_costs.toFixed(2)} (Direct: $${totals.total_expense_direct_costs.toFixed(2)} + Overhead: $${totals.total_expense_allocated_overhead.toFixed(2)})`);
     console.log(`💵 Per-Lead Revenue: $${totals.total_per_lead_revenue.toFixed(2)} (${totals.per_lead_count} clients)`);
     console.log(`💵 Retainer Revenue: $${totals.total_retainer_revenue.toFixed(2)} (${totals.retainer_count} clients)`);
-    console.log(`📈 Total MTD Profit: $${totals.total_mtd_profit.toFixed(2)} (${totals.overall_profit_margin.toFixed(1)}% margin)`);
-    console.log(`📊 Daily Avg Revenue: $${totals.daily_average_revenue.toFixed(2)}`);
+    console.log(`📈 Total Profit: $${totals.total_mtd_profit.toFixed(2)} (${totals.overall_profit_margin.toFixed(1)}% margin)`);
     console.log(`🎯 Total Possible Revenue: $${totals.total_possible_revenue.toFixed(2)}`);
-    console.log(`📈 Revenue Forecast (Linear): $${forecast.linear.toFixed(2)}`);
+    if (isCurrentMonth && totals.forecast) {
+      console.log(`📊 Daily Avg Revenue: $${totals.daily_average_revenue.toFixed(2)}`);
+      console.log(`📈 Revenue Forecast (Linear): $${totals.forecast.linear.toFixed(2)}`);
+    }
 
     return new Response(
       JSON.stringify({

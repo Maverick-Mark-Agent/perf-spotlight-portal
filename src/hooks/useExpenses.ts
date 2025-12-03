@@ -68,6 +68,9 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
     mtd_by_category: [],
     mtd_overhead: 0,
     mtd_client_allocated: 0,
+    mtd_income: 0,
+    mtd_expenses_only: 0,
+    mtd_net: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,7 +149,17 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
       }));
       setRecurringTemplates(transformedRecurring);
 
-      // Calculate totals
+      // Separate income from expenses by category slug
+      const incomeExpenses = transformedExpenses.filter(e => e.category?.slug === 'income');
+      const regularExpenses = transformedExpenses.filter(e => e.category?.slug !== 'income');
+
+      // Calculate income total
+      const mtdIncome = incomeExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
+      // Calculate expenses only (excluding income)
+      const mtdExpensesOnly = regularExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
+      // Calculate totals (all transactions)
       const mtdTotal = transformedExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
       const mtdApproved = transformedExpenses
         .filter(e => e.status === 'approved')
@@ -155,8 +168,8 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         .filter(e => e.status === 'pending')
         .reduce((sum, e) => sum + Number(e.amount), 0);
 
-      // Group by category
-      const byCategory = transformedExpenses.reduce((acc, e) => {
+      // Group by category (excluding Income for the chart)
+      const byCategory = regularExpenses.reduce((acc, e) => {
         const catName = e.category?.name || 'Uncategorized';
         const catColor = e.category?.color || '#64748b';
         if (!acc[catName]) {
@@ -166,10 +179,10 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         return acc;
       }, {} as Record<string, { category_name: string; category_color: string; amount: number }>);
 
-      // Calculate overhead vs client allocated
+      // Calculate overhead vs client allocated (expenses only)
       let mtdOverhead = 0;
       let mtdClientAllocated = 0;
-      transformedExpenses.forEach(e => {
+      regularExpenses.forEach(e => {
         if (e.status === 'approved' && e.allocations) {
           e.allocations.forEach(a => {
             if (a.is_overhead) {
@@ -181,6 +194,9 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         }
       });
 
+      // Net = income - expenses (positive means profit)
+      const mtdNet = mtdIncome - mtdExpensesOnly;
+
       setTotals({
         mtd_total: mtdTotal,
         mtd_approved: mtdApproved,
@@ -188,6 +204,9 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         mtd_by_category: Object.values(byCategory).sort((a, b) => b.amount - a.amount),
         mtd_overhead: mtdOverhead,
         mtd_client_allocated: mtdClientAllocated,
+        mtd_income: mtdIncome,
+        mtd_expenses_only: mtdExpensesOnly,
+        mtd_net: mtdNet,
       });
 
     } catch (err) {
@@ -250,7 +269,24 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         await uploadReceipt(expense.id, data.receipt_file);
       }
 
-      await fetchData();
+      // Optimistic update - add to local state without full refetch
+      const newExpense: Expense = {
+        ...expense,
+        category: categories.find(c => c.id === data.category_id),
+        vendor: vendors.find(v => v.id === data.vendor_id),
+        allocations: data.allocations?.map(a => ({
+          id: crypto.randomUUID(),
+          expense_id: expense.id,
+          workspace_name: a.is_overhead ? null : a.workspace_name,
+          is_overhead: a.is_overhead,
+          allocation_percentage: a.allocation_percentage,
+          allocated_amount: (data.amount * a.allocation_percentage) / 100,
+          created_at: new Date().toISOString(),
+        })) || [],
+        receipts: [],
+      };
+      setExpenses(prev => [newExpense, ...prev]);
+
       return expense;
     } catch (err) {
       console.error('Error creating expense:', err);
@@ -304,7 +340,26 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         if (allocError) throw allocError;
       }
 
-      await fetchData();
+      // Optimistic update - update local state without full refetch
+      setExpenses(prev => prev.map(e => {
+        if (e.id !== id) return e;
+        return {
+          ...e,
+          ...updateData,
+          category: data.category_id ? categories.find(c => c.id === data.category_id) : e.category,
+          vendor: data.vendor_id !== undefined ? vendors.find(v => v.id === data.vendor_id) : e.vendor,
+          allocations: data.allocations ? data.allocations.map(a => ({
+            id: crypto.randomUUID(),
+            expense_id: id,
+            workspace_name: a.is_overhead ? null : a.workspace_name,
+            is_overhead: a.is_overhead,
+            allocation_percentage: a.allocation_percentage,
+            allocated_amount: (amount * a.allocation_percentage) / 100,
+            created_at: new Date().toISOString(),
+          })) : e.allocations,
+        };
+      }));
+
       return true;
     } catch (err) {
       console.error('Error updating expense:', err);
@@ -316,13 +371,29 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
   // Delete expense
   const deleteExpense = async (id: string): Promise<boolean> => {
     try {
+      // First, unlink any bank transactions that reference this expense
+      // This handles expenses created from Plaid imports
+      const { error: unlinkError } = await supabase
+        .from('bank_transactions')
+        .update({ expense_id: null, status: 'categorized' })
+        .eq('expense_id', id);
+
+      if (unlinkError) {
+        console.warn('Error unlinking bank transactions:', unlinkError);
+        // Continue anyway - the table might not exist or no transactions linked
+      }
+
+      // Now delete the expense (allocations and receipts cascade automatically)
       const { error } = await supabase
         .from('expenses')
         .delete()
         .eq('id', id);
 
       if (error) throw error;
-      await fetchData();
+
+      // Optimistic update - remove from local state without full refetch
+      setExpenses(prev => prev.filter(e => e.id !== id));
+
       return true;
     } catch (err) {
       console.error('Error deleting expense:', err);
@@ -334,16 +405,22 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
   // Approve expense manually (without receipt)
   const approveExpense = async (id: string): Promise<boolean> => {
     try {
+      const approvedAt = new Date().toISOString();
       const { error } = await supabase
         .from('expenses')
         .update({
           status: 'approved',
-          approved_at: new Date().toISOString(),
+          approved_at: approvedAt,
         })
         .eq('id', id);
 
       if (error) throw error;
-      await fetchData();
+
+      // Optimistic update - update status in local state
+      setExpenses(prev => prev.map(e =>
+        e.id === id ? { ...e, status: 'approved', approved_at: approvedAt } : e
+      ));
+
       return true;
     } catch (err) {
       console.error('Error approving expense:', err);
@@ -374,7 +451,10 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         .single();
 
       if (error) throw error;
-      await fetchData();
+
+      // Optimistic update - add to local state
+      setVendors(prev => [...prev, vendor].sort((a, b) => a.name.localeCompare(b.name)));
+
       return vendor;
     } catch (err) {
       console.error('Error creating vendor:', err);
@@ -392,7 +472,10 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         .eq('id', id);
 
       if (error) throw error;
-      await fetchData();
+
+      // Optimistic update
+      setVendors(prev => prev.map(v => v.id === id ? { ...v, ...data } : v));
+
       return true;
     } catch (err) {
       console.error('Error updating vendor:', err);
@@ -410,7 +493,10 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         .eq('id', id);
 
       if (error) throw error;
-      await fetchData();
+
+      // Optimistic update - remove from active vendors list
+      setVendors(prev => prev.filter(v => v.id !== id));
+
       return true;
     } catch (err) {
       console.error('Error deleting vendor:', err);
@@ -444,7 +530,15 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         .single();
 
       if (error) throw error;
-      await fetchData();
+
+      // Optimistic update - add to local state
+      const newTemplate: RecurringExpenseTemplate = {
+        ...template,
+        category: categories.find(c => c.id === data.category_id),
+        vendor: vendors.find(v => v.id === data.vendor_id),
+      };
+      setRecurringTemplates(prev => [...prev, newTemplate].sort((a, b) => a.name.localeCompare(b.name)));
+
       return template;
     } catch (err) {
       console.error('Error creating recurring template:', err);
@@ -466,7 +560,10 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         .eq('id', id);
 
       if (error) throw error;
-      await fetchData();
+
+      // Optimistic update
+      setRecurringTemplates(prev => prev.map(t => t.id === id ? { ...t, ...updateData } : t));
+
       return true;
     } catch (err) {
       console.error('Error updating recurring template:', err);
@@ -484,7 +581,10 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
         .eq('id', id);
 
       if (error) throw error;
-      await fetchData();
+
+      // Optimistic update - remove from list
+      setRecurringTemplates(prev => prev.filter(t => t.id !== id));
+
       return true;
     } catch (err) {
       console.error('Error deleting recurring template:', err);
@@ -524,8 +624,17 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
 
       if (receiptError) throw receiptError;
 
-      // The trigger will auto-update the expense status
-      await fetchData();
+      // Optimistic update - add receipt to expense
+      setExpenses(prev => prev.map(e => {
+        if (e.id !== expenseId) return e;
+        return {
+          ...e,
+          has_receipt: true,
+          status: 'approved',
+          receipts: [...(e.receipts || []), receipt],
+        };
+      }));
+
       return receipt;
     } catch (err) {
       console.error('Error uploading receipt:', err);
@@ -563,20 +672,28 @@ export function useExpenses(monthYear?: string): UseExpensesResult {
 
       if (deleteError) throw deleteError;
 
-      // Check if expense has other receipts, if not, update has_receipt
-      const { data: remainingReceipts } = await supabase
-        .from('expense_receipts')
-        .select('id')
-        .eq('expense_id', receipt.expense_id);
+      // Optimistic update - remove receipt from expense
+      setExpenses(prev => prev.map(e => {
+        if (e.id !== receipt.expense_id) return e;
+        const updatedReceipts = (e.receipts || []).filter(r => r.id !== receiptId);
+        return {
+          ...e,
+          receipts: updatedReceipts,
+          has_receipt: updatedReceipts.length > 0,
+          status: updatedReceipts.length > 0 ? e.status : 'pending',
+        };
+      }));
 
-      if (!remainingReceipts || remainingReceipts.length === 0) {
+      // Also update in DB if no receipts left
+      const expense = expenses.find(e => e.id === receipt.expense_id);
+      const remainingReceipts = (expense?.receipts || []).filter(r => r.id !== receiptId);
+      if (remainingReceipts.length === 0) {
         await supabase
           .from('expenses')
           .update({ has_receipt: false, status: 'pending' })
           .eq('id', receipt.expense_id);
       }
 
-      await fetchData();
       return true;
     } catch (err) {
       console.error('Error deleting receipt:', err);

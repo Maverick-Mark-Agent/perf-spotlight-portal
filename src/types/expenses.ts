@@ -180,6 +180,16 @@ export interface RecurringExpenseFormData {
   workspace_name?: string; // NULL = overhead
 }
 
+export interface CategoryFormData {
+  name: string;
+  description?: string;
+  icon?: string;
+  color: string;
+  sort_order?: number;
+  is_tax_deductible: boolean;
+  tax_category?: string;
+}
+
 // Analytics Types
 
 export interface MonthlyExpenseSummary {
@@ -223,6 +233,10 @@ export interface ExpenseTotals {
   mtd_by_category: { category_name: string; category_color: string; amount: number }[];
   mtd_overhead: number;
   mtd_client_allocated: number;
+  // Income tracking
+  mtd_income: number;
+  mtd_expenses_only: number;
+  mtd_net: number; // income - expenses (positive = profit)
 }
 
 export interface ProfitLossData {

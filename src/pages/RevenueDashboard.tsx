@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,21 +18,70 @@ import {
   Target,
   Activity,
   AlertCircle,
-  Receipt
+  Receipt,
+  Building2,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
 } from "lucide-react";
+import { format } from "date-fns";
 import { Link } from "react-router-dom";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { useToast } from "@/hooks/use-toast";
 import ExpensesTab from "@/components/expenses/ExpensesTab";
+import BankConnectionsTab from "@/components/expenses/BankConnectionsTab";
+import { usePlaid } from "@/hooks/usePlaid";
 
 const RevenueDashboard = () => {
   const { toast } = useToast();
   const { revenueDashboard, refreshRevenueDashboard } = useDashboardContext();
   const { clients, totals, loading, lastUpdated } = revenueDashboard;
+  const { connections, transactions } = usePlaid();
   const [activeTab, setActiveTab] = useState("overview");
 
+  // Count uncategorized transactions (pending + categorized but not yet converted)
+  const uncategorizedCount = transactions.filter(
+    tx => (tx.status === 'pending' || tx.status === 'categorized') && tx.amount > 0
+  ).length;
+
+  // Month filter state - shared between Revenue Overview and Expenses tabs
+  const [selectedMonthYear, setSelectedMonthYear] = useState(() => {
+    return format(new Date(), 'yyyy-MM');
+  });
+
+  // Month navigation functions
+  const goToPreviousMonth = () => {
+    const [year, month] = selectedMonthYear.split('-').map(Number);
+    const prevDate = new Date(year, month - 2, 1); // month is 0-indexed
+    setSelectedMonthYear(format(prevDate, 'yyyy-MM'));
+  };
+
+  const goToNextMonth = () => {
+    const [year, month] = selectedMonthYear.split('-').map(Number);
+    const nextDate = new Date(year, month, 1); // month is 0-indexed
+    setSelectedMonthYear(format(nextDate, 'yyyy-MM'));
+  };
+
+  const goToCurrentMonth = () => {
+    setSelectedMonthYear(format(new Date(), 'yyyy-MM'));
+  };
+
+  // Check if we're viewing the current month
+  const isCurrentMonth = selectedMonthYear === format(new Date(), 'yyyy-MM');
+
+  // Format the selected month for display
+  const displayMonth = useMemo(() => {
+    const [year, month] = selectedMonthYear.split('-').map(Number);
+    return format(new Date(year, month - 1, 1), 'MMMM yyyy');
+  }, [selectedMonthYear]);
+
+  // Refetch revenue data when month changes
+  useEffect(() => {
+    refreshRevenueDashboard(true, selectedMonthYear);
+  }, [selectedMonthYear]);
+
   const handleRefresh = async () => {
-    await refreshRevenueDashboard(true);
+    await refreshRevenueDashboard(true, selectedMonthYear);
     toast({ title: "Success", description: "Revenue data refreshed successfully" });
   };
 
@@ -160,16 +209,70 @@ const RevenueDashboard = () => {
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="mb-4">
-            <TabsTrigger value="overview" className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
-              Revenue Overview
-            </TabsTrigger>
-            <TabsTrigger value="expenses" className="flex items-center gap-2">
-              <Receipt className="h-4 w-4" />
-              Expenses
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center justify-between mb-4">
+            <TabsList>
+              <TabsTrigger value="overview" className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Revenue Overview
+              </TabsTrigger>
+              <TabsTrigger value="expenses" className="flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                Expenses / Income
+                {connections.length > 0 && (
+                  <Badge variant="outline" className="ml-1 h-5 px-1.5 text-[10px] bg-green-50 text-green-700 border-green-200">
+                    <Building2 className="h-3 w-3 mr-0.5" />
+                    {connections.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="banking" className="flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                Uncategorized Transactions
+                {uncategorizedCount > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] bg-amber-100 text-amber-700">
+                    {uncategorizedCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Month Selector - show for both Overview and Expenses tabs */}
+            {(activeTab === "overview" || activeTab === "expenses") && (
+              <div className="flex items-center gap-2 bg-card border rounded-lg p-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={goToPreviousMonth}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex items-center gap-2 px-2 min-w-[140px] justify-center">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium text-sm">{displayMonth}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={goToNextMonth}
+                  disabled={isCurrentMonth}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                {!isCurrentMonth && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToCurrentMonth}
+                    className="h-8 text-xs"
+                  >
+                    Today
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
 
           <TabsContent value="overview" className="space-y-8">
             {/* Key Metrics - 6 Cards */}
@@ -505,7 +608,11 @@ const RevenueDashboard = () => {
           </TabsContent>
 
           <TabsContent value="expenses">
-            <ExpensesTab />
+            <ExpensesTab monthYear={selectedMonthYear} />
+          </TabsContent>
+
+          <TabsContent value="banking">
+            <BankConnectionsTab />
           </TabsContent>
         </Tabs>
       </div>

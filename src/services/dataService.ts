@@ -437,9 +437,12 @@ export async function fetchVolumeData(force: boolean = false): Promise<DataFetch
 /**
  * Fetch Revenue Dashboard Data
  * Uses revenue-analytics Edge Function
+ * @param force - Force refresh (bypass cache)
+ * @param month - Optional month in YYYY-MM format (defaults to current month)
  */
-export async function fetchRevenueData(force: boolean = false): Promise<DataFetchResult<{ clients: RevenueClient[], totals: any }>> {
-  const cacheKey = 'revenue-dashboard-data';
+export async function fetchRevenueData(force: boolean = false, month?: string): Promise<DataFetchResult<{ clients: RevenueClient[], totals: any }>> {
+  // Use month-aware cache key
+  const cacheKey = month ? `revenue-dashboard-data-${month}` : 'revenue-dashboard-data';
   const startTime = Date.now();
 
   if (!force) {
@@ -464,7 +467,9 @@ export async function fetchRevenueData(force: boolean = false): Promise<DataFetc
   const fetchPromise = (async (): Promise<DataFetchResult<{ clients: RevenueClient[], totals: any }>> => {
     try {
       const { data, error } = await fetchWithRetry(
-        () => supabase.functions.invoke('revenue-analytics'),
+        () => supabase.functions.invoke('revenue-analytics', {
+          body: month ? { month } : {}
+        }),
         'Revenue Data Fetch'
       );
 

@@ -9,6 +9,106 @@ const corsHeaders = {
 // Prevents duplicate Slack notifications when both lead_replied and lead_interested events fire
 const slackNotificationCache = new Map<string, number>()
 
+// ========================================
+// AI SENTIMENT ANALYSIS
+// ========================================
+
+interface SentimentAnalysis {
+  sentiment: 'positive' | 'negative' | 'neutral'
+  is_interested: boolean
+  confidence: number
+  reasoning: string
+}
+
+/**
+ * Analyze reply sentiment using Claude AI
+ * Returns instant classification without waiting for Email Bison's delayed analysis
+ */
+async function analyzeReplySentiment(replyText: string): Promise<SentimentAnalysis> {
+  try {
+    const prompt = `Analyze this home insurance lead reply and classify it:
+
+Reply: "${replyText}"
+
+Determine:
+1. Sentiment: positive, negative, or neutral
+2. Is Interested: Does the lead want a quote/call/meeting? (true/false)
+3. Confidence: 0-100 (how confident are you?)
+4. Reasoning: Brief explanation (1 sentence)
+
+Guidelines:
+- "Yes", "Sure", "Sounds good", "Please do" = positive + interested
+- "No thanks", "Not interested", "Remove me" = negative + not interested
+- "Maybe later", "Call me next month" = neutral + not interested
+- Out of office, automated replies = neutral + not interested
+- Questions about coverage/pricing = positive + interested
+
+Respond ONLY with valid JSON:
+{
+  "sentiment": "positive|negative|neutral",
+  "is_interested": true|false,
+  "confidence": 85,
+  "reasoning": "Lead said 'Yes, please do' indicating clear interest"
+}`;
+
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
+    if (!anthropicApiKey) {
+      console.warn('⚠️ ANTHROPIC_API_KEY not set, falling back to Email Bison classification')
+      // Return neutral classification as fallback
+      return {
+        sentiment: 'neutral',
+        is_interested: false,
+        confidence: 0,
+        reasoning: 'AI API key not configured'
+      }
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicApiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-haiku-20240307',  // Fast + cheap ($0.00025 per request)
+        max_tokens: 200,
+        messages: [{
+          role: 'user',
+          content: prompt
+        }]
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`❌ Claude API error: ${response.status}`, errorText)
+      throw new Error(`Claude API error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const contentText = data.content[0].text
+
+    // Parse JSON response
+    const analysis = JSON.parse(contentText) as SentimentAnalysis
+
+    console.log(`🤖 AI Analysis: sentiment=${analysis.sentiment}, interested=${analysis.is_interested}, confidence=${analysis.confidence}%`)
+    console.log(`   Reasoning: ${analysis.reasoning}`)
+
+    return analysis
+
+  } catch (error) {
+    console.error('❌ Error analyzing sentiment with AI:', error)
+    // Return neutral classification as fallback
+    return {
+      sentiment: 'neutral',
+      is_interested: false,
+      confidence: 0,
+      reasoning: `AI analysis failed: ${error.message}`
+    }
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -29,6 +129,28 @@ Deno.serve(async (req) => {
     const workspaceName = payload.event?.workspace_name || 'Unknown'
 
     console.log(`📨 Webhook received: ${eventType} for ${workspaceName}`)
+
+    // ========================================
+    // WORKSPACE EXCLUSIONS
+    // ========================================
+    // Exclude StreetSmart workspaces - they have dedicated edge functions
+    const EXCLUDED_WORKSPACES = [
+      'StreetSmart Commercial',
+      'StreetSmart Trucking',
+      'StreetSmart P&C'
+    ]
+
+    if (EXCLUDED_WORKSPACES.includes(workspaceName)) {
+      console.log(`⏭️  Skipping ${workspaceName} - handled by dedicated edge function`)
+      return new Response(JSON.stringify({
+        status: 'skipped',
+        message: 'Workspace has dedicated edge function',
+        workspace: workspaceName
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      })
+    }
 
     // Log webhook delivery
     const { data: logData } = await supabase
@@ -186,31 +308,16 @@ async function handleLeadReplied(supabase: any, payload: any) {
       ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
       : null
 
-    // Determine sentiment using Email Bison's classification directly
-    // Use the interested and automated_reply flags to determine sentiment
-    let sentiment: 'positive' | 'negative' | 'neutral';
+    // Use AI to analyze sentiment INSTANTLY (don't wait for Email Bison's delayed analysis)
+    const replyText = reply.text_body || reply.body_plain || reply.text || ''
+    const aiAnalysis = await analyzeReplySentiment(replyText)
 
-    if (reply?.automated_reply === true) {
-      // Automated replies (out-of-office, vacation) are neutral
-      sentiment = 'neutral';
-    } else if (reply?.interested === true || lead?.interested === true) {
-      // Explicitly marked as interested by Email Bison
-      sentiment = 'positive';
-    } else if (reply?.interested === false) {
-      // Explicitly marked as NOT interested by Email Bison
-      sentiment = 'negative';
-    } else {
-      // Unclassified or unknown - default to neutral
-      sentiment = 'neutral';
-    }
+    // Use AI classification as primary source
+    let sentiment: 'positive' | 'negative' | 'neutral' = aiAnalysis.sentiment
+    let isExplicitlyInterested = aiAnalysis.is_interested
 
-    console.log(`📊 Sentiment for ${lead.email}: reply.interested=${reply?.interested}, reply.automated_reply=${reply?.automated_reply}, lead.interested=${lead.interested}, final=${sentiment}`);
-
-    // Determine if explicitly interested for is_interested field
-    const isExplicitlyInterested = reply?.interested === true || lead?.interested === true;
-
-    // Extract reply text (use cleaned version or raw)
-    const replyText = reply.text_body || reply.body_plain || reply.text || null
+    console.log(`🤖 AI Sentiment for ${lead.email}: sentiment=${sentiment}, interested=${isExplicitlyInterested}, confidence=${aiAnalysis.confidence}%`)
+    console.log(`   Email Bison flags: reply.interested=${reply?.interested}, reply.automated_reply=${reply?.automated_reply}, lead.interested=${lead.interested}`)
 
     // Extract phone number from custom variables
     const extractPhoneNumber = (customVariables: any[]) => {
@@ -227,10 +334,11 @@ async function handleLeadReplied(supabase: any, payload: any) {
     }
     const phoneValue = extractPhoneNumber(lead.custom_variables)
 
-    // Insert into lead_replies (will skip duplicates via bison_reply_id unique constraint)
+    // Upsert into lead_replies (update if exists, insert if new)
+    // Uses AI sentiment analysis for instant classification
     const { error: replyInsertError } = await supabase
       .from('lead_replies')
-      .insert({
+      .upsert({
         workspace_name: workspaceName,
         lead_email: lead.email,
         first_name: lead.first_name,
@@ -242,22 +350,26 @@ async function handleLeadReplied(supabase: any, payload: any) {
         reply_date: reply.date_received || new Date().toISOString(),
         sentiment: sentiment,
         is_interested: isExplicitlyInterested,
+        // AI sentiment columns
+        confidence_score: aiAnalysis.confidence,
+        ai_reasoning: aiAnalysis.reasoning,
+        sentiment_source: 'ai',
+        // Email Bison data
         bison_lead_id: lead.id ? lead.id.toString() : null,
         bison_reply_id: reply.uuid || reply.id ? (reply.uuid || reply.id.toString()) : null,
         bison_reply_numeric_id: reply.id || null,  // Numeric ID for Email Bison API
         bison_conversation_url: conversationUrl,
         bison_workspace_id: payload.event?.workspace_id || null,
+      }, {
+        onConflict: 'bison_reply_id',
+        ignoreDuplicates: false  // Allow updates
       })
 
-    // Log error but don't fail webhook if duplicate reply
+    // Log any errors
     if (replyInsertError) {
-      if (replyInsertError.code === '23505') { // Unique constraint violation
-        console.log(`⚠️ Duplicate reply skipped for ${workspaceName}: ${lead.email}`)
-      } else {
-        console.error(`❌ Error inserting reply for ${workspaceName}:`, replyInsertError)
-      }
+      console.error(`❌ Error upserting reply for ${workspaceName}:`, replyInsertError)
     } else {
-      console.log(`💬 Reply stored in lead_replies for ${workspaceName}: ${lead.email}`)
+      console.log(`💬 Reply upserted in lead_replies for ${workspaceName}: ${lead.email}`)
     }
   }
 
@@ -334,10 +446,31 @@ async function handleLeadInterested(supabase: any, payload: any) {
     }
     const phoneValue = extractPhoneNumber(lead.custom_variables)
 
-    // Insert into lead_replies (will skip duplicates via bison_reply_id unique constraint)
+    // Check if AI already classified this reply
+    const replyId = reply.uuid || reply.id ? (reply.uuid || reply.id.toString()) : null
+    const { data: existingReply } = await supabase
+      .from('lead_replies')
+      .select('sentiment, is_interested, sentiment_source, confidence_score')
+      .eq('bison_reply_id', replyId)
+      .single()
+
+    // Email Bison says interested - store as validation
+    const bisonSentiment = 'positive'
+    const bisonInterested = true
+
+    // Determine if AI and Bison disagree (flag for review)
+    const needsReview = existingReply && existingReply.sentiment_source === 'ai' && (
+      existingReply.sentiment !== bisonSentiment || existingReply.is_interested !== bisonInterested
+    )
+
+    if (needsReview) {
+      console.log(`⚠️ AI/Bison disagreement for ${lead.email}: AI=${existingReply.sentiment}/${existingReply.is_interested}, Bison=${bisonSentiment}/${bisonInterested}`)
+    }
+
+    // Upsert into lead_replies - override AI with Bison if they disagree (Bison wins for explicit interest)
     const { error: replyInsertError } = await supabase
       .from('lead_replies')
-      .insert({
+      .upsert({
         workspace_name: workspaceName,
         lead_email: lead.email,
         first_name: lead.first_name,
@@ -347,24 +480,30 @@ async function handleLeadInterested(supabase: any, payload: any) {
         phone: phoneValue,
         reply_text: replyText,
         reply_date: reply.date_received || new Date().toISOString(),
-        sentiment: 'positive', // Interested leads are always positive
+        sentiment: 'positive', // Bison says interested - override AI if needed
         is_interested: true,
+        // Store Bison's classification for comparison
+        bison_sentiment: bisonSentiment,
+        sentiment_source: existingReply?.sentiment_source === 'ai' ? 'hybrid' : 'bison',
+        needs_review: needsReview || false,
+        // Keep AI reasoning and confidence if they exist
+        confidence_score: existingReply?.confidence_score || null,
+        // Email Bison data
         bison_lead_id: lead.id ? lead.id.toString() : null,
-        bison_reply_id: reply.uuid || reply.id ? (reply.uuid || reply.id.toString()) : null,
-        bison_reply_numeric_id: reply.id || null,  // Numeric ID for Email Bison API
+        bison_reply_id: replyId,
+        bison_reply_numeric_id: reply.id || null,
         bison_conversation_url: replyConversationUrl,
         bison_workspace_id: payload.event?.workspace_id || null,
+      }, {
+        onConflict: 'bison_reply_id',
+        ignoreDuplicates: false  // Allow updates
       })
 
-    // Log error but don't fail webhook if duplicate reply
+    // Log any errors
     if (replyInsertError) {
-      if (replyInsertError.code === '23505') { // Unique constraint violation
-        console.log(`⚠️ Duplicate interested reply skipped for ${workspaceName}: ${lead.email}`)
-      } else {
-        console.error(`❌ Error inserting interested reply for ${workspaceName}:`, replyInsertError)
-      }
+      console.error(`❌ Error upserting interested reply for ${workspaceName}:`, replyInsertError)
     } else {
-      console.log(`⭐ Interested reply stored in lead_replies for ${workspaceName}: ${lead.email}`)
+      console.log(`⭐ Interested reply upserted (Bison validation) for ${workspaceName}: ${lead.email}`)
     }
   }
 
@@ -430,7 +569,7 @@ async function handleLeadInterested(supabase: any, payload: any) {
   await sendGlobalSlackNotification(workspaceName, lead, reply)
 
   // Route to external APIs (e.g., Allstate) if configured
-  await routeToAllstateAPI(workspaceName, lead)
+  await routeToAllstateAPI(supabase, workspaceName, lead)
 
   // Route to generic external APIs (e.g., Agency Zoom, Zapier) if configured
   await routeToExternalAPI(supabase, workspaceName, lead, reply)
@@ -613,6 +752,27 @@ async function getWorkspaceNameFromLog(supabase: any, logId: string): Promise<st
 
 async function sendSlackNotification(supabase: any, workspaceName: string, lead: any, reply: any) {
   try {
+    // Check for duplicate using database (replaces in-memory cache)
+    const replyId = reply?.uuid || reply?.id?.toString()
+
+    if (!replyId) {
+      console.log(`⚠️ No reply ID found, skipping client Slack notification for ${workspaceName}: ${lead?.email || 'unknown'}`)
+      return
+    }
+
+    // Check if we already sent a client notification for this reply
+    const { data: existingNotification } = await supabase
+      .from('slack_notifications_sent')
+      .select('id, sent_at')
+      .eq('reply_id', replyId)
+      .eq('notification_type', 'client')
+      .single()
+
+    if (existingNotification) {
+      console.log(`⏭️ Skipping duplicate client Slack notification for reply ${replyId} (${workspaceName}: ${lead?.email || 'unknown'}) - already sent at ${existingNotification.sent_at}`)
+      return
+    }
+
     // Get the Slack webhook URL for this workspace
     const { data: client } = await supabase
       .from('client_registry')
@@ -773,6 +933,24 @@ async function sendSlackNotification(supabase: any, workspaceName: string, lead:
       console.error(`   Webhook URL: ${slackWebhookUrl}`)
     } else {
       console.log(`✅ Workspace Slack notification sent for ${workspaceName}: ${lead.email}`)
+
+      // Record notification in database to prevent future duplicates
+      const { error: insertError } = await supabase
+        .from('slack_notifications_sent')
+        .insert({
+          reply_id: replyId,
+          workspace_name: workspaceName,
+          notification_type: 'client'
+        })
+
+      if (insertError) {
+        // Log but don't fail - duplicate key errors are expected in race conditions
+        if (insertError.code !== '23505') { // 23505 = unique_violation
+          console.error(`⚠️ Error recording client Slack notification:`, insertError)
+        }
+      } else {
+        console.log(`📝 Recorded client notification for reply ${replyId}`)
+      }
     }
   } catch (error) {
     console.error(`❌ Error sending workspace Slack notification:`)
@@ -785,11 +963,28 @@ async function sendSlackNotification(supabase: any, workspaceName: string, lead:
 
 async function sendGlobalSlackNotification(workspaceName: string, lead: any, reply: any) {
   try {
-    // Check for duplicate (Bison can send both lead_replied AND lead_interested for same reply)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    // Check for duplicate using database (replaces in-memory cache)
     const replyId = reply?.uuid || reply?.id?.toString()
 
-    if (replyId && slackNotificationCache.has(replyId)) {
-      console.log(`⏭️ Skipping duplicate Slack notification for reply ${replyId} (${workspaceName}: ${lead?.email || 'unknown'})`)
+    if (!replyId) {
+      console.log(`⚠️ No reply ID found, skipping global Slack notification for ${workspaceName}: ${lead?.email || 'unknown'}`)
+      return
+    }
+
+    // Check if we already sent a global notification for this reply
+    const { data: existingNotification } = await supabase
+      .from('slack_notifications_sent')
+      .select('id, sent_at')
+      .eq('reply_id', replyId)
+      .eq('notification_type', 'global')
+      .single()
+
+    if (existingNotification) {
+      console.log(`⏭️ Skipping duplicate global Slack notification for reply ${replyId} (${workspaceName}: ${lead?.email || 'unknown'}) - already sent at ${existingNotification.sent_at}`)
       return
     }
 
@@ -878,17 +1073,22 @@ async function sendGlobalSlackNotification(workspaceName: string, lead: any, rep
     } else {
       console.log(`✅ Global Slack notification sent for ${workspaceName}: ${lead.email}`)
 
-      // Mark as sent in cache to prevent duplicates
-      if (replyId) {
-        slackNotificationCache.set(replyId, Date.now())
+      // Record notification in database to prevent future duplicates
+      const { error: insertError } = await supabase
+        .from('slack_notifications_sent')
+        .insert({
+          reply_id: replyId,
+          workspace_name: workspaceName,
+          notification_type: 'global'
+        })
 
-        // Clean up old cache entries (older than 60 seconds)
-        const now = Date.now()
-        for (const [id, timestamp] of slackNotificationCache.entries()) {
-          if (now - timestamp > 60000) {
-            slackNotificationCache.delete(id)
-          }
+      if (insertError) {
+        // Log but don't fail - duplicate key errors are expected in race conditions
+        if (insertError.code !== '23505') { // 23505 = unique_violation
+          console.error(`⚠️ Error recording global Slack notification:`, insertError)
         }
+      } else {
+        console.log(`📝 Recorded global notification for reply ${replyId}`)
       }
     }
   } catch (error) {
@@ -984,7 +1184,10 @@ ${emailBody}`
   }
 }
 
-async function routeToAllstateAPI(workspaceName: string, lead: any) {
+async function routeToAllstateAPI(supabase: any, workspaceName: string, lead: any) {
+  // DEBUG: Log at very start to confirm function is called
+  console.log(`🔄 [DEBUG] routeToAllstateAPI CALLED for ${workspaceName} - lead: ${lead?.email}`)
+
   // Only route for specific workspaces
   if (workspaceName !== 'Gregg Blanchard' && workspaceName !== 'Nick Sakha') {
     return
@@ -1094,6 +1297,21 @@ async function routeToAllstateAPI(workspaceName: string, lead: any) {
 
     const result = await response.text()
     console.log(`✅ Lead successfully routed to Allstate API:`, result)
+
+    // Track successful delivery
+    if (lead.email) {
+      const { error: updateError } = await supabase
+        .from('client_leads')
+        .update({ external_api_sent_at: new Date().toISOString() })
+        .eq('workspace_name', workspaceName)
+        .eq('lead_email', lead.email)
+
+      if (updateError) {
+        console.error('Failed to update external_api_sent_at for Allstate lead:', updateError)
+      } else {
+        console.log(`📊 Tracked Allstate delivery for ${lead.email}`)
+      }
+    }
   } catch (error) {
     console.error('Error routing to Allstate API:', error)
     // Don't throw - we don't want Allstate API failures to break the main webhook
@@ -1101,6 +1319,9 @@ async function routeToAllstateAPI(workspaceName: string, lead: any) {
 }
 
 async function routeToExternalAPI(supabase: any, workspaceName: string, lead: any, reply: any) {
+  // DEBUG: Log at the very start to confirm function is being called
+  console.log(`🔄 [DEBUG] routeToExternalAPI CALLED for ${workspaceName} - lead: ${lead?.email}`)
+
   try {
     // Get the external API configuration for this workspace with retry logic
     let client: any = null

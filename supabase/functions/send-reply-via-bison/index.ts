@@ -6,7 +6,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const BISON_BASE_URL = 'https://send.maverickmarketingllc.com/api';
+const MAVERICK_BISON_API_KEY = Deno.env.get('MAVERICK_BISON_API_KEY')!;
+const LONG_RUN_BISON_API_KEY = Deno.env.get('LONG_RUN_BISON_API_KEY')!;
+const MAVERICK_BASE_URL = 'https://send.maverickmarketingllc.com/api';
+const LONGRUN_BASE_URL = 'https://send.longrun.agency/api';
 
 interface SendReplyRequest {
   reply_uuid: string;
@@ -78,19 +81,19 @@ serve(async (req) => {
     const leadName = [replyData.first_name, replyData.last_name].filter(Boolean).join(' ') || 'Lead';
     console.log(`✅ Found reply record: ${leadName} <${replyData.lead_email}>`);
 
-    // Step 2: Get workspace API key
+    // Step 2: Get workspace configuration (including API key and instance)
     const { data: workspace, error: workspaceError } = await supabase
       .from('client_registry')
-      .select('bison_api_key, workspace_name')
+      .select('bison_api_key, workspace_name, bison_instance, bison_workspace_id')
       .eq('workspace_name', workspace_name)
       .single();
 
-    if (workspaceError || !workspace || !workspace.bison_api_key) {
-      console.error('Workspace or API key not found:', workspaceError);
+    if (workspaceError || !workspace) {
+      console.error('Workspace not found:', workspaceError);
       return new Response(
         JSON.stringify({
           success: false,
-          error: `Workspace not found or missing API key: ${workspace_name}`
+          error: `Workspace not found: ${workspace_name}`
         }),
         {
           status: 404,
@@ -99,7 +102,57 @@ serve(async (req) => {
       );
     }
 
-    console.log(`✅ Found workspace API key for ${workspace_name}`);
+    // Determine which API key and base URL to use
+    const isLongRun = workspace.bison_instance === 'Long Run';
+    const baseUrl = isLongRun ? LONGRUN_BASE_URL : MAVERICK_BASE_URL;
+    
+    // Use workspace-specific API key if available, otherwise fall back to global key
+    const apiKeyToUse = workspace.bison_api_key || (isLongRun ? LONG_RUN_BISON_API_KEY : MAVERICK_BISON_API_KEY);
+    
+    if (!apiKeyToUse) {
+      console.error('No API key available (neither workspace-specific nor global)');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `No API key configured for workspace: ${workspace_name}. Please configure a workspace-specific API key or ensure global API keys are set in environment variables.`
+        }),
+        {
+          status: 500,
+          headers: corsHeaders
+        }
+      );
+    }
+
+    const usingWorkspaceKey = !!workspace.bison_api_key;
+    console.log(`✅ Using ${usingWorkspaceKey ? 'workspace-specific' : 'global'} API key for ${workspace_name}`);
+    
+    // If using global key, we may need to switch workspace context
+    // However, for reply sending, the reply ID is already workspace-scoped, so switching may not be necessary
+    // But we'll do it to be safe
+    if (!usingWorkspaceKey && workspace.bison_workspace_id) {
+      console.log(`🔄 Switching to workspace ${workspace.bison_workspace_id} (using global key)...`);
+      try {
+        const switchResponse = await fetch(`${baseUrl}/workspaces/v1.1/switch-workspace`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKeyToUse}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ team_id: workspace.bison_workspace_id }),
+        });
+
+        if (!switchResponse.ok) {
+          console.warn(`⚠️  Failed to switch workspace (may not be necessary for replies): ${switchResponse.status}`);
+          // Don't fail - reply IDs are workspace-scoped, so this might not be needed
+        } else {
+          console.log(`✅ Switched to workspace ${workspace.bison_workspace_id}`);
+        }
+      } catch (switchError) {
+        console.warn(`⚠️  Workspace switch error (continuing anyway):`, switchError);
+        // Continue - reply IDs are workspace-scoped
+      }
+    }
 
     // Step 3: Get the bison reply numeric ID (required for Email Bison API)
     // Email Bison API requires INTEGER reply_id, not UUID
@@ -201,10 +254,10 @@ serve(async (req) => {
     // Step 6: Send reply via Email Bison API
     console.log(`🚀 Sending reply to Email Bison API...`);
 
-    const bisonResponse = await fetch(`${BISON_BASE_URL}/replies/${bisonReplyId}/reply`, {
+    const bisonResponse = await fetch(`${baseUrl}/replies/${bisonReplyId}/reply`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${workspace.bison_api_key}`,
+        'Authorization': `Bearer ${apiKeyToUse}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },

@@ -104,10 +104,11 @@ export default function ClientPortalHub() {
             throw workspacesError;
           }
 
-          // Get lead counts for all workspaces
+          // Get lead counts for all workspaces (only interested leads)
           const { data: leadCounts, error: leadsError } = await (supabase as any)
             .from('client_leads')
-            .select('workspace_name, pipeline_stage');
+            .select('workspace_name, pipeline_stage')
+            .eq('interested', true);
 
           if (leadsError) {
             console.error('[ClientPortalHub] Error fetching lead counts:', leadsError);

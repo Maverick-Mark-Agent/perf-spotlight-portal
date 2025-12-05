@@ -358,17 +358,49 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
 
     console.log(`[Infrastructure Realtime] Found ${totalCount || 0} total accounts in materialized view`);
 
-    // Query email_accounts_view (refreshed after poll-sender-emails completes)
-    // IMPORTANT: Set explicit limit to fetch ALL accounts (Supabase defaults to 1000 max)
-    const { data: accounts, error } = await supabase
-      .from('email_accounts_view')
-      .select('*')
-      .order('workspace_name', { ascending: true })
-      .limit(totalCount || 10000); // Fetch ALL accounts, not just first 1000
+    // ✅ PAGINATION FIX: Supabase has a hard 10,000 row limit per query
+    // We need to fetch in batches to get all accounts when count > 10,000
+    const BATCH_SIZE = 5000;
+    let accounts: any[] = [];
 
-    if (error) {
-      console.error('[Infrastructure Realtime] Database error:', error);
-      throw error;
+    if ((totalCount || 0) <= BATCH_SIZE) {
+      // Small dataset - single query
+      const { data, error } = await supabase
+        .from('email_accounts_view')
+        .select('*')
+        .order('workspace_name', { ascending: true })
+        .limit(totalCount || BATCH_SIZE);
+
+      if (error) {
+        console.error('[Infrastructure Realtime] Database error:', error);
+        throw error;
+      }
+      accounts = data || [];
+    } else {
+      // Large dataset - fetch in batches
+      console.log(`[Infrastructure Realtime] Fetching ${totalCount} accounts in batches of ${BATCH_SIZE}...`);
+      let offset = 0;
+
+      while (offset < (totalCount || 0)) {
+        const { data: batch, error } = await supabase
+          .from('email_accounts_view')
+          .select('*')
+          .order('bison_account_id', { ascending: true }) // Use stable sort key for pagination
+          .range(offset, offset + BATCH_SIZE - 1);
+
+        if (error) {
+          console.error('[Infrastructure Realtime] Database error on batch:', error);
+          throw error;
+        }
+
+        if (batch) {
+          accounts.push(...batch);
+          console.log(`[Infrastructure Realtime] Fetched batch: ${accounts.length}/${totalCount} accounts`);
+        }
+
+        if (!batch || batch.length < BATCH_SIZE) break; // No more data
+        offset += BATCH_SIZE;
+      }
     }
 
     if (!accounts || accounts.length === 0) {

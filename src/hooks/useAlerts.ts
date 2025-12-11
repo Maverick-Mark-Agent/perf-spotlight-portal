@@ -127,10 +127,30 @@ export function useAlerts(accounts: EmailAccount[] | null): AlertsResult {
       });
     }
 
-    // 5. WARNING: Low Reply Rate Accounts (<2% with 50+ sent)
+    // 5. CRITICAL: Burnt Mailboxes (<0.4% reply rate with 200+ sent)
+    const burntMailboxes = accounts.filter(a => {
+      const replyRate = a.emails_sent_count > 0 ? (a.total_replied_count / a.emails_sent_count) * 100 : 0;
+      return replyRate < 0.4 && a.emails_sent_count >= 200;
+    });
+    if (burntMailboxes.length > 0) {
+      alerts.push({
+        id: `alert-${++alertId}`,
+        type: 'critical',
+        category: 'performance',
+        title: `${burntMailboxes.length} Burnt Mailbox${burntMailboxes.length === 1 ? '' : 'es'} (<0.4% Reply Rate)`,
+        description: 'Accounts with extremely low reply rates (<0.4%) and 200+ emails sent. These mailboxes are likely burnt and should be canceled to reduce costs.',
+        count: burntMailboxes.length,
+        accounts: burntMailboxes.slice(0, 5).map(a => a.email_address),
+        actionable: true,
+        recommendation: 'Review and cancel these accounts immediately to save on subscription costs',
+        priority: 2,
+      });
+    }
+
+    // 6. WARNING: Low Reply Rate Accounts (<2% with 50+ sent)
     const lowReplyAccounts = accounts.filter(a => {
-      const replyRate = a.emails_sent_count > 0 ? a.total_replied_count / a.emails_sent_count : 0;
-      return replyRate < 0.02 && replyRate > 0 && a.emails_sent_count >= 50;
+      const replyRate = a.emails_sent_count > 0 ? (a.total_replied_count / a.emails_sent_count) * 100 : 0;
+      return replyRate >= 0.4 && replyRate < 2 && a.emails_sent_count >= 50;
     });
     if (lowReplyAccounts.length > 10) { // Only alert if it's a significant number
       alerts.push({
@@ -147,7 +167,7 @@ export function useAlerts(accounts: EmailAccount[] | null): AlertsResult {
       });
     }
 
-    // 6. INFO: Stale Data
+    // 7. INFO: Stale Data
     const syncDates = accounts
       .map(a => a.last_synced_at ? new Date(a.last_synced_at).getTime() : 0)
       .filter(t => t > 0);
@@ -180,7 +200,7 @@ export function useAlerts(accounts: EmailAccount[] | null): AlertsResult {
       }
     }
 
-    // 7. INFO: Accounts with No Activity (0 sent, connected)
+    // 8. INFO: Accounts with No Activity (0 sent, connected)
     const inactiveAccounts = accounts.filter(a =>
       a.status === 'connected' &&
       a.emails_sent_count === 0

@@ -22,6 +22,11 @@ interface PerformanceTabProps {
     espStats: any[];
     allAccounts: any[];
   };
+  lowReplyRateData: {
+    resellerStats: any[];
+    espStats: any[];
+    allAccounts: any[];
+  };
   loading: boolean;
   expandedProviders: Set<string>;
   toggleProvider: (name: string) => void;
@@ -34,6 +39,7 @@ export function PerformanceTab({
   espStatsData,
   top100AccountsData,
   noReplyAccountsData,
+  lowReplyRateData,
   loading,
   expandedProviders,
   toggleProvider

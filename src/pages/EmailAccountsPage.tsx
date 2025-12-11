@@ -86,6 +86,11 @@ const SendingAccountsInfrastructure = () => {
   const [resellerStatsData, setResellerStatsData] = useState([]);
   const [espStatsData, setEspStatsData] = useState([]);
   const [top100AccountsData, setTop100AccountsData] = useState([]);
+  const [lowReplyRateData, setLowReplyRateData] = useState({
+    resellerStats: [],
+    espStats: [],
+    allAccounts: []
+  });
 
   // ✅ Global search results - filter accounts across all workspaces
   const globalSearchResults = useMemo(() => {
@@ -411,6 +416,8 @@ const SendingAccountsInfrastructure = () => {
           qualifyingAccountCount: 0,    // Count of accounts with ≥50 sent
           noReplyAccountCount: 0,       // Count of accounts with 100+ sent, 0 replies
           totalSentNoReply: 0,          // Total sent from 100+ sent, 0 reply accounts
+          lowReplyRateAccountCount: 0,  // Count of accounts with <0.4% reply rate and 200+ sent
+          totalSentLowReplyRate: 0,     // Total sent from low reply rate accounts
           totalAccountCount: 0,         // Total account count
           avgReplyRate: 0
         };
@@ -442,6 +449,13 @@ const SendingAccountsInfrastructure = () => {
       if (totalSent >= 100 && totalReplied === 0) {
         providerGroups[provider].noReplyAccountCount += 1;
         providerGroups[provider].totalSentNoReply += totalSent;
+      }
+
+      // Track accounts with low reply rate (<0.4%) and 200+ emails sent
+      const replyRate = totalSent > 0 ? (totalReplied / totalSent) * 100 : 0;
+      if (replyRate < 0.4 && totalSent >= 200) {
+        providerGroups[provider].lowReplyRateAccountCount += 1;
+        providerGroups[provider].totalSentLowReplyRate += totalSent;
       }
     });
     
@@ -486,6 +500,9 @@ const SendingAccountsInfrastructure = () => {
         break;
       case '100+ No Replies':
         sortedData = providerData.sort((a, b) => b.noReplyAccountCount - a.noReplyAccountCount);
+        break;
+      case 'Low Reply Rate (<0.4%)':
+        sortedData = providerData.sort((a, b) => b.lowReplyRateAccountCount - a.lowReplyRateAccountCount);
         break;
       case 'Daily Availability':
         sortedData = providerData.sort((a, b) => b.totalDailyLimit - a.totalDailyLimit);
@@ -581,9 +598,62 @@ const SendingAccountsInfrastructure = () => {
       .sort((a, b) => b.calculatedReplyRate - a.calculatedReplyRate)
       .slice(0, 100);
 
+    // LOW REPLY RATE (<0.4%) data generation
+    const lowReplyAccounts = accounts.filter(account => {
+      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+      const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
+      const replyRate = totalSent > 0 ? (totalReplied / totalSent) * 100 : 0;
+      return replyRate < 0.4 && totalSent >= 200;
+    });
+
+    const lowReplyResellerGroups = {};
+    const lowReplyEspGroups = {};
+
+    lowReplyAccounts.forEach(account => {
+      const reseller = account.fields['Tag - Reseller'] || 'Unknown';
+      const esp = account.fields['Tag - Email Provider'] || 'Unknown';
+      const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+
+      // Group by Reseller
+      if (!lowReplyResellerGroups[reseller]) {
+        lowReplyResellerGroups[reseller] = {
+          name: reseller,
+          accounts: [],
+          burntAccountCount: 0,
+          totalSentLowRR: 0
+        };
+      }
+      lowReplyResellerGroups[reseller].accounts.push(account);
+      lowReplyResellerGroups[reseller].burntAccountCount += 1;
+      lowReplyResellerGroups[reseller].totalSentLowRR += totalSent;
+
+      // Group by ESP
+      if (!lowReplyEspGroups[esp]) {
+        lowReplyEspGroups[esp] = {
+          name: esp,
+          accounts: [],
+          burntAccountCount: 0,
+          totalSentLowRR: 0
+        };
+      }
+      lowReplyEspGroups[esp].accounts.push(account);
+      lowReplyEspGroups[esp].burntAccountCount += 1;
+      lowReplyEspGroups[esp].totalSentLowRR += totalSent;
+    });
+
+    const lowReplyResellerStats = Object.values(lowReplyResellerGroups)
+      .sort((a: any, b: any) => b.burntAccountCount - a.burntAccountCount);
+    const lowReplyEspStats = Object.values(lowReplyEspGroups)
+      .sort((a: any, b: any) => b.burntAccountCount - a.burntAccountCount);
+
     setResellerStatsData(resellerStats);
     setEspStatsData(espStats);
     setTop100AccountsData(top100);
+    setLowReplyRateData({
+      resellerStats: lowReplyResellerStats,
+      espStats: lowReplyEspStats,
+      allAccounts: lowReplyAccounts
+    });
   };
 
   const downloadFailedAccounts = () => {
@@ -827,6 +897,13 @@ const SendingAccountsInfrastructure = () => {
         const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
         return totalSent >= 100 && totalReplied === 0;
       });
+    } else if (viewType === 'Low Reply Rate (<0.4%)') {
+      accountsToExport = provider.accounts.filter(account => {
+        const totalSent = parseFloat(account.fields['Total Sent']) || 0;
+        const totalReplied = parseFloat(account.fields['Total Replied']) || 0;
+        const replyRate = totalSent > 0 ? (totalReplied / totalSent) * 100 : 0;
+        return replyRate < 0.4 && totalSent >= 200;
+      });
     } else {
       accountsToExport = provider.accounts; // All accounts for Total Email Sent
     }
@@ -880,6 +957,8 @@ const SendingAccountsInfrastructure = () => {
       filenameSuffix = '50plus';
     } else if (viewType === '100+ No Replies') {
       filenameSuffix = '100plus_no_replies';
+    } else if (viewType === 'Low Reply Rate (<0.4%)') {
+      filenameSuffix = 'low_reply_rate';
     } else {
       filenameSuffix = 'all_accounts';
     }
@@ -1359,6 +1438,8 @@ const SendingAccountsInfrastructure = () => {
             resellerStatsData={resellerStatsData}
             espStatsData={espStatsData}
             top100AccountsData={top100AccountsData}
+            noReplyAccountsData={{ resellerStats: [], espStats: [], allAccounts: [] }}
+            lowReplyRateData={lowReplyRateData}
             loading={loading}
             expandedProviders={expandedProviders}
             toggleProvider={toggleProvider}

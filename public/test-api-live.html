@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Live API Data</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .result {
+            background: #000;
+            border: 2px solid #00ff00;
+            padding: 20px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Live API Data Test</h1>
+    <button onclick="testAPI()">Fetch Accounts from API</button>
+    <div class="result" id="output">Click button to test...</div>
+
+    <script>
+        const supabaseUrl = 'https://gjqbbgrfhijescaouqkx.supabase.co';
+        const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqcWJiZ3JmaGlqZXNjYW91cWt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2MTc1MzAsImV4cCI6MjA3MzE5MzUzMH0.P1CMjUt2VA5Q6d8z82XbyWHAUVWqlluL--Zihs8TzC0';
+
+        const supabase = window.supabase.createClient(supabaseUrl, anonKey);
+        const output = document.getElementById('output');
+
+        async function testAPI() {
+            output.textContent = '⏳ Fetching from email_accounts_view...\n\n';
+
+            const { data, error } = await supabase
+                .from('email_accounts_view')
+                .select('email_address, email_provider, reseller, workspace_name')
+                .limit(10);
+
+            if (error) {
+                output.textContent += '❌ Error: ' + error.message;
+                return;
+            }
+
+            output.textContent += `✅ Fetched ${data.length} accounts\n\n`;
+
+            data.forEach((account, i) => {
+                output.textContent += `${i + 1}. ${account.email_address}\n`;
+                output.textContent += `   Workspace: ${account.workspace_name}\n`;
+                output.textContent += `   Provider: ${account.email_provider || 'NULL'}\n`;
+                output.textContent += `   Reseller: ${account.reseller || 'NULL'}\n\n`;
+            });
+
+            // Count provider/reseller coverage
+            const withProvider = data.filter(a => a.email_provider).length;
+            const withReseller = data.filter(a => a.reseller).length;
+
+            output.textContent += `\n📊 Coverage:\n`;
+            output.textContent += `   With provider: ${withProvider}/${data.length}\n`;
+            output.textContent += `   With reseller: ${withReseller}/${data.length}\n`;
+        }
+    </script>
+</body>
+</html>

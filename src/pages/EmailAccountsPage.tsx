@@ -999,9 +999,13 @@ const SendingAccountsInfrastructure = () => {
       'email-accounts-data-v2-longrun',
       'email-accounts-timestamp-v2-longrun',
       'email-accounts-data-v2-scaledmail',
-      'email-accounts-timestamp-v2-scaledmail'
+      'email-accounts-timestamp-v2-scaledmail',
+      'infrastructure-dashboard-data', // Force clear infrastructure cache
+      'infrastructure-dashboard-timestamp' // Force clear infrastructure cache timestamp
     ];
     oldCacheKeys.forEach(key => localStorage.removeItem(key));
+
+    console.log('[EmailAccountsPage] Cleared all old cache on mount');
 
     // Don't fetch here - DashboardContext already fetches on mount
     // This prevents duplicate API calls

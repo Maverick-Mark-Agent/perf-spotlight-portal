@@ -83,6 +83,12 @@ export function AlertAccountsModal({
             const replyRate = a.emails_sent_count > 0 ? a.total_replied_count / a.emails_sent_count : 0;
             return replyRate < 0.02 && replyRate > 0 && a.emails_sent_count >= 50;
           });
+        } else if (alert.title.includes('Burnt Mailbox')) {
+          // Burnt mailboxes: < 0.4% reply rate with 200+ emails sent
+          accounts = allAccounts.filter(a => {
+            const replyRate = a.emails_sent_count > 0 ? (a.total_replied_count / a.emails_sent_count) * 100 : 0;
+            return replyRate < 0.4 && a.emails_sent_count >= 200;
+          });
         } else if (alert.title.includes('No Activity')) {
           accounts = allAccounts.filter(a =>
             a.status === 'connected' && a.emails_sent_count === 0

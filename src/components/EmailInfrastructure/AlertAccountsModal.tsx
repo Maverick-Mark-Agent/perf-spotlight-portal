@@ -50,6 +50,16 @@ export function AlertAccountsModal({
       return [];
     }
 
+    // DEBUG: Log first account to see data structure
+    if (allAccounts.length > 0) {
+      console.log('[AlertModal] First account structure:', {
+        email_address: allAccounts[0].email_address,
+        email_provider: allAccounts[0].email_provider,
+        reseller: allAccounts[0].reseller,
+        workspace_name: allAccounts[0].workspace_name,
+      });
+    }
+
     let accounts: EmailAccount[] = [];
 
     // Filter based on alert type and category

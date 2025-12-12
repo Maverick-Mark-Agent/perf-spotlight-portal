@@ -101,7 +101,7 @@ export function OverviewTab({}: OverviewTabProps) {
       // Fetch email accounts data
       const { data: accountsData, error } = await supabase
         .from('email_accounts_view')
-        .select('id, email_address, workspace_name, status, emails_sent_count, total_replied_count, bounced_count, reply_rate_percentage, last_synced_at, price');
+        .select('id, email_address, workspace_name, email_provider, reseller, status, emails_sent_count, total_replied_count, bounced_count, reply_rate_percentage, last_synced_at, price');
 
       if (error) throw error;
 

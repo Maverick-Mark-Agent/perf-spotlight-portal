@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Dashboard Data</title>
+    <script>
+        async function testAPI() {
+            const output = document.getElementById('output');
+            output.innerHTML = 'Loading...';
+
+            try {
+                const response = await fetch('https://gjqbbgrfhijescaouqkx.supabase.co/functions/v1/hybrid-email-accounts-v2', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqcWJiZ3JmaGlqZXNjYW91cWt4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyODA5MTU2NywiZXhwIjoyMDQzNjY3NTY3fQ.k-ant-api03-5h09QQR7HYaS9f7vfCjENfm6qJ0qjbGnK2FNwDR3DeVwBM_Q6rw3ne7CTp6h2OBQOfrg9IBD6xnthj6hsYbVJQ-Sum12QAA',
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                const records = data.records || [];
+
+                // Count by workspace
+                const workspaceCounts = {};
+                const statusCounts = {};
+                records.forEach(record => {
+                    const workspace = record.fields.Workspace || 'Unknown';
+                    const status = record.fields.Status || 'Unknown';
+                    workspaceCounts[workspace] = (workspaceCounts[workspace] || 0) + 1;
+                    statusCounts[status] = (statusCounts[status] || 0) + 1;
+                });
+
+                // Find Jason Binyon
+                const jasonCount = workspaceCounts['Jason Binyon'] || 0;
+
+                output.innerHTML = `
+                    <h2>Results:</h2>
+                    <p><strong>Total Accounts:</strong> ${records.length}</p>
+                    <p><strong>Jason Binyon Accounts:</strong> ${jasonCount}</p>
+                    <h3>All Workspaces:</h3>
+                    <pre>${JSON.stringify(workspaceCounts, null, 2)}</pre>
+                    <h3>Status Breakdown:</h3>
+                    <pre>${JSON.stringify(statusCounts, null, 2)}</pre>
+                `;
+            } catch (error) {
+                output.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        }
+
+        window.onload = () => {
+            testAPI();
+        };
+    </script>
+</head>
+<body>
+    <h1>Infrastructure Dashboard Data Test</h1>
+    <div id="output">Click to test</div>
+</body>
+</html>

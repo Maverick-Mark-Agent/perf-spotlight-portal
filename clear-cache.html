@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Dashboard Cache</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 10px;
+            font-family: monospace;
+        }
+        button:hover {
+            background: #00cc00;
+        }
+        .output {
+            background: #000;
+            border: 2px solid #00ff00;
+            padding: 20px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            min-height: 200px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧹 Dashboard Cache Cleaner</h1>
+
+    <button onclick="clearAllCache()">Clear ALL Cache</button>
+    <button onclick="clearInfrastructureCache()">Clear Infrastructure Cache Only</button>
+    <button onclick="showCache()">Show Current Cache</button>
+
+    <div class="output" id="output">Click a button above...</div>
+
+    <script>
+        const output = document.getElementById('output');
+
+        function log(msg) {
+            output.textContent += msg + '\n';
+        }
+
+        function clearAllCache() {
+            output.textContent = '';
+            log('🧹 Clearing ALL dashboard cache...\n');
+
+            const keys = Object.keys(localStorage);
+            let cleared = 0;
+
+            keys.forEach(key => {
+                if (key.includes('dashboard') || key.includes('cache') || key.includes('infrastructure') || key.includes('kpi') || key.includes('volume')) {
+                    localStorage.removeItem(key);
+                    log(`  ✓ Removed: ${key}`);
+                    cleared++;
+                }
+            });
+
+            log(`\n✅ Cleared ${cleared} cache entries`);
+            log('\n📋 NEXT STEPS:');
+            log('1. Close this tab');
+            log('2. Go to: https://www.maverickmarketingllc.com/email-accounts');
+            log('3. Hard refresh: Cmd+Shift+R');
+        }
+
+        function clearInfrastructureCache() {
+            output.textContent = '';
+            log('🧹 Clearing infrastructure cache only...\n');
+
+            const keys = Object.keys(localStorage);
+            let cleared = 0;
+
+            keys.forEach(key => {
+                if (key.includes('infrastructure') || key.includes('email')) {
+                    localStorage.removeItem(key);
+                    log(`  ✓ Removed: ${key}`);
+                    cleared++;
+                }
+            });
+
+            log(`\n✅ Cleared ${cleared} infrastructure cache entries`);
+            log('\n📋 NEXT STEPS:');
+            log('1. Close this tab');
+            log('2. Go to: https://www.maverickmarketingllc.com/email-accounts');
+            log('3. Hard refresh: Cmd+Shift+R');
+        }
+
+        function showCache() {
+            output.textContent = '';
+            log('📦 Current localStorage cache:\n');
+
+            const keys = Object.keys(localStorage);
+
+            if (keys.length === 0) {
+                log('  (empty)');
+            } else {
+                keys.forEach(key => {
+                    const value = localStorage.getItem(key);
+                    const size = new Blob([value]).size;
+                    log(`  ${key}`);
+                    log(`    Size: ${(size / 1024).toFixed(2)} KB`);
+                    if (key.includes('timestamp') || key.includes('cache')) {
+                        log(`    Value: ${value.substring(0, 100)}...`);
+                    }
+                    log('');
+                });
+            }
+
+            log(`\nTotal keys: ${keys.length}`);
+        }
+    </script>
+</body>
+</html>

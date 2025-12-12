@@ -177,9 +177,19 @@ export function transformToEmailAccount(dbRow: any): any {
   return {
     id: dbRow.id,
     email: dbRow.email_address, // For convenience
+    email_address: dbRow.email_address, // For alerts modal
     workspace_name: dbRow.workspace_name, // For filtering
     status: dbRow.status, // For filtering
     provider: dbRow.email_provider || undefined, // Convert null to undefined for Zod validation
+    email_provider: dbRow.email_provider, // For alerts modal
+    reseller: dbRow.reseller, // For alerts modal
+    emails_sent_count: dbRow.emails_sent_count || 0,
+    total_replied_count: dbRow.total_replied_count || 0,
+    unique_replied_count: dbRow.unique_replied_count || 0,
+    bounced_count: dbRow.bounced_count || 0,
+    unsubscribed_count: dbRow.unsubscribed_count || 0,
+    reply_rate_percentage: dbRow.reply_rate_percentage || 0,
+    last_synced_at: dbRow.last_synced_at,
     fields: {
       'Email': dbRow.email_address,
       'Name': dbRow.email_address || '', // Use email_address (account_name column doesn't exist in schema)

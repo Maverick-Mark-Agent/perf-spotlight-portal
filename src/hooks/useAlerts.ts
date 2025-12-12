@@ -11,6 +11,8 @@ export interface EmailAccount {
   id: number;
   email_address: string;
   workspace_name: string;
+  email_provider?: string;
+  reseller?: string;
   status: string;
   emails_sent_count: number;
   total_replied_count: number;

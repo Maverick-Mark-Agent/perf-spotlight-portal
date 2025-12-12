@@ -140,10 +140,10 @@ export function AlertAccountsModal({
   const handleDownloadCSV = () => {
     if (!alert) return;
 
-    const headers = ['Email', 'Workspace', 'Status', 'Sent', 'Replies', 'Bounce Rate', 'Reply Rate'];
+    const headers = ['Email', 'Workspace', 'Provider', 'Reseller', 'Status', 'Sent', 'Replies', 'Bounce Rate', 'Reply Rate'];
     const rows = filteredAccounts.map(account => {
-      const bounceRate = account.emails_sent_count > 0 
-        ? ((account.bounced_count / account.emails_sent_count) * 100).toFixed(2) 
+      const bounceRate = account.emails_sent_count > 0
+        ? ((account.bounced_count / account.emails_sent_count) * 100).toFixed(2)
         : '0.00';
       const replyRate = account.emails_sent_count > 0
         ? ((account.total_replied_count / account.emails_sent_count) * 100).toFixed(2)
@@ -152,6 +152,8 @@ export function AlertAccountsModal({
       return [
         account.email_address,
         account.workspace_name,
+        account.email_provider || 'N/A',
+        account.reseller || 'N/A',
         account.status || 'N/A',
         account.emails_sent_count || 0,
         account.total_replied_count || 0,
@@ -287,6 +289,8 @@ export function AlertAccountsModal({
                 <tr>
                   <th className="text-left text-white/70 text-xs font-semibold py-2 px-3">Email</th>
                   <th className="text-left text-white/70 text-xs font-semibold py-2 px-3">Workspace</th>
+                  <th className="text-left text-white/70 text-xs font-semibold py-2 px-3">Provider</th>
+                  <th className="text-left text-white/70 text-xs font-semibold py-2 px-3">Reseller</th>
                   <th className="text-left text-white/70 text-xs font-semibold py-2 px-3">Status</th>
                   <th className="text-left text-white/70 text-xs font-semibold py-2 px-3">Sent</th>
                   <th className="text-left text-white/70 text-xs font-semibold py-2 px-3">Replies</th>
@@ -313,6 +317,12 @@ export function AlertAccountsModal({
                       </td>
                       <td className="py-3 px-3">
                         <div className="text-white/80 text-sm">{account.workspace_name}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="text-white/80 text-sm">{account.email_provider || 'N/A'}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="text-white/80 text-sm">{account.reseller || 'N/A'}</div>
                       </td>
                       <td className="py-3 px-3">
                         <Badge variant="outline" className={getStatusColor(account.status)}>

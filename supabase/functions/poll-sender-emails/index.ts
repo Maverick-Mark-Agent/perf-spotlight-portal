@@ -12,7 +12,7 @@ const EMAIL_BISON_PAGE_SIZE = 15 // API returns max 15 accounts per page
 
 // Processing limits (to prevent timeouts and EarlyDrop crashes)
 const MAX_FUNCTION_RUNTIME_MS = 9 * 60 * 1000 // 9 minutes (Edge Function has 10min limit)
-const WORKSPACE_TIMEOUT_MS = 120 * 1000 // 2 minutes max per workspace (allows large workspaces like Maverick In-house with 1600+ accounts)
+const WORKSPACE_TIMEOUT_MS = 180 * 1000 // 3 minutes max per workspace (allows large workspaces like Maverick In-house with 1600+ accounts)
 const PARALLEL_WORKSPACE_COUNT = 1 // Must be 1 with shared API key (stateful workspace switching)
 const PROGRESS_UPDATE_INTERVAL = 5 // Update progress every N workspaces (reduce DB writes)
 const MAX_API_RETRIES = 3 // Retry failed API calls up to 3 times
@@ -271,7 +271,7 @@ async function processInBackground(
 
         let accountsFetched = 0
         let nextUrl = `${baseUrl}/sender-emails?per_page=${EMAIL_BISON_PAGE_SIZE}`
-        const MAX_PAGES = 100 // Safety limit to prevent infinite loops
+        const MAX_PAGES = 200 // Safety limit to prevent infinite loops (allows up to 3,000 accounts per workspace)
         const UPSERT_BATCH_SIZE = 500 // Chunk large upserts to reduce memory pressure
 
         // Step 1: Mark ALL accounts in this workspace as potentially deleted FIRST

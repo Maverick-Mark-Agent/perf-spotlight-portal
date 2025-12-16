@@ -386,7 +386,8 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
           .from('email_accounts_view')
           .select('*')
           .order('bison_account_id', { ascending: true }) // Use stable sort key for pagination
-          .range(offset, offset + BATCH_SIZE - 1);
+          .range(offset, offset + BATCH_SIZE - 1)
+          .limit(BATCH_SIZE); // Override Supabase default 1000-row limit
 
         if (error) {
           console.error('[Infrastructure Realtime] Database error on batch:', error);
@@ -398,8 +399,9 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
           console.log(`[Infrastructure Realtime] Fetched batch: ${accounts.length}/${totalCount} accounts`);
         }
 
-        if (!batch || batch.length < BATCH_SIZE) break; // No more data
-        offset += BATCH_SIZE;
+        // Only break if we got no data or we've fetched all expected rows
+        if (!batch || batch.length === 0 || accounts.length >= (totalCount || 0)) break;
+        offset += batch.length; // Use actual batch size, not BATCH_SIZE constant
       }
     }
 

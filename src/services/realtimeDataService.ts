@@ -358,52 +358,47 @@ export async function fetchInfrastructureDataRealtime(): Promise<DataFetchResult
 
     console.log(`[Infrastructure Realtime] Found ${totalCount || 0} total accounts in materialized view`);
 
-    // ✅ PAGINATION FIX: Supabase has a hard 10,000 row limit per query
-    // We need to fetch in batches to get all accounts when count > 10,000
-    const BATCH_SIZE = 5000;
+    // ✅ PAGINATION FIX: Supabase has a default 1000-row limit per query
+    // We MUST fetch in batches using .range() to get all accounts
+    // Using smaller batch size (1000) to stay within Supabase's comfortable limits
+    const BATCH_SIZE = 1000;
     let accounts: any[] = [];
 
-    if ((totalCount || 0) <= BATCH_SIZE) {
-      // Small dataset - single query
-      const { data, error } = await supabase
+    console.log(`[Infrastructure Realtime] Fetching ${totalCount} accounts in batches of ${BATCH_SIZE}...`);
+    let offset = 0;
+
+    while (offset < (totalCount || 0)) {
+      const endIndex = offset + BATCH_SIZE - 1;
+      console.log(`[Infrastructure Realtime] Fetching range ${offset} to ${endIndex}...`);
+
+      const { data: batch, error } = await supabase
         .from('email_accounts_view')
         .select('*')
-        .order('workspace_name', { ascending: true })
-        .limit(totalCount || BATCH_SIZE);
+        .order('bison_account_id', { ascending: true })
+        .range(offset, endIndex);
 
       if (error) {
-        console.error('[Infrastructure Realtime] Database error:', error);
+        console.error('[Infrastructure Realtime] Database error on batch:', error);
         throw error;
       }
-      accounts = data || [];
-    } else {
-      // Large dataset - fetch in batches
-      console.log(`[Infrastructure Realtime] Fetching ${totalCount} accounts in batches of ${BATCH_SIZE}...`);
-      let offset = 0;
 
-      while (offset < (totalCount || 0)) {
-        const { data: batch, error } = await supabase
-          .from('email_accounts_view')
-          .select('*')
-          .order('bison_account_id', { ascending: true }) // Use stable sort key for pagination
-          .range(offset, offset + BATCH_SIZE - 1)
-          .limit(BATCH_SIZE); // Override Supabase default 1000-row limit
+      if (batch && batch.length > 0) {
+        accounts.push(...batch);
+        console.log(`[Infrastructure Realtime] Fetched ${batch.length} rows. Total: ${accounts.length}/${totalCount}`);
+        offset += batch.length;
+      } else {
+        console.log(`[Infrastructure Realtime] No more data at offset ${offset}`);
+        break;
+      }
 
-        if (error) {
-          console.error('[Infrastructure Realtime] Database error on batch:', error);
-          throw error;
-        }
-
-        if (batch) {
-          accounts.push(...batch);
-          console.log(`[Infrastructure Realtime] Fetched batch: ${accounts.length}/${totalCount} accounts`);
-        }
-
-        // Only break if we got no data or we've fetched all expected rows
-        if (!batch || batch.length === 0 || accounts.length >= (totalCount || 0)) break;
-        offset += batch.length; // Use actual batch size, not BATCH_SIZE constant
+      // Safety check: if we got fewer rows than expected, we're done
+      if (batch && batch.length < BATCH_SIZE) {
+        console.log(`[Infrastructure Realtime] Last batch (got ${batch.length} < ${BATCH_SIZE})`);
+        break;
       }
     }
+
+    console.log(`[Infrastructure Realtime] Finished fetching. Total accounts: ${accounts.length}`);
 
     if (!accounts || accounts.length === 0) {
       console.warn('[Infrastructure Realtime] No email accounts found in email_accounts_view');

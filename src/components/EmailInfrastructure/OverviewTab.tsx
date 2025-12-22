@@ -98,14 +98,46 @@ export function OverviewTab({}: OverviewTabProps) {
     try {
       setLoading(true);
 
-      // Fetch email accounts data
-      const { data: accountsData, error } = await supabase
+      // ✅ PAGINATION FIX: Supabase has a default row limit (often 1000-10000)
+      // We MUST fetch in batches using .range() to get all 17k+ accounts
+      const BATCH_SIZE = 1000;
+
+      // Get total count first
+      const { count: totalCount } = await supabase
         .from('email_accounts_view')
-        .select('id, email_address, workspace_name, email_provider, reseller, status, emails_sent_count, total_replied_count, bounced_count, reply_rate_percentage, last_synced_at, price');
+        .select('*', { count: 'exact', head: true });
 
-      if (error) throw error;
+      console.log(`[OverviewTab] Found ${totalCount || 0} total accounts`);
 
-      if (!accountsData) {
+      // Fetch all accounts in batches
+      let accountsData: any[] = [];
+      let offset = 0;
+
+      while (offset < (totalCount || 0)) {
+        const endIndex = offset + BATCH_SIZE - 1;
+
+        const { data: batch, error } = await supabase
+          .from('email_accounts_view')
+          .select('id, email_address, workspace_name, email_provider, reseller, status, emails_sent_count, total_replied_count, bounced_count, reply_rate_percentage, last_synced_at, price')
+          .order('bison_account_id', { ascending: true })
+          .range(offset, endIndex);
+
+        if (error) throw error;
+
+        if (batch && batch.length > 0) {
+          accountsData.push(...batch);
+          offset += batch.length;
+        } else {
+          break;
+        }
+
+        // If we got fewer than BATCH_SIZE, we're done
+        if (batch && batch.length < BATCH_SIZE) break;
+      }
+
+      console.log(`[OverviewTab] Fetched ${accountsData.length} accounts total`);
+
+      if (!accountsData || accountsData.length === 0) {
         setMetrics(null);
         setAccounts(null);
         return;

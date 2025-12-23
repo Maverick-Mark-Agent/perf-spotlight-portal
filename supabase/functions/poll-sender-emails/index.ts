@@ -69,6 +69,8 @@ Deno.serve(async (req) => {
   let batchOffset = 0
   let batchSize = DEFAULT_BATCH_SIZE
   let skipViewRefresh = false
+  let parentJobId: string | null = null // For chained batches, reuse parent's job ID
+  let isAutoChained = false // Flag to identify chained invocations
 
   try {
     if (req.method === 'POST') {
@@ -76,20 +78,28 @@ Deno.serve(async (req) => {
       batchOffset = body.batch_offset ?? 0
       batchSize = body.batch_size ?? DEFAULT_BATCH_SIZE
       skipViewRefresh = body.skip_view_refresh ?? false // Skip if another batch will run after
+      parentJobId = body.job_id ?? null // Reuse job ID for chained batches
+      isAutoChained = body.auto_chained ?? false
     }
   } catch {
     // Use defaults
   }
 
-  // Generate unique job ID
-  const jobId = crypto.randomUUID()
-  console.log(`🆔 Starting job ${jobId} (batch_offset: ${batchOffset}, batch_size: ${batchSize})`)
+  // Generate unique job ID (or reuse parent's for chained batches)
+  const jobId = parentJobId || crypto.randomUUID()
+  const batchNumber = Math.floor(batchOffset / batchSize) + 1
+
+  if (isAutoChained) {
+    console.log(`🔗 Auto-chained batch ${batchNumber} starting (job_id: ${jobId}, batch_offset: ${batchOffset})`)
+  } else {
+    console.log(`🆔 Starting job ${jobId} (batch_offset: ${batchOffset}, batch_size: ${batchSize})`)
+  }
 
   // ✅ CHANGED: Await the processing instead of running in background
   // Supabase Edge Functions don't support true background processing - they terminate
   // after the response is sent, causing "EarlyDrop" errors
   try {
-    const result = await processInBackground(jobId, batchOffset, batchSize, skipViewRefresh)
+    const result = await processInBackground(jobId, batchOffset, batchSize, skipViewRefresh, isAutoChained)
 
     return new Response(
       JSON.stringify({
@@ -126,7 +136,8 @@ async function processInBackground(
   jobId: string,
   batchOffset: number = 0,
   batchSize: number = DEFAULT_BATCH_SIZE,
-  skipViewRefresh: boolean = false
+  skipViewRefresh: boolean = false,
+  isAutoChained: boolean = false // True if this is an auto-chained batch (not the first batch)
 ) {
   const startTime = Date.now()
   let usingTableLock = false // Track which lock type we're using
@@ -182,56 +193,92 @@ async function processInBackground(
     const workspaces = allWorkspaces.slice(batchOffset, batchOffset + batchSize)
     const hasMoreBatches = batchOffset + batchSize < totalWorkspaces
 
-    console.log(`📊 Batch info: Processing workspaces ${batchOffset + 1}-${batchOffset + workspaces.length} of ${totalWorkspaces} total`)
+    const batchNumber = Math.floor(batchOffset / batchSize) + 1
+    console.log(`📊 Batch ${batchNumber} info: Processing workspaces ${batchOffset + 1}-${batchOffset + workspaces.length} of ${totalWorkspaces} total`)
     console.log(`   Workspaces in this batch: ${workspaces.map(w => w.workspace_name).join(', ')}`)
     if (hasMoreBatches) {
-      console.log(`   ⚠️  More batches remaining - call with batch_offset=${batchOffset + batchSize} for next batch`)
+      console.log(`   🔄 Auto-chaining enabled - next batch will start automatically`)
     }
 
-    // Create job status record
-    const { data: jobStatus, error: jobStatusError } = await supabase
-      .from('polling_job_status')
-      .insert({
-        id: jobId,
-        job_name: 'poll-sender-emails',
-        status: 'running',
-        total_workspaces: workspaces.length,
-        started_at: new Date().toISOString(),
-        // Store batch info in warnings field for visibility
-        warnings: [`Batch ${Math.floor(batchOffset / batchSize) + 1}: workspaces ${batchOffset + 1}-${batchOffset + workspaces.length} of ${totalWorkspaces}`]
-      })
-      .select()
-      .single()
+    let progressRecord: any = null
 
-    if (jobStatusError) {
-      console.warn('⚠️ Failed to create job status record:', jobStatusError.message)
+    // For auto-chained batches, fetch existing records; for first batch, create new ones
+    if (isAutoChained) {
+      console.log(`🔗 Auto-chained batch - fetching existing progress record for job ${jobId}`)
+
+      // Fetch existing progress record
+      const { data: existingProgress, error: fetchError } = await supabase
+        .from('sync_progress')
+        .select()
+        .eq('job_id', jobId)
+        .single()
+
+      if (fetchError) {
+        console.warn('⚠️ Failed to fetch existing progress record:', fetchError.message)
+      } else {
+        progressRecord = existingProgress
+        console.log(`📈 Using existing progress record: ${progressRecord.id}`)
+      }
+
+      // Update job status to show current batch
+      const { error: updateJobError } = await supabase
+        .from('polling_job_status')
+        .update({
+          warnings: [`Batch ${batchNumber}: workspaces ${batchOffset + 1}-${batchOffset + workspaces.length} of ${totalWorkspaces}`]
+        })
+        .eq('id', jobId)
+
+      if (updateJobError) {
+        console.warn('⚠️ Failed to update job status for chained batch:', updateJobError.message)
+      }
     } else {
-      console.log('📊 Created job status record:', jobId)
-    }
+      // First batch - create new records
+      // Create job status record
+      const { data: jobStatus, error: jobStatusError } = await supabase
+        .from('polling_job_status')
+        .insert({
+          id: jobId,
+          job_name: 'poll-sender-emails',
+          status: 'running',
+          total_workspaces: totalWorkspaces, // Total across ALL batches
+          started_at: new Date().toISOString(),
+          warnings: [`Batch ${batchNumber}: workspaces ${batchOffset + 1}-${batchOffset + workspaces.length} of ${totalWorkspaces}`]
+        })
+        .select()
+        .single()
 
-    // Create sync progress record for real-time tracking
-    const { data: progressRecord, error: progressError } = await supabase
-      .from('sync_progress')
-      .insert({
-        job_id: jobId,
-        job_name: 'poll-sender-emails',
-        total_workspaces: workspaces.length,
-        workspaces_completed: 0,
-        total_accounts: 0,
-        status: 'running'
-      })
-      .select()
-      .single()
+      if (jobStatusError) {
+        console.warn('⚠️ Failed to create job status record:', jobStatusError.message)
+      } else {
+        console.log('📊 Created job status record:', jobId)
+      }
 
-    if (progressError) {
-      console.warn('⚠️ Failed to create progress record:', progressError.message)
-    } else {
-      console.log('📈 Created progress tracking record:', progressRecord.id)
+      // Create sync progress record for real-time tracking
+      const { data: newProgressRecord, error: progressError } = await supabase
+        .from('sync_progress')
+        .insert({
+          job_id: jobId,
+          job_name: 'poll-sender-emails',
+          total_workspaces: totalWorkspaces, // Total across ALL batches
+          workspaces_completed: 0,
+          total_accounts: 0,
+          status: 'running'
+        })
+        .select()
+        .single()
+
+      if (progressError) {
+        console.warn('⚠️ Failed to create progress record:', progressError.message)
+      } else {
+        progressRecord = newProgressRecord
+        console.log('📈 Created progress tracking record:', progressRecord.id)
+      }
     }
 
     const results = []
     let totalAccountsSynced = 0
-    let workspacesProcessed = 0
+    // For auto-chained batches, start from the cumulative count (batchOffset = previous batches' workspaces)
+    let workspacesProcessed = isAutoChained ? batchOffset : 0
     let workspacesSkipped = 0
 
     // Helper function to process a single workspace
@@ -509,9 +556,14 @@ async function processInBackground(
 
     const totalDuration = Date.now() - startTime
     const failedCount = results.filter(r => !r.success).length
-    const finalStatus = workspacesSkipped > 0 ? 'partial' : (failedCount > 0 ? 'completed_with_errors' : 'completed')
+    // For intermediate batches with auto-chaining, mark as 'running' since more batches will follow
+    // Only mark as completed/partial/failed on the final batch
+    const finalStatus = hasMoreBatches
+      ? 'running' // More batches to come
+      : (workspacesSkipped > 0 ? 'partial' : (failedCount > 0 ? 'completed_with_errors' : 'completed'))
 
-    console.log(`✅ Poll complete: ${totalAccountsSynced} accounts synced across ${workspacesProcessed}/${workspaces.length} workspaces in ${totalDuration}ms`)
+    const batchNumber = Math.floor(batchOffset / batchSize) + 1
+    console.log(`✅ Batch ${batchNumber} complete: ${totalAccountsSynced} accounts synced across ${workspacesProcessed}/${totalWorkspaces} total workspaces in ${totalDuration}ms`)
     if (workspacesSkipped > 0) {
       console.warn(`⚠️ Skipped ${workspacesSkipped} workspaces due to timeout - run again to complete`)
     }
@@ -604,29 +656,86 @@ async function processInBackground(
       })
       .eq('id', jobId)
 
-    // ✅ Update progress record to completed
+    // ✅ Update progress record
     if (progressRecord?.id) {
-      console.log(`📊 Marking sync progress as completed (ID: ${progressRecord.id})`)
-      const { error: completeError } = await supabase
-        .from('sync_progress')
-        .update({
-          status: 'completed', // Always mark as 'completed' (sync_progress only accepts: 'running', 'completed', 'failed')
-          completed_at: new Date().toISOString(),
-          workspaces_completed: workspacesProcessed,
-          total_accounts: totalAccountsSynced
-        })
-        .eq('id', progressRecord.id)
+      if (hasMoreBatches) {
+        // Intermediate batch - just update counts, don't mark as completed (next batch will continue)
+        console.log(`📊 Updating progress for batch (more batches to follow) (ID: ${progressRecord.id})`)
+        const { error: updateError } = await supabase
+          .from('sync_progress')
+          .update({
+            workspaces_completed: workspacesProcessed,
+            total_accounts: totalAccountsSynced,
+            current_workspace: `Batch ${Math.floor(batchOffset / batchSize) + 1} complete, chaining to next...`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', progressRecord.id)
 
-      if (completeError) {
-        console.error('❌ CRITICAL: Failed to mark progress as completed:', completeError)
+        if (updateError) {
+          console.warn('⚠️ Failed to update progress for intermediate batch:', updateError.message)
+        } else {
+          console.log(`✅ Progress updated: ${workspacesProcessed}/${totalWorkspaces} workspaces`)
+        }
       } else {
-        console.log('✅ Successfully marked sync progress as completed!')
+        // Final batch - mark as completed
+        console.log(`📊 Marking sync progress as completed (ID: ${progressRecord.id})`)
+        const { error: completeError } = await supabase
+          .from('sync_progress')
+          .update({
+            status: 'completed',
+            completed_at: new Date().toISOString(),
+            workspaces_completed: workspacesProcessed,
+            total_accounts: totalAccountsSynced
+          })
+          .eq('id', progressRecord.id)
+
+        if (completeError) {
+          console.error('❌ CRITICAL: Failed to mark progress as completed:', completeError)
+        } else {
+          console.log('✅ Successfully marked sync progress as completed!')
+        }
       }
     } else {
-      console.warn('⚠️ No progressRecord.id available - cannot mark as completed')
+      console.warn('⚠️ No progressRecord.id available - cannot update progress')
     }
 
     console.log('📊 Background job completed successfully!')
+
+    // ✅ AUTO-CHAINING: If more batches remain, trigger the next batch automatically
+    if (hasMoreBatches) {
+      const nextBatchOffset = batchOffset + batchSize
+      const isNextBatchLast = nextBatchOffset + batchSize >= totalWorkspaces
+
+      console.log(`🔄 Auto-chaining: triggering batch ${Math.floor(nextBatchOffset / batchSize) + 1}`)
+      console.log(`   Next offset: ${nextBatchOffset}, workspaces remaining: ${totalWorkspaces - nextBatchOffset}`)
+      console.log(`   Will refresh view on next batch: ${isNextBatchLast}`)
+
+      // Fire-and-forget: invoke next batch asynchronously
+      // Use EdgeRuntime.waitUntil to ensure the request is sent before this function returns
+      const chainPromise = supabase.functions.invoke('poll-sender-emails', {
+        body: {
+          batch_offset: nextBatchOffset,
+          batch_size: batchSize,
+          skip_view_refresh: !isNextBatchLast, // Only refresh on the final batch
+          job_id: jobId, // Continue tracking same job
+          auto_chained: true // Flag to identify chained invocations in logs
+        }
+      }).then(result => {
+        if (result.error) {
+          console.error('❌ Failed to auto-chain next batch:', result.error)
+        } else {
+          console.log('✅ Successfully triggered next batch')
+        }
+      }).catch(err => {
+        console.error('❌ Error auto-chaining next batch:', err)
+      })
+
+      // If EdgeRuntime.waitUntil is available (Supabase Edge Functions), use it
+      // This ensures the request is sent before this function returns
+      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+        EdgeRuntime.waitUntil(chainPromise)
+      }
+    }
 
     // Return summary for the HTTP response
     return {
@@ -639,7 +748,8 @@ async function processInBackground(
       batch_offset: batchOffset,
       batch_size: batchSize,
       has_more_batches: hasMoreBatches,
-      next_batch_offset: hasMoreBatches ? batchOffset + batchSize : null
+      next_batch_offset: hasMoreBatches ? batchOffset + batchSize : null,
+      auto_chained_next: hasMoreBatches // Indicate if next batch was triggered
     }
 
   } catch (error) {

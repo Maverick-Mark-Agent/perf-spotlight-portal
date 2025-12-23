@@ -1011,6 +1011,79 @@ const SendingAccountsInfrastructure = () => {
     // This prevents duplicate API calls
   }, []);
 
+  // ✅ NEW: Auto-detect running sync jobs (for cron/external triggers)
+  useEffect(() => {
+    // Check for any running sync jobs on mount
+    const checkForRunningSyncJob = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('sync_progress')
+          .select('job_id, status, started_at')
+          .eq('status', 'running')
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          console.error('[EmailAccountsPage] Error checking for running sync:', error);
+          return;
+        }
+
+        if (data && data.job_id) {
+          console.log('[EmailAccountsPage] Found running sync job:', data.job_id);
+          setActiveSyncJobId(data.job_id);
+          setIsManualRefreshing(true);
+        }
+      } catch (error) {
+        console.error('[EmailAccountsPage] Error checking for running sync:', error);
+      }
+    };
+
+    checkForRunningSyncJob();
+
+    // Subscribe to sync_progress table for new jobs (realtime)
+    const channel = supabase
+      .channel('sync-progress-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'sync_progress',
+        },
+        (payload) => {
+          console.log('[EmailAccountsPage] New sync job detected:', payload.new);
+          const newJob = payload.new as { job_id: string; status: string };
+          if (newJob.status === 'running' && newJob.job_id) {
+            setActiveSyncJobId(newJob.job_id);
+            setIsManualRefreshing(true);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'sync_progress',
+        },
+        (payload) => {
+          const updatedJob = payload.new as { job_id: string; status: string };
+          // If a job just started running, show it
+          if (updatedJob.status === 'running' && updatedJob.job_id && !activeSyncJobId) {
+            console.log('[EmailAccountsPage] Sync job started:', updatedJob.job_id);
+            setActiveSyncJobId(updatedJob.job_id);
+            setIsManualRefreshing(true);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeSyncJobId]);
+
   useEffect(() => {
     if (emailAccounts.length > 0) {
       generatePriceAnalysisData(emailAccounts);

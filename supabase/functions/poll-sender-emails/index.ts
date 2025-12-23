@@ -540,13 +540,14 @@ async function processInBackground(
       console.log('⏭️  Skipping view refresh (more batches will follow)')
     } else {
       // ⚠️ TIMEOUT PROTECTION: View refresh can hang indefinitely if database locks are held
-      const VIEW_REFRESH_TIMEOUT_MS = 30000 // 30 seconds
+      // Increased from 30s to 60s to handle 11,000+ accounts without timing out
+      const VIEW_REFRESH_TIMEOUT_MS = 60000 // 60 seconds
       console.log('🔄 Refreshing materialized view email_accounts_view...')
       const viewRefreshStart = Date.now()
       try {
         const refreshPromise = supabase.rpc('refresh_email_accounts_view')
         const timeoutPromise = new Promise<{ error: Error }>((_, reject) =>
-          setTimeout(() => reject(new Error('View refresh exceeded 30 second timeout')), VIEW_REFRESH_TIMEOUT_MS)
+          setTimeout(() => reject(new Error('View refresh exceeded 60 second timeout')), VIEW_REFRESH_TIMEOUT_MS)
         )
 
         const { error: viewError } = await Promise.race([refreshPromise, timeoutPromise])

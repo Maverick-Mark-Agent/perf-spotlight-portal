@@ -15,7 +15,9 @@ import { Badge } from '@/components/ui/badge';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell, ResponsiveContainer } from 'recharts';
 
 interface OverviewTabProps {
-  // Optional: can receive pre-fetched data to avoid duplicate queries
+  // Receive pre-fetched data from parent to avoid Supabase's 1000-row limit
+  emailAccounts?: any[];
+  loading?: boolean;
 }
 
 interface QuickStatsMetrics {
@@ -27,10 +29,10 @@ interface QuickStatsMetrics {
   totalReplies: number;
 }
 
-export function OverviewTab({}: OverviewTabProps) {
+export function OverviewTab({ emailAccounts: parentAccounts, loading: parentLoading }: OverviewTabProps) {
   const [metrics, setMetrics] = useState<QuickStatsMetrics | null>(null);
   const [accounts, setAccounts] = useState<EmailAccount[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(parentLoading ?? true);
   const alertsResult = useAlerts(accounts);
 
   // Calculate client chart data
@@ -90,53 +92,61 @@ export function OverviewTab({}: OverviewTabProps) {
     };
   }, [accounts]);
 
+  // Use parent's data if available (properly paginated), otherwise calculate from accounts
   useEffect(() => {
-    fetchMetrics();
-  }, []);
+    if (parentAccounts && parentAccounts.length > 0) {
+      // Use parent's pre-fetched data (properly paginated, bypasses Supabase 1000-row limit)
+      const accountsData = parentAccounts.map((acc: any) => ({
+        id: acc.id,
+        email_address: acc.fields?.Email || acc.email_address,
+        workspace_name: acc.workspace_name || acc.fields?.['Client Name (from Client)']?.[0],
+        email_provider: acc.fields?.email_provider || acc.email_provider,
+        reseller: acc.fields?.reseller || acc.reseller,
+        status: acc.fields?.Status || acc.status,
+        emails_sent_count: acc.fields?.['Emails Sent Count'] || acc.emails_sent_count || 0,
+        total_replied_count: acc.fields?.['Total Replied Count'] || acc.total_replied_count || 0,
+        bounced_count: acc.fields?.['Bounced Count'] || acc.bounced_count || 0,
+        reply_rate_percentage: acc.fields?.['Reply Rate (%)'] || acc.reply_rate_percentage || 0,
+        last_synced_at: acc.last_synced_at,
+        price: acc.fields?.Price || acc.price || 0,
+      }));
 
-  const fetchMetrics = async () => {
-    try {
-      setLoading(true);
-
-      // Fetch email accounts data
-      const { data: accountsData, error } = await supabase
-        .from('email_accounts_view')
-        .select('id, email_address, workspace_name, email_provider, reseller, status, emails_sent_count, total_replied_count, bounced_count, reply_rate_percentage, last_synced_at, price');
-
-      if (error) throw error;
-
-      if (!accountsData) {
-        setMetrics(null);
-        setAccounts(null);
-        return;
-      }
-
-      // Store accounts for alerts
       setAccounts(accountsData as EmailAccount[]);
-
-      // Calculate metrics for quick stats
-      const totalAccounts = accountsData.length;
-      const connectedAccounts = accountsData.filter((a: any) => a.status === 'connected').length;
-      const disconnectedAccounts = accountsData.filter((a: any) => a.status === 'disconnected').length;
-      const failedAccounts = accountsData.filter((a: any) => a.status === 'failed').length;
-
-      const totalSent = accountsData.reduce((sum: number, a: any) => sum + (a.emails_sent_count || 0), 0);
-      const totalReplies = accountsData.reduce((sum: number, a: any) => sum + (a.total_replied_count || 0), 0);
-
-      setMetrics({
-        totalAccounts,
-        connectedAccounts,
-        disconnectedAccounts,
-        failedAccounts,
-        totalSent,
-        totalReplies,
-      });
-    } catch (error) {
-      console.error('Error fetching health metrics:', error);
-      setMetrics(null);
-    } finally {
+      calculateMetrics(accountsData);
       setLoading(false);
     }
+  }, [parentAccounts]);
+
+  // Update loading state from parent
+  useEffect(() => {
+    if (parentLoading !== undefined) {
+      setLoading(parentLoading);
+    }
+  }, [parentLoading]);
+
+  const calculateMetrics = (accountsData: any[]) => {
+    const totalAccounts = accountsData.length;
+    const connectedAccounts = accountsData.filter((a: any) =>
+      a.status === 'connected' || a.status === 'Connected'
+    ).length;
+    const disconnectedAccounts = accountsData.filter((a: any) =>
+      a.status === 'disconnected' || a.status === 'Disconnected' || a.status === 'Not connected'
+    ).length;
+    const failedAccounts = accountsData.filter((a: any) =>
+      a.status === 'failed' || a.status === 'Failed'
+    ).length;
+
+    const totalSent = accountsData.reduce((sum: number, a: any) => sum + (a.emails_sent_count || 0), 0);
+    const totalReplies = accountsData.reduce((sum: number, a: any) => sum + (a.total_replied_count || 0), 0);
+
+    setMetrics({
+      totalAccounts,
+      connectedAccounts,
+      disconnectedAccounts,
+      failedAccounts,
+      totalSent,
+      totalReplies,
+    });
   };
 
   return (

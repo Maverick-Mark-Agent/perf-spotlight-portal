@@ -1433,7 +1433,7 @@ const SendingAccountsInfrastructure = () => {
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'overview' && <OverviewTab />}
+        {activeTab === 'overview' && <OverviewTab emailAccounts={emailAccounts} loading={loading} />}
         {activeTab === 'home-insurance' && <HomeInsuranceTab />}
         {activeTab === 'performance' && (
           <PerformanceTab

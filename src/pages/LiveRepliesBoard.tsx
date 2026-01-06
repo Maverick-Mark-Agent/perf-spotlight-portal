@@ -5,21 +5,12 @@
  */
 
 import { useLiveReplies, type LiveReply } from '@/hooks/useLiveReplies';
+import { AIReplyComposer } from '@/components/shared/AIReplyComposer';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Send, RefreshCw, X, Check, CheckCircle } from 'lucide-react';
+import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function LiveRepliesBoard() {
@@ -99,6 +90,7 @@ interface ReplyCardProps {
 
 function ReplyCard({ reply }: ReplyCardProps) {
   const [showComposer, setShowComposer] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const leadName = reply.first_name && reply.last_name
     ? `${reply.first_name} ${reply.last_name}`
     : reply.first_name || reply.last_name || 'Unknown';
@@ -111,6 +103,11 @@ function ReplyCard({ reply }: ReplyCardProps) {
     Array.isArray(reply.sent_replies) ? reply.sent_replies.length > 0 : !!reply.sent_replies
   );
   const replyStatus = Array.isArray(reply.sent_replies) ? reply.sent_replies[0] : reply.sent_replies;
+
+  // Truncate reply text for preview
+  const previewText = reply.reply_text && reply.reply_text.length > 100
+    ? reply.reply_text.substring(0, 100) + '...'
+    : reply.reply_text;
 
   const getSentimentBadge = () => {
     if (!reply.sentiment) return null;
@@ -129,12 +126,21 @@ function ReplyCard({ reply }: ReplyCardProps) {
     );
   };
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't toggle if clicking on a button or link
+    if ((e.target as HTMLElement).closest('button, a')) return;
+    setIsExpanded(!isExpanded);
+  };
+
   return (
-    <Card className={`hover:shadow-md transition-shadow duration-200 border-l-4 relative ${
-      weHaveReplied
-        ? 'border-l-green-500 opacity-70'
-        : 'border-l-blue-500'
-    }`}>
+    <Card
+      className={`hover:shadow-md transition-all duration-200 border-l-4 relative cursor-pointer ${
+        weHaveReplied
+          ? 'border-l-green-500 opacity-70'
+          : 'border-l-blue-500'
+      }`}
+      onClick={handleCardClick}
+    >
       {/* Replied Indicator Box - Top Right Corner */}
       {weHaveReplied && (
         <div className="absolute top-3 right-3 z-10">
@@ -144,111 +150,134 @@ function ReplyCard({ reply }: ReplyCardProps) {
           </Badge>
         </div>
       )}
-      <div className="p-5">
-        {/* Header Row */}
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-3 flex-1">
-            <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-              weHaveReplied ? 'bg-green-100' : 'bg-blue-100'
-            }`}>
-              {weHaveReplied ? (
-                <Check className="h-5 w-5 text-green-600" />
-              ) : (
-                <User className="h-5 w-5 text-blue-600" />
+      <div className="p-4">
+        {/* Compact Header Row */}
+        <div className="flex items-center gap-3">
+          {/* Expand/Collapse Icon */}
+          <div className="text-gray-400">
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </div>
+
+          {/* Avatar */}
+          <div className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+            weHaveReplied ? 'bg-green-100' : 'bg-blue-100'
+          }`}>
+            {weHaveReplied ? (
+              <Check className="h-4 w-4 text-green-600" />
+            ) : (
+              <User className="h-4 w-4 text-blue-600" />
+            )}
+          </div>
+
+          {/* Name, Sentiment, Preview */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-semibold text-gray-900">{leadName}</h3>
+              {getSentimentBadge()}
+              <span className="text-xs text-gray-500">{timeAgo}</span>
+              <span className="text-xs text-blue-600 font-medium">{reply.workspace_name}</span>
+            </div>
+            {/* Preview text when collapsed */}
+            {!isExpanded && previewText && (
+              <p className="text-sm text-gray-600 truncate mt-0.5">
+                {previewText}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Expanded Content */}
+        {isExpanded && (
+          <div className="mt-4 ml-11">
+            {/* Contact Info */}
+            <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+              <span className="flex items-center gap-1">
+                <Mail className="h-3.5 w-3.5" />
+                {reply.lead_email}
+              </span>
+              {reply.company && (
+                <span className="flex items-center gap-1">
+                  <Building2 className="h-3.5 w-3.5" />
+                  {reply.company}
+                </span>
+              )}
+              {weHaveReplied && replyStatus && (
+                <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                  <Check className="h-3 w-3 mr-1" />
+                  Replied {formatDistanceToNow(new Date(replyStatus.sent_at), { addSuffix: true })}
+                </Badge>
               )}
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-semibold text-gray-900">{leadName}</h3>
-                {getSentimentBadge()}
-                {weHaveReplied && replyStatus && (
-                  <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
-                    <Check className="h-3 w-3 mr-1" />
-                    Replied {formatDistanceToNow(new Date(replyStatus.sent_at), { addSuffix: true })}
-                  </Badge>
-                )}
+
+            {/* Full Reply Text */}
+            {reply.reply_text && (
+              <div className="bg-gray-50 rounded-lg p-4 mb-3 border border-gray-200">
+                <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
+                  {reply.reply_text}
+                </p>
               </div>
-              <div className="flex items-center gap-4 text-sm text-gray-600">
-                <span className="flex items-center gap-1">
-                  <Mail className="h-3.5 w-3.5" />
-                  {reply.lead_email}
-                </span>
-                {reply.company && (
-                  <span className="flex items-center gap-1">
-                    <Building2 className="h-3.5 w-3.5" />
-                    {reply.company}
-                  </span>
-                )}
-              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              {!weHaveReplied ? (
+                !reply.bison_reply_numeric_id ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled
+                    title="This reply was received before November 20, 2025 and cannot be responded to via AI. Please ask the lead to reply again."
+                  >
+                    <Sparkles className="h-3 w-3 mr-1 opacity-50" />
+                    AI Reply Unavailable
+                  </Button>
+                ) : (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="h-7 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowComposer(true);
+                    }}
+                  >
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    AI Reply
+                  </Button>
+                )
+              ) : (
+                <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Conversation Handled
+                </Badge>
+              )}
+              {reply.bison_conversation_url && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  asChild
+                  className="h-7 text-xs"
+                >
+                  <a
+                    href={reply.bison_conversation_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    View in Bison
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </Button>
+              )}
             </div>
           </div>
-        </div>
-
-        {/* Reply Text */}
-        {reply.reply_text && (
-          <div className="bg-gray-50 rounded-lg p-4 mb-3 border border-gray-200">
-            <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
-              {reply.reply_text}
-            </p>
-          </div>
         )}
-
-        {/* Footer Row */}
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <div className="flex items-center gap-4">
-            <span className="font-medium text-blue-600">{reply.workspace_name}</span>
-            <span>{timeAgo}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {!weHaveReplied ? (
-              !reply.bison_reply_numeric_id ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                  disabled
-                  title="This reply was received before November 20, 2025 and cannot be responded to via AI. Please ask the lead to reply again."
-                >
-                  <Sparkles className="h-3 w-3 mr-1 opacity-50" />
-                  AI Reply Unavailable
-                </Button>
-              ) : (
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="h-7 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                  onClick={() => setShowComposer(true)}
-                >
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  AI Reply
-                </Button>
-              )
-            ) : (
-              <Badge variant="secondary" className="bg-gray-100 text-gray-600">
-                <CheckCircle className="h-3 w-3 mr-1" />
-                Conversation Handled
-              </Badge>
-            )}
-            {reply.bison_conversation_url && (
-              <Button
-                variant="ghost"
-                size="sm"
-                asChild
-                className="h-7 text-xs"
-              >
-                <a
-                  href={reply.bison_conversation_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1"
-                >
-                  View in Bison
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </Button>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* AI Reply Composer Dialog */}
@@ -262,261 +291,4 @@ function ReplyCard({ reply }: ReplyCardProps) {
   );
 }
 
-interface AIReplyComposerProps {
-  open: boolean;
-  onClose: () => void;
-  reply: LiveReply;
-  leadName: string;
-}
-
-function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyComposerProps) {
-  const [generatedReply, setGeneratedReply] = useState('');
-  const [ccEmails, setCcEmails] = useState<string[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isSending, setIsSending] = useState(false);
-  const { toast } = useToast();
-
-  // Generate reply when dialog opens
-  const generateReply = async () => {
-    setIsGenerating(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast({
-          title: 'Error',
-          description: 'You must be logged in to generate replies',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      const response = await fetch(
-        `https://gjqbbgrfhijescaouqkx.supabase.co/functions/v1/generate-ai-reply`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            reply_uuid: reply.id,
-            workspace_name: reply.workspace_name,
-            lead_name: leadName,
-            lead_email: reply.lead_email,
-            lead_phone: reply.phone || undefined,
-            original_message: reply.reply_text || '',
-            preview_mode: true, // Don't save to DB yet
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to generate reply');
-      }
-
-      const data = await response.json();
-      setGeneratedReply(data.generated_reply);
-      setCcEmails(data.cc_emails || []);
-
-      toast({
-        title: 'Reply Generated',
-        description: 'AI has generated a personalized reply based on the template',
-      });
-    } catch (error: any) {
-      console.error('Error generating reply:', error);
-      toast({
-        title: 'Generation Failed',
-        description: error.message || 'Failed to generate reply',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // Auto-generate when dialog opens
-  if (open && !generatedReply && !isGenerating) {
-    generateReply();
-  }
-
-  // Reset state when dialog closes
-  if (!open && generatedReply) {
-    setGeneratedReply('');
-    setCcEmails([]);
-  }
-
-  const handleSend = async () => {
-    if (!generatedReply.trim()) {
-      toast({
-        title: 'Empty Reply',
-        description: 'Please generate a reply first',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setIsSending(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast({
-          title: 'Error',
-          description: 'You must be logged in to send replies',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      const response = await fetch(
-        `https://gjqbbgrfhijescaouqkx.supabase.co/functions/v1/send-reply-via-bison`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            reply_uuid: reply.id,
-            workspace_name: reply.workspace_name,
-            generated_reply_text: generatedReply,
-            cc_emails: ccEmails,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to send reply');
-      }
-
-      toast({
-        title: 'Reply Sent!',
-        description: `Reply sent to ${leadName} with ${ccEmails.length} CC(s)`,
-      });
-
-      onClose();
-    } catch (error: any) {
-      console.error('Error sending reply:', error);
-      toast({
-        title: 'Send Failed',
-        description: error.message || 'Failed to send reply',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-purple-600" />
-            AI Reply to {leadName}
-          </DialogTitle>
-          <DialogDescription>
-            Review and edit the AI-generated reply before sending. CC emails are automatically included.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 mt-4">
-          {/* Original Message */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">
-              Original Message from {leadName}
-            </label>
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                {reply.reply_text || '(No message text)'}
-              </p>
-            </div>
-          </div>
-
-          {/* Generated Reply */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">
-              AI-Generated Reply
-            </label>
-            {isGenerating ? (
-              <div className="bg-gray-50 rounded-lg p-8 border border-gray-200 flex flex-col items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-purple-600 mb-2" />
-                <p className="text-sm text-gray-600">Generating personalized reply...</p>
-              </div>
-            ) : (
-              <Textarea
-                value={generatedReply}
-                onChange={(e) => setGeneratedReply(e.target.value)}
-                className="min-h-[200px] font-sans text-sm"
-                placeholder="AI-generated reply will appear here..."
-              />
-            )}
-          </div>
-
-          {/* CC Emails */}
-          {ccEmails.length > 0 && (
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
-                CC Recipients ({ccEmails.length})
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {ccEmails.map((email, index) => (
-                  <Badge
-                    key={index}
-                    variant="secondary"
-                    className="bg-blue-100 text-blue-800 text-xs"
-                  >
-                    <Mail className="h-3 w-3 mr-1" />
-                    {email}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={generateReply}
-              disabled={isGenerating || isSending}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
-              Regenerate
-            </Button>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onClose}
-                disabled={isSending}
-              >
-                <X className="h-4 w-4 mr-2" />
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSend}
-                disabled={isGenerating || isSending || !generatedReply}
-                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-              >
-                {isSending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send className="h-4 w-4 mr-2" />
-                    Send Reply
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
+// AIReplyComposer is now imported from @/components/shared/AIReplyComposer

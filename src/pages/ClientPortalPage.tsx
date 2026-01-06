@@ -17,6 +17,10 @@ import { useAuth } from "@/components/auth/ProtectedRoute";
 import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { useWorkspaceProducers } from "@/hooks/useWorkspaceProducers";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ClientPortalRepliesTab } from "@/components/client-portal/ClientPortalRepliesTab";
+import { ClientPortalTemplateEditor } from "@/components/client-portal/ClientPortalTemplateEditor";
+import { MessageSquare, Kanban, Settings2 } from "lucide-react";
 // SMA Insurance specific imports
 import { SMACommissionKPICards } from "@/components/sma/SMACommissionKPICards";
 import { SMAPoliciesInputDialog } from "@/components/sma/SMAPoliciesInputDialog";
@@ -323,6 +327,7 @@ const ClientPortalPage = () => {
   const [isTeamManagementOpen, setIsTeamManagementOpen] = useState(false);
   const [selectedProducerId, setSelectedProducerId] = useState<string>("all");
   const [showDeletedLeads, setShowDeletedLeads] = useState(false);
+  const [activeTab, setActiveTab] = useState("pipeline");
   const { toast} = useToast();
 
   // Fetch workspace producers for filtering and assignment
@@ -589,7 +594,7 @@ const ClientPortalPage = () => {
           .eq('role', 'admin')
           .maybeSingle();
 
-        const isAdmin = !!adminCheck || session.user.id === '09322929-6078-4b08-bd55-e3e1ff773028';
+        const isAdmin = !!adminCheck;
 
         if (isAdmin) {
           // ADMIN: Show ALL workspaces from client_registry
@@ -1062,28 +1067,63 @@ const ClientPortalPage = () => {
         )
       )}
 
-      {/* Kanban Board */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {PIPELINE_STAGES.map(stage => (
-            <DroppableColumn
-              key={stage.key}
-              stage={stage}
-              leads={getLeadsByStage(stage.key)}
-              onToggleInterested={handleToggleInterested}
-              onLeadClick={handleLeadClick}
-              formatDate={formatDate}
-              onRestore={showDeletedLeads ? handleRestoreLead : undefined}
+      {/* Tabs for Pipeline, Replies, and Templates */}
+      {workspace && (
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
+          <TabsList className="grid w-full max-w-md grid-cols-3 mb-6">
+            <TabsTrigger value="pipeline" className="flex items-center gap-2">
+              <Kanban className="h-4 w-4" />
+              Pipeline
+            </TabsTrigger>
+            <TabsTrigger value="replies" className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Replies
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4" />
+              Templates
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Pipeline Tab - Kanban Board */}
+          <TabsContent value="pipeline">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                {PIPELINE_STAGES.map(stage => (
+                  <DroppableColumn
+                    key={stage.key}
+                    stage={stage}
+                    leads={getLeadsByStage(stage.key)}
+                    onToggleInterested={handleToggleInterested}
+                    onLeadClick={handleLeadClick}
+                    formatDate={formatDate}
+                    onRestore={showDeletedLeads ? handleRestoreLead : undefined}
+                  />
+                ))}
+              </div>
+            </DndContext>
+          </TabsContent>
+
+          {/* Replies Tab - Live Replies */}
+          <TabsContent value="replies">
+            <ClientPortalRepliesTab
+              workspaceName={workspace}
+              onSwitchToTemplates={() => setActiveTab('templates')}
             />
-          ))}
-        </div>
-      </DndContext>
+          </TabsContent>
+
+          {/* Templates Tab - AI Reply Templates */}
+          <TabsContent value="templates">
+            <ClientPortalTemplateEditor workspaceName={workspace} />
+          </TabsContent>
+        </Tabs>
+      )}
 
       {/* Lead Detail Modal */}
       <LeadDetailModal

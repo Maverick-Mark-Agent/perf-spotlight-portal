@@ -23,6 +23,8 @@ import {
   CheckCircle,
   MessageSquare,
   Settings2,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { LiveReply } from '@/hooks/useLiveReplies';
@@ -135,6 +137,7 @@ interface ReplyCardProps {
 
 function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
   const [showComposer, setShowComposer] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const leadName = reply.first_name && reply.last_name
     ? `${reply.first_name} ${reply.last_name}`
     : reply.first_name || reply.last_name || 'Unknown';
@@ -146,6 +149,11 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
     Array.isArray(reply.sent_replies) ? reply.sent_replies.length > 0 : !!reply.sent_replies
   );
   const replyStatus = Array.isArray(reply.sent_replies) ? reply.sent_replies[0] : reply.sent_replies;
+
+  // Truncate reply text for preview
+  const previewText = reply.reply_text && reply.reply_text.length > 100
+    ? reply.reply_text.substring(0, 100) + '...'
+    : reply.reply_text;
 
   const getSentimentBadge = () => {
     if (!reply.sentiment) return null;
@@ -164,12 +172,21 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
     );
   };
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't toggle if clicking on a button or link
+    if ((e.target as HTMLElement).closest('button, a')) return;
+    setIsExpanded(!isExpanded);
+  };
+
   return (
-    <Card className={`hover:shadow-md transition-shadow duration-200 border-l-4 relative ${
-      weHaveReplied
-        ? 'border-l-green-500 opacity-80'
-        : 'border-l-blue-500'
-    }`}>
+    <Card
+      className={`hover:shadow-md transition-all duration-200 border-l-4 relative cursor-pointer ${
+        weHaveReplied
+          ? 'border-l-green-500 opacity-70'
+          : 'border-l-blue-500'
+      }`}
+      onClick={handleCardClick}
+    >
       {/* Replied Indicator Box - Top Right Corner */}
       {weHaveReplied && (
         <div className="absolute top-3 right-3 z-10">
@@ -179,108 +196,133 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
           </Badge>
         </div>
       )}
-      <div className="p-5">
-        {/* Header Row */}
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-3 flex-1">
-            <div className={`h-10 w-10 rounded-full flex items-center justify-center ${
-              weHaveReplied ? 'bg-green-100' : 'bg-blue-100'
-            }`}>
-              {weHaveReplied ? (
-                <Check className="h-5 w-5 text-green-600" />
-              ) : (
-                <User className="h-5 w-5 text-blue-600" />
+      <div className="p-4">
+        {/* Compact Header Row */}
+        <div className="flex items-center gap-3">
+          {/* Expand/Collapse Icon */}
+          <div className="text-gray-400">
+            {isExpanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </div>
+
+          {/* Avatar */}
+          <div className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+            weHaveReplied ? 'bg-green-100' : 'bg-blue-100'
+          }`}>
+            {weHaveReplied ? (
+              <Check className="h-4 w-4 text-green-600" />
+            ) : (
+              <User className="h-4 w-4 text-blue-600" />
+            )}
+          </div>
+
+          {/* Name, Sentiment, Preview */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-semibold text-gray-900">{leadName}</h3>
+              {getSentimentBadge()}
+              <span className="text-xs text-gray-500">{timeAgo}</span>
+            </div>
+            {/* Preview text when collapsed */}
+            {!isExpanded && previewText && (
+              <p className="text-sm text-gray-600 truncate mt-0.5">
+                {previewText}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Expanded Content */}
+        {isExpanded && (
+          <div className="mt-4 ml-11">
+            {/* Contact Info */}
+            <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+              <span className="flex items-center gap-1">
+                <Mail className="h-3.5 w-3.5" />
+                {reply.lead_email}
+              </span>
+              {reply.company && (
+                <span className="flex items-center gap-1">
+                  <Building2 className="h-3.5 w-3.5" />
+                  {reply.company}
+                </span>
+              )}
+              {weHaveReplied && replyStatus && (
+                <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                  <Check className="h-3 w-3 mr-1" />
+                  Replied {formatDistanceToNow(new Date(replyStatus.sent_at), { addSuffix: true })}
+                </Badge>
               )}
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <h3 className="font-semibold">{leadName}</h3>
-                {getSentimentBadge()}
-                {weHaveReplied && replyStatus && (
-                  <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
-                    <Check className="h-3 w-3 mr-1" />
-                    Replied {formatDistanceToNow(new Date(replyStatus.sent_at), { addSuffix: true })}
-                  </Badge>
-                )}
+
+            {/* Full Reply Text */}
+            {reply.reply_text && (
+              <div className="bg-gray-50 rounded-lg p-4 mb-3 border border-gray-200">
+                <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
+                  {reply.reply_text}
+                </p>
               </div>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                <span className="flex items-center gap-1">
-                  <Mail className="h-3.5 w-3.5" />
-                  {reply.lead_email}
-                </span>
-                {reply.company && (
-                  <span className="flex items-center gap-1">
-                    <Building2 className="h-3.5 w-3.5" />
-                    {reply.company}
-                  </span>
-                )}
-              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              {!weHaveReplied ? (
+                !reply.bison_reply_numeric_id ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled
+                    title="This reply was received before November 20, 2025 and cannot be responded to via AI. Please ask the lead to reply again."
+                  >
+                    <Sparkles className="h-3 w-3 mr-1 opacity-50" />
+                    AI Reply Unavailable
+                  </Button>
+                ) : (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="h-7 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowComposer(true);
+                    }}
+                  >
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    AI Reply
+                  </Button>
+                )
+              ) : (
+                <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Conversation Handled
+                </Badge>
+              )}
+              {reply.bison_conversation_url && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  asChild
+                  className="h-7 text-xs"
+                >
+                  <a
+                    href={reply.bison_conversation_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    View in Bison
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </Button>
+              )}
             </div>
           </div>
-        </div>
-
-        {/* Reply Text */}
-        {reply.reply_text && (
-          <div className="bg-muted rounded-lg p-4 mb-3 border">
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">
-              {reply.reply_text}
-            </p>
-          </div>
         )}
-
-        {/* Footer Row */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-2">
-          <span>{timeAgo}</span>
-          <div className="flex items-center gap-2">
-            {!weHaveReplied ? (
-              !reply.bison_reply_numeric_id ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs"
-                  disabled
-                  title="This reply was received before November 20, 2025 and cannot be responded to via AI. Please ask the lead to reply again."
-                >
-                  <Sparkles className="h-3 w-3 mr-1 opacity-50" />
-                  AI Reply Unavailable
-                </Button>
-              ) : (
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="h-7 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                  onClick={() => setShowComposer(true)}
-                >
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  AI Reply
-                </Button>
-              )
-            ) : (
-              <Badge variant="secondary" className="bg-muted">
-                <CheckCircle className="h-3 w-3 mr-1" />
-                Conversation Handled
-              </Badge>
-            )}
-            {reply.bison_conversation_url && (
-              <Button
-                variant="ghost"
-                size="sm"
-                asChild
-                className="h-7 text-xs"
-              >
-                <a
-                  href={reply.bison_conversation_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1"
-                >
-                  View in Bison
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </Button>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* AI Reply Composer Dialog */}

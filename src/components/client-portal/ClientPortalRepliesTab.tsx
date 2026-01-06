@@ -222,13 +222,13 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
           {/* Name, Sentiment, Preview */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold text-gray-900">{leadName}</h3>
+              <h3 className="font-semibold text-foreground">{leadName}</h3>
               {getSentimentBadge()}
-              <span className="text-xs text-gray-500">{timeAgo}</span>
+              <span className="text-xs text-muted-foreground">{timeAgo}</span>
             </div>
             {/* Preview text when collapsed */}
             {!isExpanded && previewText && (
-              <p className="text-sm text-gray-600 truncate mt-0.5">
+              <p className="text-sm text-muted-foreground truncate mt-0.5">
                 {previewText}
               </p>
             )}
@@ -239,7 +239,7 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
         {isExpanded && (
           <div className="mt-4 ml-11">
             {/* Contact Info */}
-            <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
               <span className="flex items-center gap-1">
                 <Mail className="h-3.5 w-3.5" />
                 {reply.lead_email}
@@ -260,8 +260,8 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
 
             {/* Full Reply Text */}
             {reply.reply_text && (
-              <div className="bg-gray-50 rounded-lg p-4 mb-3 border border-gray-200">
-                <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
+              <div className="bg-muted rounded-lg p-4 mb-3 border">
+                <p className="text-foreground text-sm leading-relaxed whitespace-pre-wrap">
                   {reply.reply_text}
                 </p>
               </div>

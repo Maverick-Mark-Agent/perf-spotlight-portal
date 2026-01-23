@@ -4,11 +4,9 @@ import {
   TrendingUp,
   DollarSign,
   Users,
-  MapPin,
   Server,
   Home,
   ChevronRight,
-  Upload,
   Settings,
   PieChart,
   CreditCard,
@@ -54,19 +52,9 @@ const navigationItems = {
       url: "/client-portal",
     },
     {
-      title: "Contact Pipeline",
-      icon: Upload,
-      url: "/contact-pipeline",
-    },
-    {
       title: "Live Replies",
       icon: MessageCircle,
       url: "/live-replies",
-    },
-    {
-      title: "ZIP Dashboard",
-      icon: MapPin,
-      url: "/zip-dashboard",
     },
     {
       title: "Client Management",
@@ -91,11 +79,6 @@ const navigationItems = {
       title: "Email Accounts",
       icon: Server,
       url: "/email-accounts",
-    },
-    {
-      title: "Rollout Progress",
-      icon: Activity,
-      url: "/rollout-progress",
     },
   ],
 };

@@ -5,8 +5,6 @@ import {
   Users,
   Target,
   TrendingUp,
-  MapPin,
-  Upload,
   Shield,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -105,55 +103,6 @@ const Index = () => {
           </Link>
         </Card>
 
-        <Card
-          className="bg-card border-2 border-border hover:border-purple-500/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer"
-          asChild
-        >
-          <Link to="/contact-pipeline">
-            <CardHeader>
-              <div className="flex items-center space-x-3">
-                <div className="p-3 bg-purple-500/10 rounded-xl group-hover:bg-purple-500/20 transition-colors">
-                  <Upload className="h-6 w-6 text-purple-500" />
-                </div>
-                <CardTitle className="text-foreground">
-                  Contact Pipeline
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-foreground/70 leading-relaxed">
-                Automated list cleaning pipeline: upload Cole X Dates CSV,
-                verify emails, generate weekly batches, and upload to Email
-                Bison campaigns.
-              </p>
-            </CardContent>
-          </Link>
-        </Card>
-
-        <Card
-          className="bg-card border-2 border-border hover:border-info/40 hover:shadow-lg transition-all duration-300 rounded-2xl group cursor-pointer"
-          asChild
-        >
-          <Link to="/zip-dashboard">
-            <CardHeader>
-              <div className="flex items-center space-x-3">
-                <div className="p-3 bg-info/10 rounded-xl group-hover:bg-info/20 transition-colors">
-                  <MapPin className="h-6 w-6 text-info" />
-                </div>
-                <CardTitle className="text-foreground">
-                  Territory Management
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-foreground/70 leading-relaxed">
-                Manage ZIP code assignments, visualize territory coverage by
-                state, and track agency distribution across 3,000+ targeted
-                locations.
-              </p>
-            </CardContent>
-          </Link>
-        </Card>
       </div>
 
       {/* CTA Section */}

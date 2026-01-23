@@ -26,10 +26,7 @@ import EmailAccountsPage from "./pages/EmailAccountsPage";
 import VolumeDashboard from "./pages/VolumeDashboard";
 import BillingPage from "./pages/BillingPage";
 import RevenueDashboard from "./pages/RevenueDashboard";
-import ZipDashboard from "./pages/ZipDashboard";
 import ROIDashboard from "./pages/ROIDashboard";
-import RolloutProgress from "./pages/RolloutProgress";
-import ContactPipelineDashboard from "./pages/ContactPipelineDashboard";
 import ClientManagement from "./pages/ClientManagement";
 import ClientProfile from "./pages/ClientProfile";
 import UserManagement from "./pages/UserManagement";
@@ -155,41 +152,11 @@ const App = () => (
                 }
               />
               <Route
-                path="/zip-dashboard"
-                element={
-                  <AdminProtectedRoute>
-                    <MainLayout>
-                      <ZipDashboard />
-                    </MainLayout>
-                  </AdminProtectedRoute>
-                }
-              />
-              <Route
                 path="/roi-dashboard"
                 element={
                   <AdminProtectedRoute>
                     <MainLayout>
                       <ROIDashboard />
-                    </MainLayout>
-                  </AdminProtectedRoute>
-                }
-              />
-              <Route
-                path="/rollout-progress"
-                element={
-                  <AdminProtectedRoute>
-                    <MainLayout>
-                      <RolloutProgress />
-                    </MainLayout>
-                  </AdminProtectedRoute>
-                }
-              />
-              <Route
-                path="/contact-pipeline"
-                element={
-                  <AdminProtectedRoute>
-                    <MainLayout>
-                      <ContactPipelineDashboard />
                     </MainLayout>
                   </AdminProtectedRoute>
                 }

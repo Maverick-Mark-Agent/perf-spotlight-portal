@@ -75,9 +75,9 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
         setLoading(true);
         setError(null);
 
-        // Try the view first (includes conversation stats), fallback to table
+        // Query the original table (preserves sent_replies FK relationship)
         let query = supabase
-          .from('lead_replies_with_conversation')
+          .from('lead_replies')
           .select(`
             *,
             sent_replies (
@@ -100,56 +100,54 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
           query = query.eq('sentiment', sentiment);
         }
 
-        let { data: replies, error: fetchError } = await query;
-
-        // Fallback to original table if view doesn't exist yet
-        if (fetchError && fetchError.message?.includes('lead_replies_with_conversation')) {
-          console.log('[Realtime Replies] View not available, falling back to lead_replies table');
-          let fallbackQuery = supabase
-            .from('lead_replies')
-            .select(`
-              *,
-              sent_replies (
-                id,
-                sent_at,
-                status,
-                sent_by
-              )
-            `)
-            .order('reply_date', { ascending: false })
-            .limit(limit);
-
-          if (workspaceName) {
-            fallbackQuery = fallbackQuery.eq('workspace_name', workspaceName);
-          }
-          if (sentiment !== 'all') {
-            fallbackQuery = fallbackQuery.eq('sentiment', sentiment);
-          }
-
-          const fallbackResult = await fallbackQuery;
-          replies = fallbackResult.data;
-          fetchError = fallbackResult.error;
-        }
+        const { data: replies, error: fetchError } = await query;
 
         if (fetchError) throw fetchError;
 
-        setData(replies || []);
-        console.log(`[Realtime Replies] Loaded ${replies?.length || 0} initial replies`);
+        // Fetch conversation stats separately from the view
+        let statsQuery = supabase
+          .from('lead_conversation_stats')
+          .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status');
 
-        // Debug: Check for conversation data
-        const repliesWithConversation = replies?.filter(r => r.conversation_reply_count && r.conversation_reply_count > 1) || [];
-        console.log(`[Realtime Replies] ${repliesWithConversation.length} replies are part of conversations`);
+        if (workspaceName) {
+          statsQuery = statsQuery.eq('workspace_name', workspaceName);
+        }
 
-        // Debug: Check for sent_replies data
-        const repliesWithSentReplies = replies?.filter(r => r.sent_replies) || [];
-        console.log(`[Realtime Replies] ${repliesWithSentReplies.length} replies have sent_replies data`);
-        if (repliesWithSentReplies.length > 0) {
-          console.log('[Realtime Replies] First reply with sent_replies:', {
-            email: repliesWithSentReplies[0].lead_email,
-            sent_replies: repliesWithSentReplies[0].sent_replies,
-            isArray: Array.isArray(repliesWithSentReplies[0].sent_replies)
+        const { data: conversationStats } = await statsQuery;
+
+        // Create a lookup map for conversation stats
+        const statsMap = new Map<string, any>();
+        if (conversationStats) {
+          conversationStats.forEach(stat => {
+            const key = `${stat.lead_email}|${stat.workspace_name}`;
+            statsMap.set(key, stat);
           });
         }
+
+        // Merge conversation stats into replies
+        const repliesWithConversation = (replies || []).map(reply => {
+          const key = `${reply.lead_email}|${reply.workspace_name}`;
+          const stats = statsMap.get(key);
+          return {
+            ...reply,
+            conversation_reply_count: stats?.reply_count || 1,
+            conversation_first_reply_date: stats?.first_reply_date || null,
+            conversation_latest_reply_date: stats?.latest_reply_date || null,
+            conversation_replies_last_7_days: stats?.replies_last_7_days || 1,
+            conversation_status: stats?.conversation_status || 'single_reply',
+          };
+        });
+
+        setData(repliesWithConversation);
+        console.log(`[Realtime Replies] Loaded ${repliesWithConversation.length} initial replies`);
+
+        // Debug: Check for conversation data
+        const inConversation = repliesWithConversation.filter(r => r.conversation_reply_count > 1);
+        console.log(`[Realtime Replies] ${inConversation.length} replies are part of conversations`);
+
+        // Debug: Check for sent_replies data
+        const repliesWithSentReplies = repliesWithConversation.filter(r => r.sent_replies);
+        console.log(`[Realtime Replies] ${repliesWithSentReplies.length} replies have sent_replies data`);
       } catch (err: any) {
         console.error('[Realtime Replies] Error fetching initial data:', err);
         setError(err.message);
@@ -276,9 +274,9 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
     setLoading(true);
 
     try {
-      // Try the view first (includes conversation stats), fallback to table
+      // Query the original table (preserves sent_replies FK relationship)
       let query = supabase
-        .from('lead_replies_with_conversation')
+        .from('lead_replies')
         .select(`
           *,
           sent_replies (
@@ -299,41 +297,46 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
         query = query.eq('sentiment', sentiment);
       }
 
-      let { data: replies, error: fetchError } = await query;
-
-      // Fallback to original table if view doesn't exist yet
-      if (fetchError && fetchError.message?.includes('lead_replies_with_conversation')) {
-        console.log('[Realtime Replies] View not available, falling back to lead_replies table');
-        let fallbackQuery = supabase
-          .from('lead_replies')
-          .select(`
-            *,
-            sent_replies (
-              id,
-              sent_at,
-              status,
-              sent_by
-            )
-          `)
-          .order('reply_date', { ascending: false })
-          .limit(limit);
-
-        if (workspaceName) {
-          fallbackQuery = fallbackQuery.eq('workspace_name', workspaceName);
-        }
-        if (sentiment !== 'all') {
-          fallbackQuery = fallbackQuery.eq('sentiment', sentiment);
-        }
-
-        const fallbackResult = await fallbackQuery;
-        replies = fallbackResult.data;
-        fetchError = fallbackResult.error;
-      }
+      const { data: replies, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
 
-      setData(replies || []);
-      console.log(`[Realtime Replies] Refreshed with ${replies?.length || 0} replies`);
+      // Fetch conversation stats separately from the view
+      let statsQuery = supabase
+        .from('lead_conversation_stats')
+        .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status');
+
+      if (workspaceName) {
+        statsQuery = statsQuery.eq('workspace_name', workspaceName);
+      }
+
+      const { data: conversationStats } = await statsQuery;
+
+      // Create a lookup map for conversation stats
+      const statsMap = new Map<string, any>();
+      if (conversationStats) {
+        conversationStats.forEach(stat => {
+          const key = `${stat.lead_email}|${stat.workspace_name}`;
+          statsMap.set(key, stat);
+        });
+      }
+
+      // Merge conversation stats into replies
+      const repliesWithConversation = (replies || []).map(reply => {
+        const key = `${reply.lead_email}|${reply.workspace_name}`;
+        const stats = statsMap.get(key);
+        return {
+          ...reply,
+          conversation_reply_count: stats?.reply_count || 1,
+          conversation_first_reply_date: stats?.first_reply_date || null,
+          conversation_latest_reply_date: stats?.latest_reply_date || null,
+          conversation_replies_last_7_days: stats?.replies_last_7_days || 1,
+          conversation_status: stats?.conversation_status || 'single_reply',
+        };
+      });
+
+      setData(repliesWithConversation);
+      console.log(`[Realtime Replies] Refreshed with ${repliesWithConversation.length} replies`);
     } catch (err: any) {
       console.error('[Realtime Replies] Error refreshing data:', err);
       setError(err.message);

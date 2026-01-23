@@ -119,9 +119,9 @@ export function useLiveReplies(): UseLiveRepliesReturn {
       setLoading(true);
       setError(null);
 
-      // Try the view first (includes conversation stats), fallback to table
-      let { data, error: fetchError } = await supabase
-        .from('lead_replies_with_conversation')
+      // Query the original table (preserves sent_replies FK relationship)
+      const { data, error: fetchError } = await supabase
+        .from('lead_replies')
         .select(`
           id,
           workspace_name,
@@ -138,11 +138,6 @@ export function useLiveReplies(): UseLiveRepliesReturn {
           bison_conversation_url,
           bison_reply_numeric_id,
           created_at,
-          conversation_reply_count,
-          conversation_first_reply_date,
-          conversation_latest_reply_date,
-          conversation_replies_last_7_days,
-          conversation_status,
           sent_replies (
             id,
             sent_at,
@@ -153,53 +148,46 @@ export function useLiveReplies(): UseLiveRepliesReturn {
         .order('reply_date', { ascending: false })
         .limit(100); // Show last 100 replies
 
-      // Fallback to original table if view doesn't exist yet
-      if (fetchError && fetchError.message?.includes('lead_replies_with_conversation')) {
-        console.log('[useLiveReplies] View not available, falling back to lead_replies table');
-        const fallbackResult = await supabase
-          .from('lead_replies')
-          .select(`
-            id,
-            workspace_name,
-            lead_email,
-            first_name,
-            last_name,
-            company,
-            title,
-            phone,
-            reply_text,
-            reply_date,
-            sentiment,
-            is_interested,
-            bison_conversation_url,
-            bison_reply_numeric_id,
-            created_at,
-            sent_replies (
-              id,
-              sent_at,
-              status,
-              sent_by
-            )
-          `)
-          .order('reply_date', { ascending: false })
-          .limit(100);
-
-        data = fallbackResult.data;
-        fetchError = fallbackResult.error;
-      }
-
       if (fetchError) throw fetchError;
 
+      // Fetch conversation stats separately from the view
+      const { data: conversationStats } = await supabase
+        .from('lead_conversation_stats')
+        .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status');
+
+      // Create a lookup map for conversation stats
+      const statsMap = new Map<string, any>();
+      if (conversationStats) {
+        conversationStats.forEach(stat => {
+          const key = `${stat.lead_email}|${stat.workspace_name}`;
+          statsMap.set(key, stat);
+        });
+      }
+
+      // Merge conversation stats into replies
+      const repliesWithConversation = (data || []).map(reply => {
+        const key = `${reply.lead_email}|${reply.workspace_name}`;
+        const stats = statsMap.get(key);
+        return {
+          ...reply,
+          conversation_reply_count: stats?.reply_count || 1,
+          conversation_first_reply_date: stats?.first_reply_date || null,
+          conversation_latest_reply_date: stats?.latest_reply_date || null,
+          conversation_replies_last_7_days: stats?.replies_last_7_days || 1,
+          conversation_status: stats?.conversation_status || 'single_reply',
+        };
+      });
+
       // Debug logging for reply tracking
-      console.log('🔍 useLiveReplies - Fetched', data?.length || 0, 'leads');
-      const repliedLeads = data?.filter(lead => lead.sent_replies) || [];
+      console.log('🔍 useLiveReplies - Fetched', repliesWithConversation.length, 'leads');
+      const repliedLeads = repliesWithConversation.filter(lead => lead.sent_replies);
       console.log('🔍 useLiveReplies - Leads with sent_replies:', repliedLeads.length);
 
       // Log conversation data
-      const conversationLeads = data?.filter(lead => lead.conversation_reply_count && lead.conversation_reply_count > 1) || [];
+      const conversationLeads = repliesWithConversation.filter(lead => lead.conversation_reply_count > 1);
       console.log('🔍 useLiveReplies - Leads in conversation:', conversationLeads.length);
 
-      setReplies(data || []);
+      setReplies(repliesWithConversation);
     } catch (err) {
       console.error('Error fetching replies:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch replies');

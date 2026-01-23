@@ -47,38 +47,12 @@ const MonthlyKPIProgress = () => {
     fetchDurationMs
   } = kpiDashboard;
 
-  // Clients to display on KPI Dashboard (whitelist)
-  const KPI_DASHBOARD_CLIENTS = [
-    'David Amiri',
-    'Danny Schwartz',
-    'Devin Hodo',
-    'StreetSmart Commercial',
-    'StreetSmart P&C', // Added: Client has KPI target of 100
-    'StreetSmart Trucking', // Added: Client has KPI target of 100
-    'Kim Wallace',
-    'Jason Binyon',
-    'Nick Sakha', // Fixed: was 'Nicholas Sakha'
-    'SMA Insurance', // Fixed: was 'SMA Insurance Services'
-    'John Roberts',
-    'Rob Russell',
-    'Kirk Hodgson',
-    'Gregg Blanchard',
-    'Jeff Schroder',
-    'Tony Schmitz'
-  ];
+  // NOTE: Client filtering is now handled at the data layer via kpi_dashboard_enabled
+  // and volume_dashboard_enabled toggles in client_registry table.
+  // See realtimeDataService.ts for the database query filters.
 
-  // Filter to only show clients in the whitelist
-  const displayedClients = clients.filter(
-    client => KPI_DASHBOARD_CLIENTS.includes(client.name)
-  );
-
-  // Filter volume clients to match KPI Dashboard whitelist
-  const displayedVolumeClients = volumeDashboard.clients.filter(
-    client => KPI_DASHBOARD_CLIENTS.includes(client.name)
-  );
-
-  // Calculate aggregate metrics for displayed clients only
-  const aggregateMetrics = displayedClients.reduce(
+  // Calculate aggregate metrics for all clients (already filtered by toggle)
+  const aggregateMetrics = clients.reduce(
     (acc, client) => ({
       totalLeads: acc.totalLeads + client.leadsGenerated,
       totalTarget: acc.totalTarget + client.monthlyKPI,
@@ -178,7 +152,7 @@ const MonthlyKPIProgress = () => {
       volumeDashboard.clients.map(c => [c.name, c])
     );
 
-    return displayedClients.map(kpiClient => {
+    return clients.map(kpiClient => {
       const volumeClient = volumeMap.get(kpiClient.name);
 
       // Determine status based on KPI performance
@@ -225,7 +199,7 @@ const MonthlyKPIProgress = () => {
         status,
       };
     });
-  }, [displayedClients, volumeDashboard.clients]);
+  }, [clients, volumeDashboard.clients]);
 
   const selectedClientData = selectedClient
     ? clients.find(client => client.id === selectedClient) || {
@@ -362,8 +336,8 @@ const MonthlyKPIProgress = () => {
             <>
               {/* Unified Top Cards - Combining KPI and Volume metrics */}
               <UnifiedTopCards
-                kpiClients={displayedClients}
-                volumeClients={displayedVolumeClients}
+                kpiClients={clients}
+                volumeClients={volumeDashboard.clients}
                 onRefresh={handleRefresh}
                 isRefreshing={loading}
               />

@@ -45,6 +45,7 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
     const { todayStr } = getCurrentDateInfo();
 
     // Query client_metrics with client_registry JOIN
+    // Filter by kpi_dashboard_enabled to only show clients with KPI toggle enabled
     let { data: metrics, error } = await supabase
       .from('client_metrics')
       .select(`
@@ -55,12 +56,14 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
           monthly_kpi_target,
           monthly_sending_target,
           price_per_lead,
-          is_active
+          is_active,
+          kpi_dashboard_enabled
         )
       `)
       .eq('metric_type', 'mtd')
       .eq('metric_date', todayStr)
       .eq('client_registry.is_active', true)
+      .eq('client_registry.kpi_dashboard_enabled', true)
       .order('positive_replies_mtd', { ascending: false });
 
     if (error) {
@@ -96,12 +99,14 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
               monthly_kpi_target,
               monthly_sending_target,
               price_per_lead,
-              is_active
+              is_active,
+              kpi_dashboard_enabled
             )
           `)
           .eq('metric_type', 'mtd')
           .eq('metric_date', recentDate.metric_date)
           .eq('client_registry.is_active', true)
+          .eq('client_registry.kpi_dashboard_enabled', true)
           .order('positive_replies_mtd', { ascending: false });
 
         metrics = fallbackQuery.data;
@@ -191,6 +196,7 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
     const { todayStr, daysInMonth, daysElapsed } = getCurrentDateInfo();
 
     // Query client_metrics with client_registry JOIN
+    // Filter by volume_dashboard_enabled to only show clients with Volume toggle enabled
     let { data: metrics, error } = await supabase
       .from('client_metrics')
       .select(`
@@ -200,12 +206,14 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
           display_name,
           monthly_sending_target,
           daily_sending_target,
-          is_active
+          is_active,
+          volume_dashboard_enabled
         )
       `)
       .eq('metric_type', 'mtd')
       .eq('metric_date', todayStr)
       .eq('client_registry.is_active', true)
+      .eq('client_registry.volume_dashboard_enabled', true)
       .order('emails_sent_mtd', { ascending: false });
 
     if (error) {
@@ -240,12 +248,14 @@ export async function fetchVolumeDataRealtime(): Promise<DataFetchResult<VolumeC
               display_name,
               monthly_sending_target,
               daily_sending_target,
-              is_active
+              is_active,
+              volume_dashboard_enabled
             )
           `)
           .eq('metric_type', 'mtd')
           .eq('metric_date', recentDate.metric_date)
           .eq('client_registry.is_active', true)
+          .eq('client_registry.volume_dashboard_enabled', true)
           .order('emails_sent_mtd', { ascending: false});
 
         metrics = fallbackQuery.data;

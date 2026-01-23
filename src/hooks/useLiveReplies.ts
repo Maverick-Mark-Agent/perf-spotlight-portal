@@ -30,6 +30,12 @@ export interface LiveReply {
     status: string;
     sent_by: string | null;
   }>;
+  // Conversation tracking fields (from view, optional for backward compatibility)
+  conversation_reply_count?: number;
+  conversation_first_reply_date?: string;
+  conversation_latest_reply_date?: string;
+  conversation_replies_last_7_days?: number;
+  conversation_status?: 'single_reply' | 'in_conversation' | 'hot';
 }
 
 interface UseLiveRepliesReturn {
@@ -113,8 +119,9 @@ export function useLiveReplies(): UseLiveRepliesReturn {
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase
-        .from('lead_replies')
+      // Try the view first (includes conversation stats), fallback to table
+      let { data, error: fetchError } = await supabase
+        .from('lead_replies_with_conversation')
         .select(`
           id,
           workspace_name,
@@ -131,6 +138,11 @@ export function useLiveReplies(): UseLiveRepliesReturn {
           bison_conversation_url,
           bison_reply_numeric_id,
           created_at,
+          conversation_reply_count,
+          conversation_first_reply_date,
+          conversation_latest_reply_date,
+          conversation_replies_last_7_days,
+          conversation_status,
           sent_replies (
             id,
             sent_at,
@@ -141,20 +153,51 @@ export function useLiveReplies(): UseLiveRepliesReturn {
         .order('reply_date', { ascending: false })
         .limit(100); // Show last 100 replies
 
+      // Fallback to original table if view doesn't exist yet
+      if (fetchError && fetchError.message?.includes('lead_replies_with_conversation')) {
+        console.log('[useLiveReplies] View not available, falling back to lead_replies table');
+        const fallbackResult = await supabase
+          .from('lead_replies')
+          .select(`
+            id,
+            workspace_name,
+            lead_email,
+            first_name,
+            last_name,
+            company,
+            title,
+            phone,
+            reply_text,
+            reply_date,
+            sentiment,
+            is_interested,
+            bison_conversation_url,
+            bison_reply_numeric_id,
+            created_at,
+            sent_replies (
+              id,
+              sent_at,
+              status,
+              sent_by
+            )
+          `)
+          .order('reply_date', { ascending: false })
+          .limit(100);
+
+        data = fallbackResult.data;
+        fetchError = fallbackResult.error;
+      }
+
       if (fetchError) throw fetchError;
 
       // Debug logging for reply tracking
       console.log('🔍 useLiveReplies - Fetched', data?.length || 0, 'leads');
       const repliedLeads = data?.filter(lead => lead.sent_replies) || [];
       console.log('🔍 useLiveReplies - Leads with sent_replies:', repliedLeads.length);
-      if (repliedLeads.length > 0) {
-        console.log('🔍 First replied lead:', {
-          email: repliedLeads[0].lead_email,
-          sent_replies: repliedLeads[0].sent_replies,
-          isArray: Array.isArray(repliedLeads[0].sent_replies),
-          type: typeof repliedLeads[0].sent_replies
-        });
-      }
+
+      // Log conversation data
+      const conversationLeads = data?.filter(lead => lead.conversation_reply_count && lead.conversation_reply_count > 1) || [];
+      console.log('🔍 useLiveReplies - Leads in conversation:', conversationLeads.length);
 
       setReplies(data || []);
     } catch (err) {

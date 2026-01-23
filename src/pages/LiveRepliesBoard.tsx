@@ -9,7 +9,7 @@ import { AIReplyComposer } from '@/components/shared/AIReplyComposer';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame } from 'lucide-react';
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -126,6 +126,36 @@ function ReplyCard({ reply }: ReplyCardProps) {
     );
   };
 
+  const getConversationBadge = () => {
+    const replyCount = reply.conversation_reply_count;
+    const status = reply.conversation_status;
+
+    // Don't show badge for single replies or if data is not available
+    if (!replyCount || replyCount <= 1 || status === 'single_reply') {
+      return null;
+    }
+
+    if (status === 'hot') {
+      return (
+        <Badge className="bg-orange-500 hover:bg-orange-600 text-white text-xs">
+          <Flame className="h-3 w-3 mr-1" />
+          Hot ({replyCount})
+        </Badge>
+      );
+    }
+
+    if (status === 'in_conversation' || replyCount > 1) {
+      return (
+        <Badge className="bg-purple-500 hover:bg-purple-600 text-white text-xs">
+          <MessageSquare className="h-3 w-3 mr-1" />
+          {replyCount} replies
+        </Badge>
+      );
+    }
+
+    return null;
+  };
+
   const handleCardClick = (e: React.MouseEvent) => {
     // Don't toggle if clicking on a button or link
     if ((e.target as HTMLElement).closest('button, a')) return;
@@ -173,11 +203,12 @@ function ReplyCard({ reply }: ReplyCardProps) {
             )}
           </div>
 
-          {/* Name, Sentiment, Preview */}
+          {/* Name, Sentiment, Conversation Status, Preview */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold text-gray-900">{leadName}</h3>
               {getSentimentBadge()}
+              {getConversationBadge()}
               <span className="text-xs text-gray-500">{timeAgo}</span>
               <span className="text-xs text-blue-600 font-medium">{reply.workspace_name}</span>
             </div>

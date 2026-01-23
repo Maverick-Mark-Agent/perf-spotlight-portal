@@ -24,6 +24,7 @@ export interface LeadReply {
   is_interested: boolean;
   bison_lead_id: string | null;
   bison_reply_id: string | null;
+  bison_reply_numeric_id: number | null;
   bison_conversation_url: string | null;
   bison_workspace_id: number | null;
   is_handled: boolean;
@@ -44,6 +45,12 @@ export interface LeadReply {
     status: string;
     sent_by: string | null;
   }>;
+  // Conversation tracking fields (from view, optional for backward compatibility)
+  conversation_reply_count?: number;
+  conversation_first_reply_date?: string;
+  conversation_latest_reply_date?: string;
+  conversation_replies_last_7_days?: number;
+  conversation_status?: 'single_reply' | 'in_conversation' | 'hot';
 }
 
 interface UseRealtimeRepliesOptions {
@@ -68,8 +75,9 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
         setLoading(true);
         setError(null);
 
+        // Try the view first (includes conversation stats), fallback to table
         let query = supabase
-          .from('lead_replies')
+          .from('lead_replies_with_conversation')
           .select(`
             *,
             sent_replies (
@@ -92,12 +100,45 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
           query = query.eq('sentiment', sentiment);
         }
 
-        const { data: replies, error: fetchError } = await query;
+        let { data: replies, error: fetchError } = await query;
+
+        // Fallback to original table if view doesn't exist yet
+        if (fetchError && fetchError.message?.includes('lead_replies_with_conversation')) {
+          console.log('[Realtime Replies] View not available, falling back to lead_replies table');
+          let fallbackQuery = supabase
+            .from('lead_replies')
+            .select(`
+              *,
+              sent_replies (
+                id,
+                sent_at,
+                status,
+                sent_by
+              )
+            `)
+            .order('reply_date', { ascending: false })
+            .limit(limit);
+
+          if (workspaceName) {
+            fallbackQuery = fallbackQuery.eq('workspace_name', workspaceName);
+          }
+          if (sentiment !== 'all') {
+            fallbackQuery = fallbackQuery.eq('sentiment', sentiment);
+          }
+
+          const fallbackResult = await fallbackQuery;
+          replies = fallbackResult.data;
+          fetchError = fallbackResult.error;
+        }
 
         if (fetchError) throw fetchError;
 
         setData(replies || []);
         console.log(`[Realtime Replies] Loaded ${replies?.length || 0} initial replies`);
+
+        // Debug: Check for conversation data
+        const repliesWithConversation = replies?.filter(r => r.conversation_reply_count && r.conversation_reply_count > 1) || [];
+        console.log(`[Realtime Replies] ${repliesWithConversation.length} replies are part of conversations`);
 
         // Debug: Check for sent_replies data
         const repliesWithSentReplies = replies?.filter(r => r.sent_replies) || [];
@@ -235,8 +276,9 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
     setLoading(true);
 
     try {
+      // Try the view first (includes conversation stats), fallback to table
       let query = supabase
-        .from('lead_replies')
+        .from('lead_replies_with_conversation')
         .select(`
           *,
           sent_replies (
@@ -257,7 +299,36 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
         query = query.eq('sentiment', sentiment);
       }
 
-      const { data: replies, error: fetchError } = await query;
+      let { data: replies, error: fetchError } = await query;
+
+      // Fallback to original table if view doesn't exist yet
+      if (fetchError && fetchError.message?.includes('lead_replies_with_conversation')) {
+        console.log('[Realtime Replies] View not available, falling back to lead_replies table');
+        let fallbackQuery = supabase
+          .from('lead_replies')
+          .select(`
+            *,
+            sent_replies (
+              id,
+              sent_at,
+              status,
+              sent_by
+            )
+          `)
+          .order('reply_date', { ascending: false })
+          .limit(limit);
+
+        if (workspaceName) {
+          fallbackQuery = fallbackQuery.eq('workspace_name', workspaceName);
+        }
+        if (sentiment !== 'all') {
+          fallbackQuery = fallbackQuery.eq('sentiment', sentiment);
+        }
+
+        const fallbackResult = await fallbackQuery;
+        replies = fallbackResult.data;
+        fetchError = fallbackResult.error;
+      }
 
       if (fetchError) throw fetchError;
 

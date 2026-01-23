@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, RefreshCw, ExternalLink, Search, Filter, Sparkles, Send, X, Check, CheckCircle } from 'lucide-react';
+import { Loader2, RefreshCw, ExternalLink, Search, Filter, Sparkles, Send, X, Check, CheckCircle, MessageSquare, Flame } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -81,6 +81,19 @@ export default function RepliesDashboard() {
     return counts;
   }, [replies]);
 
+  // Count conversations (leads with multiple replies)
+  const conversationCounts = useMemo(() => {
+    const counts = { inConversation: 0, hot: 0 };
+    replies.forEach((reply) => {
+      if (reply.conversation_status === 'hot') {
+        counts.hot++;
+      } else if (reply.conversation_status === 'in_conversation') {
+        counts.inConversation++;
+      }
+    });
+    return counts;
+  }, [replies]);
+
   const getSentimentBadge = (sentiment: string) => {
     switch (sentiment) {
       case 'positive':
@@ -92,6 +105,47 @@ export default function RepliesDashboard() {
       default:
         return <Badge variant="outline">{sentiment}</Badge>;
     }
+  };
+
+  // Get conversation status badge (only show if multiple replies)
+  const getConversationBadge = (reply: LeadReply) => {
+    const replyCount = reply.conversation_reply_count;
+    const status = reply.conversation_status;
+
+    // Don't show badge for single replies or if data is not available
+    if (!replyCount || replyCount <= 1 || status === 'single_reply') {
+      return null;
+    }
+
+    if (status === 'hot') {
+      return (
+        <Badge className="bg-orange-500 hover:bg-orange-600 text-white">
+          <Flame className="h-3 w-3 mr-1" />
+          Hot ({replyCount} replies)
+        </Badge>
+      );
+    }
+
+    if (status === 'in_conversation') {
+      return (
+        <Badge className="bg-purple-500 hover:bg-purple-600 text-white">
+          <MessageSquare className="h-3 w-3 mr-1" />
+          In Conversation ({replyCount})
+        </Badge>
+      );
+    }
+
+    // Fallback for any reply count > 1
+    if (replyCount > 1) {
+      return (
+        <Badge variant="outline" className="border-purple-300 text-purple-700">
+          <MessageSquare className="h-3 w-3 mr-1" />
+          {replyCount} replies
+        </Badge>
+      );
+    }
+
+    return null;
   };
 
   const formatDate = (dateString: string) => {
@@ -180,6 +234,41 @@ export default function RepliesDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Conversation Stats Cards */}
+        {(conversationCounts.inConversation > 0 || conversationCounts.hot > 0) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="border-l-4 border-l-purple-500">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-purple-500" />
+                  In Conversation
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-purple-600">{conversationCounts.inConversation}</div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Leads with 2+ replies (active back-and-forth)
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-l-4 border-l-orange-500">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                  <Flame className="h-4 w-4 text-orange-500" />
+                  Hot Conversations
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-orange-600">{conversationCounts.hot}</div>
+                <p className="text-xs text-gray-500 mt-1">
+                  3+ replies with recent activity (last 7 days)
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Filters */}
         <Card>
@@ -319,9 +408,10 @@ export default function RepliesDashboard() {
                   <CardHeader className={`${isExpanded ? 'pb-3' : 'py-3'}`}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <CardTitle className="text-base font-semibold truncate">{leadName}</CardTitle>
                           {getSentimentBadge(reply.sentiment)}
+                          {getConversationBadge(reply)}
                           {weHaveReplied && replyStatus && (
                             <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
                               <Check className="h-3 w-3 mr-1" />

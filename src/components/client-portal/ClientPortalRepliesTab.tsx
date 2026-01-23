@@ -25,6 +25,7 @@ import {
   Settings2,
   ChevronDown,
   ChevronRight,
+  Flame,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { LiveReply } from '@/hooks/useLiveReplies';
@@ -150,10 +151,41 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
   );
   const replyStatus = Array.isArray(reply.sent_replies) ? reply.sent_replies[0] : reply.sent_replies;
 
+  // Conversation tracking (from view, optional for backward compatibility)
+  const replyCount = (reply as any).conversation_reply_count;
+  const conversationStatus = (reply as any).conversation_status;
+
   // Truncate reply text for preview
   const previewText = reply.reply_text && reply.reply_text.length > 100
     ? reply.reply_text.substring(0, 100) + '...'
     : reply.reply_text;
+
+  const getConversationBadge = () => {
+    // Don't show badge for single replies or if data is not available
+    if (!replyCount || replyCount <= 1 || conversationStatus === 'single_reply') {
+      return null;
+    }
+
+    if (conversationStatus === 'hot') {
+      return (
+        <Badge className="bg-orange-500 hover:bg-orange-600 text-white text-xs">
+          <Flame className="h-3 w-3 mr-1" />
+          Hot ({replyCount})
+        </Badge>
+      );
+    }
+
+    if (conversationStatus === 'in_conversation' || replyCount > 1) {
+      return (
+        <Badge className="bg-purple-500 hover:bg-purple-600 text-white text-xs">
+          <MessageSquare className="h-3 w-3 mr-1" />
+          {replyCount} replies
+        </Badge>
+      );
+    }
+
+    return null;
+  };
 
   const getSentimentBadge = () => {
     if (!reply.sentiment) return null;
@@ -219,11 +251,12 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
             )}
           </div>
 
-          {/* Name, Sentiment, Preview */}
+          {/* Name, Sentiment, Conversation Status, Preview */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-semibold text-foreground">{leadName}</h3>
               {getSentimentBadge()}
+              {getConversationBadge()}
               <span className="text-xs text-muted-foreground">{timeAgo}</span>
             </div>
             {/* Preview text when collapsed */}

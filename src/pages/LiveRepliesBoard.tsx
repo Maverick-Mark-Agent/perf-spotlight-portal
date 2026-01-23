@@ -6,6 +6,7 @@
 
 import { useLiveReplies, type LiveReply } from '@/hooks/useLiveReplies';
 import { AIReplyComposer } from '@/components/shared/AIReplyComposer';
+import { ConversationThread } from '@/components/shared/ConversationThread';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -244,14 +245,22 @@ function ReplyCard({ reply }: ReplyCardProps) {
               )}
             </div>
 
-            {/* Full Reply Text */}
-            {reply.reply_text && (
+            {/* Conversation Thread or Single Reply */}
+            {reply.conversation_reply_count && reply.conversation_reply_count > 1 ? (
+              <div className="bg-gray-50 rounded-lg p-4 mb-3 border border-gray-200">
+                <ConversationThread
+                  leadEmail={reply.lead_email}
+                  workspaceName={reply.workspace_name}
+                  leadName={leadName}
+                />
+              </div>
+            ) : reply.reply_text ? (
               <div className="bg-gray-50 rounded-lg p-4 mb-3 border border-gray-200">
                 <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
                   {reply.reply_text}
                 </p>
               </div>
-            )}
+            ) : null}
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2">

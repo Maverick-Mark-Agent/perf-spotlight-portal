@@ -7,6 +7,7 @@
 
 import { useState, useMemo } from 'react';
 import { useRealtimeReplies, useReplyWorkspaces, type LeadReply } from '@/hooks/useRealtimeReplies';
+import { ConversationThread } from '@/components/shared/ConversationThread';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -480,9 +481,17 @@ export default function RepliesDashboard() {
                   {isExpanded && (
                     <CardContent className="pt-0">
                       <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                          {reply.reply_text || 'No reply text available'}
-                        </p>
+                        {reply.conversation_reply_count && reply.conversation_reply_count > 1 ? (
+                          <ConversationThread
+                            leadEmail={reply.lead_email}
+                            workspaceName={reply.workspace_name}
+                            leadName={leadName}
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                            {reply.reply_text || 'No reply text available'}
+                          </p>
+                        )}
                       </div>
                     </CardContent>
                   )}

@@ -365,18 +365,17 @@ export function useReplyWorkspaces() {
     const fetchWorkspaces = async () => {
       try {
         const { data, error } = await supabase
-          .from('lead_replies')
+          .from('client_registry')
           .select('workspace_name')
+          .eq('is_active', true)
           .order('workspace_name');
 
         if (error) throw error;
 
-        // Get unique workspace names
-        const uniqueWorkspaces = Array.from(
-          new Set(data?.map((r) => r.workspace_name) || [])
-        );
+        // Extract workspace names
+        const workspaceNames = data?.map((r) => r.workspace_name) || [];
 
-        setWorkspaces(uniqueWorkspaces);
+        setWorkspaces(workspaceNames);
       } catch (err) {
         console.error('[Reply Workspaces] Error fetching workspaces:', err);
       } finally {

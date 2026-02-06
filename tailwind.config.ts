@@ -114,6 +114,9 @@ export default {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
+      gridTemplateColumns: {
+        'kanban': '1fr 1fr 1fr 0.65fr', // To Do, In Progress, Blocked, Done (65% width)
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

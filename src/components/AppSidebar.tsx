@@ -13,6 +13,7 @@ import {
   Activity,
   UserCog,
   MessageCircle,
+  CheckSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -55,6 +56,11 @@ const navigationItems = {
       title: "Live Replies",
       icon: MessageCircle,
       url: "/live-replies",
+    },
+    {
+      title: "Tasks",
+      icon: CheckSquare,
+      url: "/tasks",
     },
     {
       title: "Client Management",

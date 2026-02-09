@@ -134,8 +134,8 @@ serve(async (req) => {
           continue;
         }
 
-        // Fetch stats for multiple time periods + today's scheduled emails in parallel
-        const [mtdStats, last7DaysStats, last14DaysStats, last30DaysStats, lastMonthStats, scheduledToday] = await Promise.all([
+        // Fetch stats for multiple time periods + today/tomorrow scheduled emails in parallel
+        const [mtdStats, last7DaysStats, last14DaysStats, last30DaysStats, lastMonthStats, scheduledToday, scheduledTomorrow] = await Promise.all([
           // MTD (current month to today)
           fetch(
             `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.currentMonthStart}&end_date=${dateRanges.today}`,
@@ -171,6 +171,12 @@ serve(async (req) => {
             `${baseUrl}/campaigns/sending-schedules?day=today`,
             { headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } }
           ).then(r => r.json()),
+
+          // Tomorrow's scheduled emails (future sends)
+          fetch(
+            `${baseUrl}/campaigns/sending-schedules?day=tomorrow`,
+            { headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } }
+          ).then(r => r.json()),
         ]);
 
         // Extract reply/lead metrics
@@ -197,7 +203,19 @@ serve(async (req) => {
             }, 0);
           }
         } catch (error) {
-          console.warn(`[${client.workspace_name}] Error parsing scheduled emails:`, error);
+          console.warn(`[${client.workspace_name}] Error parsing scheduled emails (today):`, error);
+        }
+
+        // Calculate tomorrow's scheduled emails (sum across all campaigns)
+        let emailsScheduledTomorrow = 0;
+        try {
+          if (scheduledTomorrow?.data && Array.isArray(scheduledTomorrow.data)) {
+            emailsScheduledTomorrow = scheduledTomorrow.data.reduce((total: number, campaign: any) => {
+              return total + (campaign?.emails_being_sent || 0);
+            }, 0);
+          }
+        } catch (error) {
+          console.warn(`[${client.workspace_name}] Error parsing scheduled emails (tomorrow):`, error);
         }
 
         // For "emails sent today", we approximate as the difference between MTD and yesterday's total
@@ -240,6 +258,7 @@ serve(async (req) => {
             emails_sent_last_14_days: emailsSentLast14Days,
             emails_sent_last_30_days: emailsSentLast30Days,
             emails_scheduled_today: emailsScheduledToday,
+            emails_scheduled_tomorrow: emailsScheduledTomorrow,
             projection_emails_eom: projectedEmailsEOM,
 
             // Lead/Reply metrics

@@ -35,6 +35,7 @@ interface VolumeClientData {
   name: string;
   emails: number;
   emailsToday: number;
+  emailsTomorrow: number;
   emailsLast7Days: number;
   emailsLast14Days: number;
   emailsLast30Days: number;

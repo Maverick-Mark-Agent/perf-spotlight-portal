@@ -15,6 +15,7 @@ interface VolumeClient {
   name: string;
   emails: number;
   emailsToday: number;
+  emailsTomorrow: number;
   target: number;
   projection: number;
   targetPercentage: number;

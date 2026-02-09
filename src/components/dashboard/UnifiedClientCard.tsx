@@ -24,6 +24,7 @@ interface UnifiedClient {
   // Volume data
   emails: number;
   emailsToday: number;
+  emailsTomorrow?: number;
   target: number;
   projection: number;
   projectedPercentage: number;
@@ -370,6 +371,10 @@ export const UnifiedClientCard = ({ client, onClick }: UnifiedClientCardProps) =
                   <div className="p-3 bg-muted/50 rounded-lg">
                     <p className="text-[10px] text-muted-foreground mb-1">Today's Sending</p>
                     <p className="text-lg font-bold text-foreground">{client.emailsToday.toLocaleString()}</p>
+                  </div>
+                  <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
+                    <p className="text-[10px] text-muted-foreground mb-1">Tomorrow's Sending</p>
+                    <p className="text-lg font-bold text-foreground">{(client.emailsTomorrow || 0).toLocaleString()}</p>
                   </div>
                   {client.dailyQuota && (
                     <div className="p-3 bg-muted/50 rounded-lg">

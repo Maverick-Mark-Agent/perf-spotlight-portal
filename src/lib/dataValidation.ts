@@ -33,6 +33,7 @@ export const VolumeClientSchema = z.object({
   name: z.string().min(1, "Client name is required"),
   emails: z.number().int().nonnegative(),
   emailsToday: z.number().int().nonnegative(),
+  emailsTomorrow: z.number().int().nonnegative(),
   emailsLast7Days: z.number().int().nonnegative(),
   emailsLast14Days: z.number().int().nonnegative(),
   emailsLast30Days: z.number().int().nonnegative(),

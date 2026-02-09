@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowLeft, TrendingUp, BarChart3, Send, Target, RefreshCw, Users, AlertCircle } from "lucide-react";
+import { ArrowLeft, TrendingUp, BarChart3, Send, Target, RefreshCw, Users, AlertCircle, Calendar } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useDashboardContext } from "@/contexts/DashboardContext";
+import { DailyVolumeBanner } from "@/components/dashboard/DailyVolumeBanner";
 
 const VolumeDashboard = () => {
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
@@ -66,12 +67,6 @@ const VolumeDashboard = () => {
     }
   };
 
-
-  const getPerformanceColor = (client: ClientData): "green" | "yellow" | "red" => {
-    if (client.isAboveTarget) return "green";
-    if (client.targetPercentage >= 80) return "yellow";
-    return "red";
-  };
 
   const totalEmails = clientData.reduce((sum, client) => sum + client.emails, 0);
   const totalTargets = clientData.reduce((sum, client) => sum + client.target, 0);
@@ -161,8 +156,13 @@ const VolumeDashboard = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-12">
+        {/* Daily Volume Banner */}
+        <div className="mb-8">
+          <DailyVolumeBanner clients={clientData} loading={isLoadingClients} />
+        </div>
+
         {/* Performance Highlights */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-12">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 mb-12">
           {/* Critical Clients - NEW */}
           <Card className="bg-dashboard-danger/15 backdrop-blur-sm border-dashboard-danger/50 shadow-2xl">
             <CardHeader>
@@ -216,6 +216,34 @@ const VolumeDashboard = () => {
                     <span className="text-dashboard-primary font-bold text-lg">{client.emailsToday.toLocaleString()}</span>
                     <div className="text-muted-foreground text-xs">
                       MTD: {client.emails.toLocaleString()} / {client.target.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Tomorrow's Scheduled Volume */}
+          <Card className="bg-dashboard-primary/15 backdrop-blur-sm border-dashboard-primary/50 shadow-2xl">
+            <CardHeader>
+              <CardTitle className="text-dashboard-primary flex items-center gap-2 text-xl font-bold">
+                <Calendar className="h-6 w-6" />
+                Tomorrow's Volume
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="max-h-[400px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+              {clientData
+                .sort((a, b) => b.emailsTomorrow - a.emailsTomorrow)
+                .map((client) => (
+                <div key={client.name} className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-primary/40 hover:bg-white/20 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-dashboard-primary"></div>
+                    <span className="text-foreground font-medium">{client.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-dashboard-primary font-bold text-lg">{client.emailsTomorrow.toLocaleString()}</span>
+                    <div className="text-muted-foreground text-xs">
+                      Target: {client.dailySendingTarget.toLocaleString()}/day
                     </div>
                   </div>
                 </div>
@@ -390,10 +418,14 @@ const VolumeDashboard = () => {
                       </div>
 
                       {/* Daily Pace */}
-                      <div className="flex items-center justify-between p-2 rounded bg-white/5">
+                      <div className="grid grid-cols-3 gap-1 p-2 rounded bg-white/5">
                         <div>
                           <p className="text-xs text-white/50">Today</p>
                           <p className="text-sm font-semibold text-white/80">{client.emailsToday.toLocaleString()}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-white/50">Tomorrow</p>
+                          <p className="text-sm font-semibold text-dashboard-primary">{client.emailsTomorrow.toLocaleString()}</p>
                         </div>
                         <div className="text-right">
                           <p className="text-xs text-white/50">Need/day</p>

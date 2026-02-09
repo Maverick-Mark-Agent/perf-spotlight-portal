@@ -7,6 +7,7 @@ import { ClientPerformanceLists } from "@/components/dashboard/ClientPerformance
 import { AggregateMetricsCard } from "@/components/dashboard/AggregateMetricsCard";
 import { UnifiedTopCards } from "@/components/dashboard/UnifiedTopCards";
 import { UnifiedClientCard } from "@/components/dashboard/UnifiedClientCard";
+import { DailyVolumeBanner } from "@/components/dashboard/DailyVolumeBanner";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw, ArrowLeft, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -184,6 +185,7 @@ const MonthlyKPIProgress = () => {
         // Volume data (with fallbacks)
         emails: volumeClient?.emails || 0,
         emailsToday: volumeClient?.emailsToday || 0,
+        emailsTomorrow: volumeClient?.emailsTomorrow || 0,
         target: volumeClient?.target || 0,
         projection: volumeClient?.projection || 0,
         projectedPercentage: volumeClient?.projectedPercentage || 0,
@@ -334,6 +336,12 @@ const MonthlyKPIProgress = () => {
             </div>
           ) : (
             <>
+              {/* Daily Volume Banner - Aggregate totals for today/tomorrow */}
+              <DailyVolumeBanner
+                clients={volumeDashboard.clients}
+                loading={volumeDashboard.loading}
+              />
+
               {/* Unified Top Cards - Combining KPI and Volume metrics */}
               <UnifiedTopCards
                 kpiClients={clients}

@@ -111,6 +111,7 @@ export function transformToVolumeClient(dbRow: any, rank: number, daysInMonth: n
     name: dbRow.client_registry?.display_name || dbRow.workspace_name,
     emails,
     emailsToday: dbRow.emails_scheduled_today || 0, // Scheduled emails for today
+    emailsTomorrow: dbRow.emails_scheduled_tomorrow || 0, // Scheduled emails for tomorrow
     emailsLast7Days: dbRow.emails_sent_last_7_days || 0,
     emailsLast14Days: dbRow.emails_sent_last_14_days || 0,
     emailsLast30Days: dbRow.emails_sent_last_30_days || 0,

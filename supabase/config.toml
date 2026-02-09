@@ -23,3 +23,21 @@ verify_jwt = false
 
 [functions.streetsmart-pc-webhook]
 verify_jwt = false
+
+[functions.schrauf-agency-webhook]
+verify_jwt = false
+
+[functions.jason-binyon-webhook]
+verify_jwt = false
+
+[functions.noah-sisson-webhook]
+verify_jwt = false
+
+[functions.john-leblanc-webhook]
+verify_jwt = false
+
+[functions.castle-agency-webhook]
+verify_jwt = false
+
+[functions.casanas-agency-webhook]
+verify_jwt = false

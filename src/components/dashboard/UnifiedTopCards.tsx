@@ -181,73 +181,38 @@ export const UnifiedTopCards = ({ kpiClients, volumeClients, onRefresh, isRefres
         </CardContent>
       </Card>
 
-      {/* Card 3: Performance Summary */}
+      {/* Card 3: Tomorrow's Sending Volume */}
       <Card className="bg-dashboard-warning/15 backdrop-blur-sm border-dashboard-warning/50 shadow-2xl">
         <CardHeader>
           <CardTitle className="text-dashboard-warning flex items-center gap-2 text-xl font-bold">
             <Target className="h-6 w-6" />
-            Performance Summary
+            Tomorrow's Sending Volume
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Client Status Breakdown */}
-          <div className="p-3 bg-white/10 rounded-lg border border-white/20">
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div>
-                <div className="flex items-center justify-center gap-1 text-success mb-1">
-                  <TrendingUp className="h-4 w-4" />
-                  <span className="text-lg font-bold">{clientsAboveTarget}</span>
+        <CardContent className="max-h-[400px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+          {volumeClients
+            .sort((a, b) => b.emailsTomorrow - a.emailsTomorrow)
+            .map((client) => {
+              const dailyGoal = client.dailySendingTarget > 0
+                ? client.dailySendingTarget
+                : Math.round(client.target / 30);
+              return (
+                <div
+                  key={client.name}
+                  className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-warning/40 hover:bg-white/20 transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-2 h-2 rounded-full bg-dashboard-warning"></div>
+                    <span className="text-foreground font-medium text-sm">{client.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-dashboard-warning font-bold text-lg">
+                      {client.emailsTomorrow.toLocaleString()} / {dailyGoal.toLocaleString()}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-xs text-muted-foreground">Above Target</span>
-              </div>
-              <div>
-                <div className="flex items-center justify-center gap-1 text-warning mb-1">
-                  <Target className="h-4 w-4" />
-                  <span className="text-lg font-bold">{clientsOnTrack}</span>
-                </div>
-                <span className="text-xs text-muted-foreground">On Track</span>
-              </div>
-              <div>
-                <div className="flex items-center justify-center gap-1 text-destructive mb-1">
-                  <TrendingDown className="h-4 w-4" />
-                  <span className="text-lg font-bold">{clientsBelowTarget}</span>
-                </div>
-                <span className="text-xs text-muted-foreground">Below Target</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Average Achievement */}
-          <div className="p-3 bg-white/10 rounded-lg border border-white/20">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Avg KPI Achievement</span>
-              <span className="text-lg font-bold text-foreground">
-                {avgKPIAchievement.toFixed(1)}%
-              </span>
-            </div>
-          </div>
-
-          {/* Volume Metrics */}
-          <div className="p-3 bg-white/10 rounded-lg border border-white/20">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Projected to Meet Target</span>
-              <span className="text-lg font-bold text-foreground">
-                {projectedToMeetTarget} / {volumeClients.length}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Total Email Variance</span>
-              <span
-                className={cn(
-                  "text-lg font-bold",
-                  volumeVariance >= 0 ? "text-dashboard-success" : "text-dashboard-danger"
-                )}
-              >
-                {volumeVariance >= 0 ? "+" : ""}
-                {volumeVariance.toLocaleString()}
-              </span>
-            </div>
-          </div>
+              );
+            })}
         </CardContent>
       </Card>
     </div>

@@ -740,6 +740,8 @@ async function processInBackground(
     console.log('📊 Background job completed successfully!')
 
     // ✅ AUTO-CHAINING: If more batches remain, trigger the next batch automatically
+    // ⚠️ CRITICAL: Release the lock BEFORE chaining to avoid lock contention
+    let chainPromise: Promise<any> | null = null
     if (hasMoreBatches) {
       const nextBatchOffset = batchOffset + batchSize
       const isNextBatchLast = nextBatchOffset + batchSize >= totalWorkspaces
@@ -748,9 +750,27 @@ async function processInBackground(
       console.log(`   Next offset: ${nextBatchOffset}, workspaces remaining: ${totalWorkspaces - nextBatchOffset}`)
       console.log(`   Will refresh view on next batch: ${isNextBatchLast}`)
 
+      // ✅ RELEASE LOCK BEFORE CHAINING (prevents batch 2 from seeing "lock held" error)
+      console.log('🔓 Releasing lock before auto-chaining...')
+      try {
+        if (usingTableLock) {
+          const { data: lockReleased, error: releaseError } = await supabase
+            .rpc('release_sync_lock', { p_lock_id: 'poll-sender-emails', p_job_id: jobId })
+
+          if (releaseError) {
+            console.warn('⚠️  Failed to release table lock before chaining:', releaseError.message)
+          } else if (lockReleased) {
+            console.log('✅ Lock released successfully before chaining')
+            usingTableLock = false // Mark as released so finally block doesn't try again
+          }
+        }
+      } catch (err: any) {
+        console.warn('⚠️  Exception while releasing lock before chaining:', err.message)
+      }
+
       // Fire-and-forget: invoke next batch asynchronously
       // Use EdgeRuntime.waitUntil to ensure the request is sent before this function returns
-      const chainPromise = supabase.functions.invoke('poll-sender-emails', {
+      chainPromise = supabase.functions.invoke('poll-sender-emails', {
         body: {
           batch_offset: nextBatchOffset,
           batch_size: batchSize,
@@ -770,8 +790,12 @@ async function processInBackground(
 
       // If EdgeRuntime.waitUntil is available (Supabase Edge Functions), use it
       // This ensures the request is sent before this function returns
-      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
-        EdgeRuntime.waitUntil(chainPromise)
+      if (typeof EdgeRuntime !== 'undefined' && (EdgeRuntime as any).waitUntil) {
+        (EdgeRuntime as any).waitUntil(chainPromise)
+      } else {
+        // Fallback: wait for the chain call to complete
+        console.log('⏳ EdgeRuntime.waitUntil not available, awaiting chain call...')
+        await chainPromise
       }
     }
 
@@ -826,6 +850,7 @@ async function processInBackground(
     throw error // Re-throw to ensure error is logged
   } finally {
     // ✅ ALWAYS release lock (table-based or advisory, depending on what was acquired)
+    // Note: Lock may have been released early if auto-chaining was triggered
     try {
       const supabase = createClient(
         Deno.env.get('SUPABASE_URL')!,
@@ -833,7 +858,8 @@ async function processInBackground(
       )
 
       if (usingTableLock) {
-        // Release table-based lock
+        // Release table-based lock (if not already released for chaining)
+        console.log('🔓 Releasing lock in finally block...')
         const { data: lockReleased, error: releaseError } = await supabase
           .rpc('release_sync_lock', { p_lock_id: 'poll-sender-emails', p_job_id: jobId })
 
@@ -842,7 +868,7 @@ async function processInBackground(
         } else if (lockReleased) {
           console.log('🔓 Table-based lock released successfully')
         } else {
-          console.warn('⚠️  Lock was not held by this job (may have been released already)')
+          console.log('ℹ️  Lock was already released (likely for auto-chaining)')
         }
       } else {
         // Release advisory lock (fallback)

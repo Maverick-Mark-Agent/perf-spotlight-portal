@@ -28,9 +28,10 @@ interface UnifiedTopCardsProps {
   volumeClients: VolumeClient[];
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  isCurrentMonth?: boolean;
 }
 
-export const UnifiedTopCards = ({ kpiClients, volumeClients, onRefresh, isRefreshing = false }: UnifiedTopCardsProps) => {
+export const UnifiedTopCards = ({ kpiClients, volumeClients, onRefresh, isRefreshing = false, isCurrentMonth = true }: UnifiedTopCardsProps) => {
   // Create a map of KPI data by client name for easy lookup
   const kpiMap = new Map(kpiClients.map(c => [c.name, c]));
 
@@ -62,15 +63,15 @@ export const UnifiedTopCards = ({ kpiClients, volumeClients, onRefresh, isRefres
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-      {/* Card 1: Today's Sending Volume */}
+      {/* Card 1: Today's Sending Volume (current) or Monthly Sending Volume (historical) */}
       <Card className="bg-dashboard-primary/15 backdrop-blur-sm border-dashboard-primary/50 shadow-2xl">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-dashboard-primary flex items-center gap-2 text-xl font-bold">
               <Send className="h-6 w-6" />
-              Today's Sending Volume
+              {isCurrentMonth ? "Today's Sending Volume" : "Monthly Sending Volume"}
             </CardTitle>
-            {onRefresh && (
+            {onRefresh && isCurrentMonth && (
               <Button
                 onClick={onRefresh}
                 disabled={isRefreshing}
@@ -86,28 +87,48 @@ export const UnifiedTopCards = ({ kpiClients, volumeClients, onRefresh, isRefres
         </CardHeader>
         <CardContent className="max-h-[400px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
           {volumeClients
-            .sort((a, b) => b.emailsToday - a.emailsToday)
+            .sort((a, b) => isCurrentMonth ? (b.emailsToday - a.emailsToday) : (b.emails - a.emails))
             .map((client) => {
-              // Use dailySendingTarget if available, otherwise calculate from monthly target
-              const dailyGoal = client.dailySendingTarget > 0
-                ? client.dailySendingTarget
-                : Math.round(client.target / 30);
-              return (
-                <div
-                  key={client.name}
-                  className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-primary/40 hover:bg-white/20 transition-colors"
-                >
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="w-2 h-2 rounded-full bg-dashboard-primary"></div>
-                    <span className="text-foreground font-medium text-sm">{client.name}</span>
+              if (isCurrentMonth) {
+                // Live view: show today's emails vs daily goal
+                const dailyGoal = client.dailySendingTarget > 0
+                  ? client.dailySendingTarget
+                  : Math.round(client.target / 30);
+                return (
+                  <div
+                    key={client.name}
+                    className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-primary/40 hover:bg-white/20 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="w-2 h-2 rounded-full bg-dashboard-primary"></div>
+                      <span className="text-foreground font-medium text-sm">{client.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-dashboard-primary font-bold text-lg">
+                        {client.emailsToday.toLocaleString()} / {dailyGoal.toLocaleString()}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-dashboard-primary font-bold text-lg">
-                      {client.emailsToday.toLocaleString()} / {dailyGoal.toLocaleString()}
-                    </span>
+                );
+              } else {
+                // Historical view: show total emails sent vs monthly target
+                return (
+                  <div
+                    key={client.name}
+                    className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-primary/40 hover:bg-white/20 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="w-2 h-2 rounded-full bg-dashboard-primary"></div>
+                      <span className="text-foreground font-medium text-sm">{client.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-dashboard-primary font-bold text-lg">
+                        {client.emails.toLocaleString()} / {client.target.toLocaleString()}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              );
+                );
+              }
             })}
         </CardContent>
       </Card>
@@ -181,37 +202,58 @@ export const UnifiedTopCards = ({ kpiClients, volumeClients, onRefresh, isRefres
         </CardContent>
       </Card>
 
-      {/* Card 3: Tomorrow's Sending Volume */}
+      {/* Card 3: Tomorrow's Sending Volume (current) or Projected vs Actual (historical) */}
       <Card className="bg-dashboard-warning/15 backdrop-blur-sm border-dashboard-warning/50 shadow-2xl">
         <CardHeader>
           <CardTitle className="text-dashboard-warning flex items-center gap-2 text-xl font-bold">
             <Target className="h-6 w-6" />
-            Tomorrow's Sending Volume
+            {isCurrentMonth ? "Tomorrow's Sending Volume" : "Month-End Projections"}
           </CardTitle>
         </CardHeader>
         <CardContent className="max-h-[400px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
           {volumeClients
-            .sort((a, b) => b.emailsTomorrow - a.emailsTomorrow)
+            .sort((a, b) => isCurrentMonth ? (b.emailsTomorrow - a.emailsTomorrow) : (b.projection - a.projection))
             .map((client) => {
-              const dailyGoal = client.dailySendingTarget > 0
-                ? client.dailySendingTarget
-                : Math.round(client.target / 30);
-              return (
-                <div
-                  key={client.name}
-                  className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-warning/40 hover:bg-white/20 transition-colors"
-                >
-                  <div className="flex items-center gap-3 flex-1">
-                    <div className="w-2 h-2 rounded-full bg-dashboard-warning"></div>
-                    <span className="text-foreground font-medium text-sm">{client.name}</span>
+              if (isCurrentMonth) {
+                const dailyGoal = client.dailySendingTarget > 0
+                  ? client.dailySendingTarget
+                  : Math.round(client.target / 30);
+                return (
+                  <div
+                    key={client.name}
+                    className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-warning/40 hover:bg-white/20 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="w-2 h-2 rounded-full bg-dashboard-warning"></div>
+                      <span className="text-foreground font-medium text-sm">{client.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-dashboard-warning font-bold text-lg">
+                        {client.emailsTomorrow.toLocaleString()} / {dailyGoal.toLocaleString()}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-dashboard-warning font-bold text-lg">
-                      {client.emailsTomorrow.toLocaleString()} / {dailyGoal.toLocaleString()}
-                    </span>
+                );
+              } else {
+                // Historical: show projected EOM vs target
+                const metTarget = client.projection >= client.target;
+                return (
+                  <div
+                    key={client.name}
+                    className="flex items-center justify-between p-3 bg-white/10 rounded-lg border border-dashboard-warning/40 hover:bg-white/20 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className={`w-2 h-2 rounded-full ${metTarget ? 'bg-dashboard-success' : 'bg-dashboard-danger'}`}></div>
+                      <span className="text-foreground font-medium text-sm">{client.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-dashboard-warning font-bold text-lg">
+                        {client.projection.toLocaleString()} / {client.target.toLocaleString()}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              );
+                );
+              }
             })}
         </CardContent>
       </Card>

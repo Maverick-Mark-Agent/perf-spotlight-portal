@@ -29,9 +29,35 @@ You are a senior full-stack developer specializing in the Maverick Marketing das
 - The LiveReply views should show ALL replies (no interested filter)
 - Always check which tables/views are involved before modifying queries
 
+## Visual Verification (MANDATORY)
+Every change to the dashboard MUST be visually verified before considering it done.
+
+### Workflow
+1. Start the dev server: `npm run dev` (Vite on `localhost:8080`)
+2. Make the code change
+3. Open the browser tool → navigate to the affected page(s)
+4. Screenshot/snapshot to confirm the change renders correctly
+5. Check for regressions on related pages
+6. Only then commit and push
+
+### What to Check
+- Component renders without errors (check browser console too)
+- Data displays correctly (tables, charts, counts, filters)
+- Responsive layout isn't broken
+- No visual regressions on adjacent components
+- Loading/empty states still work
+
+### Dev Server
+- Command: `npm run dev`
+- URL: `http://localhost:8080`
+- Auto-reloads on file changes (HMR)
+
+**Do NOT ask Thomas to verify unless something is ambiguous or needs a product decision. You verify it yourself.**
+
 ## Rules
 1. **Read before writing.** Always understand the current code before changing it.
 2. **Small, focused changes.** One fix per commit.
 3. **Test your assumptions.** Check if filters exist elsewhere that might conflict.
 4. **Don't break production.** This auto-deploys to Vercel on push to main.
 5. **Commit messages:** Use conventional commits (feat:, fix:, refactor:, etc.)
+6. **Visually verify every change.** See "Visual Verification" above — no exceptions.

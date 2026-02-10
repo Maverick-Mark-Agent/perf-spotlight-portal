@@ -60,6 +60,10 @@ export function transformToKPIClient(dbRow: any): any {
         ? ((dbRow.positive_replies_current_month - dbRow.positive_replies_last_month) /
            dbRow.positive_replies_last_month * 100)
         : 0,
+    // Volume data from client_metrics (used for historical views)
+    emailsSentMTD: dbRow.emails_sent_mtd || 0,
+    emailsSentProjection: dbRow.projection_emails_eom || 0,
+    monthlySendingTarget: dbRow.client_registry?.monthly_sending_target || 0,
   };
 }
 

@@ -57,10 +57,6 @@ const MonthlyKPIProgress = () => {
     setSelectedMonth(month);
   };
 
-  // Use historical or live clients based on selection
-  const activeClients = isCurrentMonth ? clients : historical.clients;
-  const activeLoading = isCurrentMonth ? loading : historical.loading;
-
   // Destructure dashboard state
   const {
     clients,
@@ -74,6 +70,10 @@ const MonthlyKPIProgress = () => {
     warnings,
     fetchDurationMs
   } = kpiDashboard;
+
+  // Use historical or live clients based on selection
+  const activeClients = isCurrentMonth ? clients : historical.clients;
+  const activeLoading = isCurrentMonth ? loading : historical.loading;
 
   // NOTE: Client filtering is now handled at the data layer via kpi_dashboard_enabled
   // and volume_dashboard_enabled toggles in client_registry table.
@@ -176,9 +176,10 @@ const MonthlyKPIProgress = () => {
 
   // Merge KPI and Volume data by client name
   const unifiedClients = useMemo(() => {
-    const volumeMap = new Map(
-      volumeDashboard.clients.map(c => [c.name, c])
-    );
+    // For historical months, don't merge live volume data — use only client_metrics
+    const volumeMap = isCurrentMonth
+      ? new Map(volumeDashboard.clients.map(c => [c.name, c]))
+      : new Map();
 
     return activeClients.map(kpiClient => {
       const volumeClient = volumeMap.get(kpiClient.name);
@@ -209,15 +210,15 @@ const MonthlyKPIProgress = () => {
         positiveRepliesLastMonth: kpiClient.positiveRepliesLastMonth,
         lastWeekVsWeekBeforeProgress: kpiClient.lastWeekVsWeekBeforeProgress,
         positiveRepliesLastVsThisMonth: kpiClient.positiveRepliesLastVsThisMonth,
-        // Volume data (with fallbacks)
-        emails: volumeClient?.emails || 0,
+        // Volume data — live volumeDashboard for current month, client_metrics for historical
+        emails: volumeClient?.emails || kpiClient.emailsSentMTD || 0,
         emailsToday: volumeClient?.emailsToday || 0,
         emailsTomorrow: volumeClient?.emailsTomorrow || 0,
-        target: volumeClient?.target || 0,
-        projection: volumeClient?.projection || 0,
-        projectedPercentage: volumeClient?.projectedPercentage || 0,
-        targetPercentage: volumeClient?.targetPercentage || 0,
-        // Detailed metrics
+        target: volumeClient?.target || kpiClient.monthlySendingTarget || 0,
+        projection: volumeClient?.projection || kpiClient.emailsSentProjection || 0,
+        projectedPercentage: volumeClient?.projectedPercentage || (kpiClient.monthlySendingTarget > 0 ? (kpiClient.emailsSentProjection / kpiClient.monthlySendingTarget) * 100 : 0),
+        targetPercentage: volumeClient?.targetPercentage || (kpiClient.monthlySendingTarget > 0 ? (kpiClient.emailsSentMTD / kpiClient.monthlySendingTarget) * 100 : 0),
+        // Detailed metrics (only available for current month via live volume)
         emailsLast7Days: volumeClient?.emailsLast7Days,
         emailsLast14Days: volumeClient?.emailsLast14Days,
         emailsLast30Days: volumeClient?.emailsLast30Days,
@@ -228,7 +229,7 @@ const MonthlyKPIProgress = () => {
         status,
       };
     });
-  }, [activeClients, volumeDashboard.clients]);
+  }, [activeClients, volumeDashboard.clients, isCurrentMonth]);
 
   const selectedClientData = selectedClient
     ? activeClients.find(client => client.id === selectedClient) || {
@@ -392,9 +393,10 @@ const MonthlyKPIProgress = () => {
               {/* Unified Top Cards - Combining KPI and Volume metrics */}
               <UnifiedTopCards
                 kpiClients={activeClients}
-                volumeClients={isCurrentMonth ? volumeDashboard.clients : []}
+                volumeClients={isCurrentMonth ? volumeDashboard.clients : unifiedClients}
                 onRefresh={handleRefresh}
                 isRefreshing={loading}
+                isCurrentMonth={isCurrentMonth}
               />
 
               {/* Historical data error */}

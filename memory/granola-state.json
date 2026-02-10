@@ -1,0 +1,26 @@
+{
+  "processed_meetings": [
+    {
+      "id": "6cbc3d98-544d-4428-9cf1-cb65cdd68f79",
+      "title": "Maddie Client Training",
+      "date": "2026-02-10T15:35:10.090Z",
+      "processed_at": "2026-02-10T14:00:00Z",
+      "summary_path": "memory/meetings/2026-02-10-maddie-client-training.md",
+      "tasks_created": 2
+    },
+    {
+      "id": "f6c8050c-c6ae-414f-8e38-323e1dd95f65",
+      "title": "Maverick X Cap",
+      "date": "2026-02-10T16:00:28.097Z",
+      "processed_at": "2026-02-10T14:00:00Z",
+      "summary_path": "memory/meetings/2026-02-10-maverick-x-cap.md",
+      "tasks_created": 9
+    }
+  ],
+  "last_sync": "2026-02-10T14:00:00Z",
+  "stats": {
+    "total_meetings_processed": 2,
+    "total_tasks_created": 11,
+    "urgent_tasks": 2
+  }
+}

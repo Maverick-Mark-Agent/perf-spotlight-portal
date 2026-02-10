@@ -8,12 +8,14 @@ import { AggregateMetricsCard } from "@/components/dashboard/AggregateMetricsCar
 import { UnifiedTopCards } from "@/components/dashboard/UnifiedTopCards";
 import { UnifiedClientCard } from "@/components/dashboard/UnifiedClientCard";
 import { DailyVolumeBanner } from "@/components/dashboard/DailyVolumeBanner";
+import { KPIMonthPicker } from "@/components/dashboard/KPIMonthPicker";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw, ArrowLeft, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { DataFreshnessIndicator } from "@/components/DataFreshnessIndicator";
+import { useHistoricalKPI } from "@/hooks/useHistoricalKPI";
 import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState, useEffect } from "react";
 
@@ -34,6 +36,31 @@ const MonthlyKPIProgress = () => {
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Month picker state
+  const now = new Date();
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+  const isCurrentMonth = selectedYear === now.getFullYear() && selectedMonth === (now.getMonth() + 1);
+
+  // Historical data hook
+  const historical = useHistoricalKPI();
+
+  // Fetch historical data when month changes (non-current)
+  useEffect(() => {
+    if (!isCurrentMonth) {
+      historical.fetchHistoricalMonth(selectedYear, selectedMonth);
+    }
+  }, [selectedYear, selectedMonth, isCurrentMonth]);
+
+  const handleMonthChange = (year: number, month: number) => {
+    setSelectedYear(year);
+    setSelectedMonth(month);
+  };
+
+  // Use historical or live clients based on selection
+  const activeClients = isCurrentMonth ? clients : historical.clients;
+  const activeLoading = isCurrentMonth ? loading : historical.loading;
+
   // Destructure dashboard state
   const {
     clients,
@@ -53,7 +80,7 @@ const MonthlyKPIProgress = () => {
   // See realtimeDataService.ts for the database query filters.
 
   // Calculate aggregate metrics for all clients (already filtered by toggle)
-  const aggregateMetrics = clients.reduce(
+  const aggregateMetrics = activeClients.reduce(
     (acc, client) => ({
       totalLeads: acc.totalLeads + client.leadsGenerated,
       totalTarget: acc.totalTarget + client.monthlyKPI,
@@ -153,7 +180,7 @@ const MonthlyKPIProgress = () => {
       volumeDashboard.clients.map(c => [c.name, c])
     );
 
-    return clients.map(kpiClient => {
+    return activeClients.map(kpiClient => {
       const volumeClient = volumeMap.get(kpiClient.name);
 
       // Determine status based on KPI performance
@@ -201,10 +228,10 @@ const MonthlyKPIProgress = () => {
         status,
       };
     });
-  }, [clients, volumeDashboard.clients]);
+  }, [activeClients, volumeDashboard.clients]);
 
   const selectedClientData = selectedClient
-    ? clients.find(client => client.id === selectedClient) || {
+    ? activeClients.find(client => client.id === selectedClient) || {
         id: '',
         name: '',
         leadsGenerated: 0,
@@ -264,18 +291,36 @@ const MonthlyKPIProgress = () => {
                   </Button>
                 )}
                 <div className="h-6 w-px bg-border"></div>
-                <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Live Dashboard</span>
+                {isCurrentMonth ? (
+                  <>
+                    <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Live Dashboard</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wider">Historical View</span>
+                  </>
+                )}
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-foreground">
-                {viewMode === 'overview' ? 'Client Performance Overview' : selectedClientData?.name || 'Monthly KPI Progress'}
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                {viewMode === 'overview'
-                  ? 'Click on any client card to view detailed metrics'
-                  : 'Track lead generation and positive reply metrics in real time'
-                }
-              </p>
+              <div className="flex items-center gap-4">
+                <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+                  {viewMode === 'overview' ? 'Client Performance Overview' : selectedClientData?.name || 'Monthly KPI Progress'}
+                </h1>
+              </div>
+              <div className="flex items-center gap-3">
+                <KPIMonthPicker
+                  selectedYear={selectedYear}
+                  selectedMonth={selectedMonth}
+                  onChange={handleMonthChange}
+                  isCurrentMonth={isCurrentMonth}
+                />
+                {!isCurrentMonth && historical.metricDate && (
+                  <span className="text-xs text-muted-foreground">
+                    Data from: {new Date(historical.metricDate + 'T00:00:00').toLocaleDateString()}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <DataFreshnessIndicator
@@ -328,7 +373,7 @@ const MonthlyKPIProgress = () => {
 
         {viewMode === 'overview' ? (
           /* Client Overview Cards */
-          loading || volumeDashboard.loading ? (
+          activeLoading || (isCurrentMonth && volumeDashboard.loading) ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="h-64 bg-muted/80 rounded-2xl shadow-md relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-foreground/10 before:to-transparent" />
@@ -336,19 +381,28 @@ const MonthlyKPIProgress = () => {
             </div>
           ) : (
             <>
-              {/* Daily Volume Banner - Aggregate totals for today/tomorrow */}
-              <DailyVolumeBanner
-                clients={volumeDashboard.clients}
-                loading={volumeDashboard.loading}
-              />
+              {/* Daily Volume Banner - Aggregate totals for today/tomorrow (current month only) */}
+              {isCurrentMonth && (
+                <DailyVolumeBanner
+                  clients={volumeDashboard.clients}
+                  loading={volumeDashboard.loading}
+                />
+              )}
 
               {/* Unified Top Cards - Combining KPI and Volume metrics */}
               <UnifiedTopCards
-                kpiClients={clients}
-                volumeClients={volumeDashboard.clients}
+                kpiClients={activeClients}
+                volumeClients={isCurrentMonth ? volumeDashboard.clients : []}
                 onRefresh={handleRefresh}
                 isRefreshing={loading}
               />
+
+              {/* Historical data error */}
+              {!isCurrentMonth && historical.error && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 text-center">
+                  <p className="text-amber-700 dark:text-amber-300 text-sm">{historical.error}</p>
+                </div>
+              )}
 
               {/* Unified Client Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

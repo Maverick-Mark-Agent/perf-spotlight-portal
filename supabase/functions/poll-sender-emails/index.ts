@@ -16,7 +16,7 @@ const WORKSPACE_TIMEOUT_MS = 180 * 1000 // 3 minutes max per workspace (allows l
 const PARALLEL_WORKSPACE_COUNT = 1 // Must be 1 with shared API key (stateful workspace switching)
 const PROGRESS_UPDATE_INTERVAL = 5 // Update progress every N workspaces (reduce DB writes)
 const MAX_API_RETRIES = 3 // Retry failed API calls up to 3 times
-const DEFAULT_BATCH_SIZE = 8 // Process only 8 workspaces per invocation to avoid EarlyDrop
+const DEFAULT_BATCH_SIZE = 50 // Process all workspaces in one invocation
 
 // Helper function: Retry API calls with exponential backoff
 async function fetchWithRetry(
@@ -562,8 +562,8 @@ async function processInBackground(
       ? 'running' // More batches to come
       : (workspacesSkipped > 0 ? 'partial' : (failedCount > 0 ? 'completed_with_errors' : 'completed'))
 
-    const batchNumber = Math.floor(batchOffset / batchSize) + 1
-    console.log(`✅ Batch ${batchNumber} complete: ${totalAccountsSynced} accounts synced across ${workspacesProcessed}/${totalWorkspaces} total workspaces in ${totalDuration}ms`)
+    const completedBatchNumber = Math.floor(batchOffset / batchSize) + 1
+    console.log(`✅ Batch ${completedBatchNumber} complete: ${totalAccountsSynced} accounts synced across ${workspacesProcessed}/${totalWorkspaces} total workspaces in ${totalDuration}ms`)
     if (workspacesSkipped > 0) {
       console.warn(`⚠️ Skipped ${workspacesSkipped} workspaces due to timeout - run again to complete`)
     }

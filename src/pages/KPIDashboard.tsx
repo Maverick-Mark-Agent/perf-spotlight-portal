@@ -9,6 +9,9 @@ import { UnifiedTopCards } from "@/components/dashboard/UnifiedTopCards";
 import { UnifiedClientCard } from "@/components/dashboard/UnifiedClientCard";
 import { DailyVolumeBanner } from "@/components/dashboard/DailyVolumeBanner";
 import { KPIMonthPicker } from "@/components/dashboard/KPIMonthPicker";
+import { DailyReplyTrendChart } from "@/components/dashboard/DailyReplyTrendChart";
+import { ClientReplyBreakdownTable } from "@/components/dashboard/ClientReplyBreakdownTable";
+import { InfrastructureAlertBanner } from "@/components/dashboard/InfrastructureAlertBanner";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Target, TrendingUp, Users, Zap, RefreshCw, ArrowLeft, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +19,7 @@ import { Link } from "react-router-dom";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { DataFreshnessIndicator } from "@/components/DataFreshnessIndicator";
 import { useHistoricalKPI } from "@/hooks/useHistoricalKPI";
+import { useReplyMetrics } from "@/hooks/useReplyMetrics";
 import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState, useEffect } from "react";
 
@@ -45,12 +49,25 @@ const MonthlyKPIProgress = () => {
   // Historical data hook
   const historical = useHistoricalKPI();
 
+  // Reply metrics hook
+  const replyMetrics = useReplyMetrics();
+  const [selectedReplyClient, setSelectedReplyClient] = useState<string>('all');
+
   // Fetch historical data when month changes (non-current)
   useEffect(() => {
     if (!isCurrentMonth) {
       historical.fetchHistoricalMonth(selectedYear, selectedMonth);
     }
   }, [selectedYear, selectedMonth, isCurrentMonth]);
+
+  // Fetch reply metrics when month changes
+  useEffect(() => {
+    const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
+    const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+    const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    
+    replyMetrics.fetchData(startDate, endDate);
+  }, [selectedYear, selectedMonth]);
 
   const handleMonthChange = (year: number, month: number) => {
     setSelectedYear(year);
@@ -430,6 +447,33 @@ const MonthlyKPIProgress = () => {
                     client={client}
                   />
                 ))}
+              </div>
+
+              {/* Infrastructure Alerts */}
+              {isCurrentMonth && replyMetrics.alerts.length > 0 && (
+                <InfrastructureAlertBanner alerts={replyMetrics.alerts} />
+              )}
+
+              {/* Reply Tracking Section */}
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-foreground">Reply Rate & Interested Lead Tracking</h2>
+                </div>
+
+                {/* Daily Reply Trend Chart */}
+                <DailyReplyTrendChart
+                  data={replyMetrics.getFilteredDailyTrend(selectedReplyClient)}
+                  selectedClient={selectedReplyClient}
+                  onClientChange={setSelectedReplyClient}
+                  availableClients={activeClients.map(c => c.name)}
+                  loading={replyMetrics.loading}
+                />
+
+                {/* Client Reply Breakdown Table */}
+                <ClientReplyBreakdownTable
+                  data={replyMetrics.clientBreakdown}
+                  loading={replyMetrics.loading}
+                />
               </div>
             </>
           )

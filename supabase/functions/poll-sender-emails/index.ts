@@ -16,7 +16,7 @@ const WORKSPACE_TIMEOUT_MS = 180 * 1000 // 3 minutes max per workspace (allows l
 const PARALLEL_WORKSPACE_COUNT = 1 // Must be 1 with shared API key (stateful workspace switching)
 const PROGRESS_UPDATE_INTERVAL = 5 // Update progress every N workspaces (reduce DB writes)
 const MAX_API_RETRIES = 3 // Retry failed API calls up to 3 times
-const DEFAULT_BATCH_SIZE = 50 // Process all workspaces in a single invocation (chaining is unreliable)
+const DEFAULT_BATCH_SIZE = 8 // Process only 8 workspaces per invocation to avoid EarlyDrop
 
 // Helper function: Retry API calls with exponential backoff
 async function fetchWithRetry(
@@ -321,11 +321,24 @@ async function processInBackground(
         const MAX_PAGES = 200 // Safety limit to prevent infinite loops (allows up to 3,000 accounts per workspace)
         const UPSERT_BATCH_SIZE = 500 // Chunk large upserts to reduce memory pressure
 
-        // Step 1: Fetch and process pages incrementally
-        // We track fetched account IDs so we can mark truly-deleted accounts AFTER
-        // successful pagination (not before — avoids data loss on timeout/failure)
+        // Step 1: Mark ALL accounts in this workspace as potentially deleted FIRST
+        // The upsert will set deleted_at = null for active accounts, "un-deleting" them
+        // This eliminates the problematic NOT IN clause that crashes with large arrays
+        console.log(`Marking existing accounts as potentially deleted for ${workspace.workspace_name}...`)
+        const { error: markDeletedError } = await supabase
+          .from('email_accounts_raw')
+          .update({ deleted_at: new Date().toISOString() })
+          .eq('workspace_id', workspace.bison_workspace_id)
+          .eq('bison_instance', 'maverick')
+          .is('deleted_at', null)
+
+        if (markDeletedError) {
+          console.warn(`  ⚠️ Failed to mark accounts as deleted: ${markDeletedError.message}`)
+        }
+
+        // Step 2: Fetch and process pages incrementally (don't accumulate in memory)
+        // Keep only domain counts for pricing (small Map instead of huge array of objects)
         const domainCounts = new Map<string, number>()
-        const fetchedAccountIds: number[] = [] // Track all IDs returned by the API
 
         console.log(`Fetching accounts for ${workspace.workspace_name}...`)
         let pageCount = 0
@@ -358,9 +371,8 @@ async function processInBackground(
             break
           }
 
-          // Update domain counts (for pricing calculation) and track IDs
+          // Update domain counts (for pricing calculation)
           for (const acc of accounts) {
-            if (acc.id) fetchedAccountIds.push(acc.id)
             const accDomain = acc.email?.split('@')[1]
             if (accDomain) {
               domainCounts.set(accDomain, (domainCounts.get(accDomain) || 0) + 1)
@@ -441,56 +453,6 @@ async function processInBackground(
         }
 
         console.log(`✓ ${workspace.workspace_name}: ${accountsFetched} accounts synced (${pageCount} pages)`)
-
-        // Step 2: AFTER successful pagination, mark accounts NOT returned by API as deleted
-        // This is safe because we only delete after confirming what's active
-        if (fetchedAccountIds.length > 0) {
-          // Mark accounts that exist in DB but were NOT in API response as deleted
-          // Process in chunks to avoid query size limits
-          const CHUNK_SIZE = 500
-          for (let c = 0; c < fetchedAccountIds.length; c += CHUNK_SIZE) {
-            const chunk = fetchedAccountIds.slice(c, c + CHUNK_SIZE)
-            // Un-delete any that were previously soft-deleted but came back
-            await supabase
-              .from('email_accounts_raw')
-              .update({ deleted_at: null })
-              .eq('workspace_id', workspace.bison_workspace_id)
-              .eq('bison_instance', 'maverick')
-              .in('bison_account_id', chunk)
-              .not('deleted_at', 'is', null)
-          }
-
-          // Now mark accounts NOT in the fetched set as deleted
-          // We use a different approach: fetch all active IDs for this workspace, diff in memory
-          const { data: existingAccounts } = await supabase
-            .from('email_accounts_raw')
-            .select('bison_account_id')
-            .eq('workspace_id', workspace.bison_workspace_id)
-            .eq('bison_instance', 'maverick')
-            .is('deleted_at', null)
-
-          if (existingAccounts) {
-            const fetchedSet = new Set(fetchedAccountIds)
-            const toDelete = existingAccounts
-              .map(a => a.bison_account_id)
-              .filter(id => !fetchedSet.has(id))
-
-            if (toDelete.length > 0) {
-              console.log(`  🗑️ Soft-deleting ${toDelete.length} accounts no longer in API for ${workspace.workspace_name}`)
-              for (let c = 0; c < toDelete.length; c += CHUNK_SIZE) {
-                const chunk = toDelete.slice(c, c + CHUNK_SIZE)
-                await supabase
-                  .from('email_accounts_raw')
-                  .update({ deleted_at: new Date().toISOString() })
-                  .eq('workspace_id', workspace.bison_workspace_id)
-                  .eq('bison_instance', 'maverick')
-                  .in('bison_account_id', chunk)
-              }
-            }
-          }
-        } else {
-          console.warn(`  ⚠️ No accounts fetched for ${workspace.workspace_name} — skipping deletion to avoid data loss`)
-        }
 
         // Clear domain counts to help garbage collection
         domainCounts.clear()

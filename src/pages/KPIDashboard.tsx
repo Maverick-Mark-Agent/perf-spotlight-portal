@@ -69,13 +69,6 @@ const MonthlyKPIProgress = () => {
     replyMetrics.fetchData(startDate, endDate);
   }, [selectedYear, selectedMonth]);
 
-  // Initialize with all clients selected when clients data loads
-  useEffect(() => {
-    if (activeClients.length > 0 && selectedReplyClients.length === 0) {
-      setSelectedReplyClients(activeClients.map(c => c.name));
-    }
-  }, [activeClients]);
-
   const handleMonthChange = (year: number, month: number) => {
     setSelectedYear(year);
     setSelectedMonth(month);
@@ -98,6 +91,13 @@ const MonthlyKPIProgress = () => {
   // Use historical or live clients based on selection
   const activeClients = isCurrentMonth ? clients : historical.clients;
   const activeLoading = isCurrentMonth ? loading : historical.loading;
+
+  // Initialize with all clients selected when clients data loads
+  useEffect(() => {
+    if (activeClients.length > 0 && selectedReplyClients.length === 0) {
+      setSelectedReplyClients(activeClients.map(c => c.name));
+    }
+  }, [activeClients]);
 
   // NOTE: Client filtering is now handled at the data layer via kpi_dashboard_enabled
   // and volume_dashboard_enabled toggles in client_registry table.

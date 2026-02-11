@@ -1,26 +1,20 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TrendingUp } from "lucide-react";
 import type { DailyReplyTrend } from "@/hooks/useReplyMetrics";
 
 interface DailyReplyTrendChartProps {
   data: DailyReplyTrend[];
-  selectedClient: string;
-  onClientChange: (client: string) => void;
+  selectedClients: string[];
+  onClientChange: (clients: string[]) => void;
   availableClients: string[];
   loading?: boolean;
 }
 
 export const DailyReplyTrendChart = ({
   data,
-  selectedClient,
+  selectedClients,
   onClientChange,
   availableClients,
   loading = false,
@@ -73,20 +67,14 @@ export const DailyReplyTrendChart = ({
             </div>
           </div>
           
-          {/* Client filter dropdown */}
-          <Select value={selectedClient} onValueChange={onClientChange}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select client" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Clients</SelectItem>
-              {availableClients.map(client => (
-                <SelectItem key={client} value={client}>
-                  {client}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Client filter multi-select */}
+          <MultiSelect
+            options={availableClients}
+            selected={selectedClients}
+            onChange={onClientChange}
+            placeholder="Select clients..."
+            className="w-[300px]"
+          />
         </div>
       </CardHeader>
       <CardContent>

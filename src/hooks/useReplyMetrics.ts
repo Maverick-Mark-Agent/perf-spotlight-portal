@@ -44,7 +44,7 @@ interface UseReplyMetricsReturn {
   loading: boolean;
   error: string | null;
   fetchData: (startDate: string, endDate: string, clientFilter?: string) => Promise<void>;
-  getFilteredDailyTrend: (clientName: string) => DailyReplyTrend[];
+  getFilteredDailyTrend: (clientNames: string[]) => DailyReplyTrend[];
 }
 
 export function useReplyMetrics(): UseReplyMetricsReturn {
@@ -295,18 +295,35 @@ export function useReplyMetrics(): UseReplyMetricsReturn {
     }
   }, []);
 
-  const getFilteredDailyTrend = useCallback((clientName: string): DailyReplyTrend[] => {
-    if (clientName === 'all') {
+  const getFilteredDailyTrend = useCallback((clientNames: string[]): DailyReplyTrend[] => {
+    // If no clients selected, return empty data
+    if (clientNames.length === 0) {
+      return [];
+    }
+
+    // If all clients selected (or selection equals all available clients), return full trend
+    const allClientNames = clientBreakdown.map(c => c.clientName);
+    const allSelected = clientNames.length === allClientNames.length && 
+                       clientNames.every(name => allClientNames.includes(name));
+    
+    if (allSelected) {
       return dailyTrend;
     }
 
-    // Filter raw data by client name
-    const filteredReplies = rawRepliesData.filter(r => r.workspace_name === clientName || 
-                                                      clientBreakdown.find(c => c.clientName === clientName)?.workspaceName === r.workspace_name);
-    const filteredInterested = rawInterestedData.filter(r => r.workspace_name === clientName ||
-                                                           clientBreakdown.find(c => c.clientName === clientName)?.workspaceName === r.workspace_name);
+    // Build workspace name mapping for selected clients
+    const selectedWorkspaces = new Set<string>();
+    clientNames.forEach(clientName => {
+      const client = clientBreakdown.find(c => c.clientName === clientName);
+      if (client) {
+        selectedWorkspaces.add(client.workspaceName);
+      }
+    });
 
-    // Rebuild daily trend for this client
+    // Filter raw data by selected workspace names
+    const filteredReplies = rawRepliesData.filter(r => selectedWorkspaces.has(r.workspace_name));
+    const filteredInterested = rawInterestedData.filter(r => selectedWorkspaces.has(r.workspace_name));
+
+    // Rebuild daily trend for selected clients
     const dailyReplyMap = new Map<string, number>();
     const dailyInterestedMap = new Map<string, number>();
 

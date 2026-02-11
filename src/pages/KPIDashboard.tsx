@@ -51,7 +51,7 @@ const MonthlyKPIProgress = () => {
 
   // Reply metrics hook
   const replyMetrics = useReplyMetrics();
-  const [selectedReplyClient, setSelectedReplyClient] = useState<string>('all');
+  const [selectedReplyClients, setSelectedReplyClients] = useState<string[]>([]);
 
   // Fetch historical data when month changes (non-current)
   useEffect(() => {
@@ -68,6 +68,13 @@ const MonthlyKPIProgress = () => {
     
     replyMetrics.fetchData(startDate, endDate);
   }, [selectedYear, selectedMonth]);
+
+  // Initialize with all clients selected when clients data loads
+  useEffect(() => {
+    if (activeClients.length > 0 && selectedReplyClients.length === 0) {
+      setSelectedReplyClients(activeClients.map(c => c.name));
+    }
+  }, [activeClients]);
 
   const handleMonthChange = (year: number, month: number) => {
     setSelectedYear(year);
@@ -462,9 +469,9 @@ const MonthlyKPIProgress = () => {
 
                 {/* Daily Reply Trend Chart */}
                 <DailyReplyTrendChart
-                  data={replyMetrics.getFilteredDailyTrend(selectedReplyClient)}
-                  selectedClient={selectedReplyClient}
-                  onClientChange={setSelectedReplyClient}
+                  data={replyMetrics.getFilteredDailyTrend(selectedReplyClients)}
+                  selectedClients={selectedReplyClients}
+                  onClientChange={setSelectedReplyClients}
                   availableClients={activeClients.map(c => c.name)}
                   loading={replyMetrics.loading}
                 />

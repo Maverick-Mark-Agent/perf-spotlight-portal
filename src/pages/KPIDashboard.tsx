@@ -51,7 +51,7 @@ const MonthlyKPIProgress = () => {
 
   // Reply metrics hook
   const replyMetrics = useReplyMetrics();
-  const [selectedReplyClient, setSelectedReplyClient] = useState<string>('all');
+  const [selectedReplyClients, setSelectedReplyClients] = useState<string[]>([]);
 
   // Fetch historical data when month changes (non-current)
   useEffect(() => {
@@ -91,6 +91,13 @@ const MonthlyKPIProgress = () => {
   // Use historical or live clients based on selection
   const activeClients = isCurrentMonth ? clients : historical.clients;
   const activeLoading = isCurrentMonth ? loading : historical.loading;
+
+  // Initialize with all clients selected when clients data loads
+  useEffect(() => {
+    if (activeClients.length > 0 && selectedReplyClients.length === 0) {
+      setSelectedReplyClients(activeClients.map(c => c.name));
+    }
+  }, [activeClients]);
 
   // NOTE: Client filtering is now handled at the data layer via kpi_dashboard_enabled
   // and volume_dashboard_enabled toggles in client_registry table.
@@ -462,9 +469,9 @@ const MonthlyKPIProgress = () => {
 
                 {/* Daily Reply Trend Chart */}
                 <DailyReplyTrendChart
-                  data={replyMetrics.getFilteredDailyTrend(selectedReplyClient)}
-                  selectedClient={selectedReplyClient}
-                  onClientChange={setSelectedReplyClient}
+                  data={replyMetrics.getFilteredDailyTrend(selectedReplyClients)}
+                  selectedClients={selectedReplyClients}
+                  onClientChange={setSelectedReplyClients}
                   availableClients={activeClients.map(c => c.name)}
                   loading={replyMetrics.loading}
                 />

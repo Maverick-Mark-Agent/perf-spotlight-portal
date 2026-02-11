@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -8,6 +8,7 @@ import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { DailyVolumeBanner } from "@/components/dashboard/DailyVolumeBanner";
+import { useReplyMetrics } from "@/hooks/useReplyMetrics";
 
 const VolumeDashboard = () => {
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
@@ -15,6 +16,21 @@ const VolumeDashboard = () => {
 
   const { volumeDashboard, refreshVolumeDashboard } = useDashboardContext();
   const { clients: clientData, loading: isLoadingClients, lastUpdated, isUsingCache } = volumeDashboard;
+
+  // Reply metrics hook for current month
+  const replyMetrics = useReplyMetrics();
+
+  // Fetch reply metrics for current month on mount
+  useEffect(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    
+    replyMetrics.fetchData(startDate, endDate);
+  }, []);
 
   const fetchClientData = async (isRefresh = false) => {
     if (isRefresh) {
@@ -315,6 +331,61 @@ const VolumeDashboard = () => {
                   </span>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Reply Rate Metrics */}
+        <div className="mb-12">
+          <Card className="bg-success/10 backdrop-blur-sm border-success/30 shadow-2xl">
+            <CardHeader>
+              <CardTitle className="text-success flex items-center gap-2 text-xl font-bold">
+                <TrendingUp className="h-6 w-6" />
+                Reply Rate & Conversion Metrics
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {replyMetrics.loading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading reply metrics...</div>
+              ) : replyMetrics.clientBreakdown.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">No reply data available</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {replyMetrics.clientBreakdown
+                    .sort((a, b) => b.replyRate - a.replyRate)
+                    .slice(0, 6)
+                    .map((client) => {
+                      const statusIcon = client.status === 'good' ? '🟢' : client.status === 'warning' ? '🟡' : '🔴';
+                      const statusColor = client.status === 'good' ? 'text-success' : client.status === 'warning' ? 'text-warning' : 'text-destructive';
+                      
+                      return (
+                        <div key={client.workspaceName} className="p-4 bg-white/10 rounded-lg border border-white/20">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-semibold text-foreground text-sm">{client.clientName}</span>
+                            <span className="text-2xl">{statusIcon}</span>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-xs text-muted-foreground">Reply Rate:</span>
+                              <span className={`font-bold text-lg ${statusColor}`}>
+                                {client.replyRate.toFixed(2)}%
+                              </span>
+                            </div>
+                            <div className="flex items-baseline justify-between">
+                              <span className="text-xs text-muted-foreground">Interested:</span>
+                              <span className="font-semibold text-success">
+                                {client.interested} ({client.interestedPercentage.toFixed(1)}%)
+                              </span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-2">
+                              {client.totalReplies} replies / {client.emailsSent.toLocaleString()} sent
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

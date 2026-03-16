@@ -360,6 +360,7 @@ async function handleLeadReplied(supabase: any, payload: any) {
         bison_reply_numeric_id: reply.id || null,  // Numeric ID for Email Bison API
         bison_conversation_url: conversationUrl,
         bison_workspace_id: payload.event?.workspace_id || null,
+        original_sender_email_id: payload.data?.sender_email?.id || null,
       }, {
         onConflict: 'bison_reply_id',
         ignoreDuplicates: false  // Allow updates
@@ -494,6 +495,7 @@ async function handleLeadInterested(supabase: any, payload: any) {
         bison_reply_numeric_id: reply.id || null,
         bison_conversation_url: replyConversationUrl,
         bison_workspace_id: payload.event?.workspace_id || null,
+        original_sender_email_id: payload.data?.sender_email?.id || null,
       }, {
         onConflict: 'bison_reply_id',
         ignoreDuplicates: false  // Allow updates

@@ -60,7 +60,7 @@ serve(async (req) => {
     // Step 1: Get workspace API key and bison reply ID from lead_replies table
     const { data: replyData, error: replyError } = await supabase
       .from('lead_replies')
-      .select('bison_reply_numeric_id, bison_reply_id, lead_email, first_name, last_name, workspace_name')
+      .select('bison_reply_numeric_id, bison_reply_id, lead_email, first_name, last_name, workspace_name, original_sender_email_id')
       .eq('id', reply_uuid)
       .single();
 
@@ -186,37 +186,60 @@ serve(async (req) => {
 
     console.log(`📨 Bison Reply ID (numeric): ${bisonReplyId}`);
 
-    // Step 3.5: Get sender email account ID from email_accounts_raw
-    // If not provided as parameter, query from database
+    // Step 3.5: Get sender email account ID
+    // Priority: 1) explicit param, 2) original_sender_email_id from reply record, 3) Bison API lookup
     let senderEmailIdToUse = sender_email_id;
 
+    if (!senderEmailIdToUse && replyData.original_sender_email_id) {
+      senderEmailIdToUse = replyData.original_sender_email_id;
+      console.log(`✅ Using original sender email ID from reply record: ${senderEmailIdToUse}`);
+    }
+
     if (!senderEmailIdToUse) {
-      console.log(`🔍 Fetching sender_email_id from email_accounts_raw for workspace: ${workspace_name}`);
-      const { data: emailAccount, error: emailAccountError } = await supabase
-        .from('email_accounts_raw')
-        .select('bison_account_id, email_address')
-        .eq('workspace_name', workspace_name)
-        .eq('status', 'Connected')
-        .order('bison_account_id', { ascending: true })
-        .limit(1)
-        .single();
+      console.log(`⚠️ No original_sender_email_id on reply, fetching from Bison API for reply ${bisonReplyId}...`);
+      try {
+        const replyDetailResponse = await fetch(`${baseUrl}/replies/${bisonReplyId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKeyToUse}`,
+            'Accept': 'application/json',
+          },
+        });
 
-      if (emailAccountError || !emailAccount) {
-        console.error('No connected email account found for workspace:', emailAccountError);
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: `No connected email account found for workspace: ${workspace_name}. Please ensure at least one email account is connected in Email Bison.`
-          }),
-          {
-            status: 400,
-            headers: corsHeaders
+        if (replyDetailResponse.ok) {
+          const replyDetail = await replyDetailResponse.json();
+          const bisonSenderEmailId = replyDetail.data?.sender_email_id;
+          if (bisonSenderEmailId) {
+            senderEmailIdToUse = bisonSenderEmailId;
+            console.log(`✅ Got sender_email_id from Bison API: ${senderEmailIdToUse}`);
+
+            // Backfill original_sender_email_id so we don't need to look this up again
+            await supabase
+              .from('lead_replies')
+              .update({ original_sender_email_id: senderEmailIdToUse })
+              .eq('id', reply_uuid);
+            console.log(`✅ Backfilled original_sender_email_id for reply ${reply_uuid}`);
           }
-        );
+        } else {
+          console.warn(`⚠️ Bison API reply detail returned ${replyDetailResponse.status}`);
+        }
+      } catch (lookupError) {
+        console.warn(`⚠️ Failed to fetch reply details from Bison:`, lookupError);
       }
+    }
 
-      senderEmailIdToUse = emailAccount.bison_account_id;
-      console.log(`✅ Using email account: ${emailAccount.email_address} (ID: ${senderEmailIdToUse})`);
+    if (!senderEmailIdToUse) {
+      console.error('❌ No sender email available from any source');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `No sender email available for this reply. Could not determine the original sender email for workspace: ${workspace_name}.`
+        }),
+        {
+          status: 400,
+          headers: corsHeaders
+        }
+      );
     }
 
     // Step 4: Convert plain text reply to HTML with proper formatting

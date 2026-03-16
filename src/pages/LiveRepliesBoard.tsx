@@ -9,7 +9,7 @@ import { AIReplyComposer } from '@/components/shared/AIReplyComposer';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame } from 'lucide-react';
+import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -282,10 +282,26 @@ function ReplyCard({ reply }: ReplyCardProps) {
                   </Button>
                 )
               ) : (
-                <Badge variant="secondary" className="bg-gray-100 text-gray-600">
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  Conversation Handled
-                </Badge>
+                <>
+                  <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Replied
+                  </Badge>
+                  {reply.bison_reply_numeric_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowComposer(true);
+                      }}
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Reply Again
+                    </Button>
+                  )}
+                </>
               )}
               {reply.bison_conversation_url && (
                 <Button

@@ -134,13 +134,16 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
 
     // Count interested leads per workspace from client_leads (source of truth)
     // This overrides client_metrics.positive_replies_mtd which can drift from the nightly sync
-    const { firstDayStr, todayStr: endDateStr } = getCurrentDateInfo();
+    const { firstDayStr, month, year } = getCurrentDateInfo();
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const nextMonthFirstDay = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
     const { data: interestedCounts } = await supabase
       .from('client_leads')
       .select('workspace_name')
       .eq('interested', true)
       .gte('date_received', firstDayStr)
-      .lte('date_received', endDateStr);
+      .lt('date_received', nextMonthFirstDay);
 
     const leadsCountMap: Record<string, number> = {};
     (interestedCounts || []).forEach(row => {

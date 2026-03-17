@@ -78,7 +78,29 @@ export function useHistoricalKPI() {
 
       if (metricsError) throw metricsError;
 
-      const transformedData = (metrics || []).map(row => transformToKPIClient(row));
+      // Count interested leads per workspace from client_leads (source of truth)
+      const nextMonth = month === 12 ? 1 : month + 1;
+      const nextYear = month === 12 ? year + 1 : year;
+      const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+      const { data: interestedCounts } = await supabase
+        .from('client_leads')
+        .select('workspace_name')
+        .eq('interested', true)
+        .gte('date_received', startDate)
+        .lt('date_received', nextMonthStr);
+
+      const leadsCountMap: Record<string, number> = {};
+      (interestedCounts || []).forEach(row => {
+        leadsCountMap[row.workspace_name] = (leadsCountMap[row.workspace_name] || 0) + 1;
+      });
+
+      // Override positive_replies_mtd with client_leads count (source of truth)
+      const transformedData = (metrics || []).map(row => {
+        const wsName = row.workspace_name;
+        row.positive_replies_mtd = leadsCountMap[wsName] || 0;
+        return transformToKPIClient(row);
+      });
 
       setState({
         clients: transformedData,

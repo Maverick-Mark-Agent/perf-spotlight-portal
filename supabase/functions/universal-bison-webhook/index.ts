@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
     // Parse webhook payload
     const payload = await req.json()
     const eventType = payload.event?.type?.toLowerCase() // Normalize to lowercase for consistent handling
-    const workspaceName = payload.event?.workspace_name || 'Unknown'
+    const workspaceName = (payload.event?.workspace_name || 'Unknown').trim()
 
     console.log(`📨 Webhook received: ${eventType} for ${workspaceName}`)
 
@@ -272,11 +272,53 @@ Deno.serve(async (req) => {
 })
 
 // ========================================
+// SHARED HELPERS FOR CUSTOM VARIABLE EXTRACTION
+// ========================================
+
+/**
+ * Extract a custom variable value by trying multiple possible field names
+ */
+function getCustomVar(customVariables: any[], possibleNames: string[]): string | null {
+  for (const name of possibleNames) {
+    const variable = customVariables?.find((v: any) =>
+      v.name?.toLowerCase() === name.toLowerCase()
+    )
+    if (variable?.value) {
+      return variable.value
+    }
+  }
+  return null
+}
+
+/**
+ * Extract phone number from custom variables
+ */
+function extractPhoneNumber(customVariables: any[]): string | null {
+  return getCustomVar(customVariables, ['phone number', 'cell phone', 'cellphone', 'company phone', 'phone', 'mobile', 'cell', 'phone_number'])
+}
+
+/**
+ * Extract all lead detail fields from Bison custom variables into dedicated columns
+ * Used by both handleLeadReplied and handleLeadInterested
+ */
+function extractLeadDetails(lead: any) {
+  const cv = lead.custom_variables || []
+  return {
+    phone: extractPhoneNumber(cv),
+    address: getCustomVar(cv, ['street address', 'address', 'street']),
+    city: getCustomVar(cv, ['city']),
+    state: getCustomVar(cv, ['state']),
+    zip: getCustomVar(cv, ['zip', 'zip code', 'zipcode', 'postal code']),
+    renewal_date: getCustomVar(cv, ['renewal', 'renewal date', 'policy renewal', 'expiry date']),
+  }
+}
+
+// ========================================
 // KPI EVENT HANDLERS
 // ========================================
 
 async function handleEmailSent(supabase: any, payload: any) {
-  const workspaceName = payload.event?.workspace_name
+  const workspaceName = (payload.event?.workspace_name || '').trim()
 
   // Increment emails_sent_mtd counter
   await supabase.rpc('increment_metric', {
@@ -290,7 +332,7 @@ async function handleEmailSent(supabase: any, payload: any) {
 }
 
 async function handleLeadReplied(supabase: any, payload: any) {
-  const workspaceName = payload.event?.workspace_name
+  const workspaceName = (payload.event?.workspace_name || '').trim()
   const lead = payload.data?.lead
   const reply = payload.data?.reply
 
@@ -381,6 +423,8 @@ async function handleLeadReplied(supabase: any, payload: any) {
       ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
       : null
 
+    const leadDetails = extractLeadDetails(lead)
+
     await supabase
       .from('client_leads')
       .upsert({
@@ -390,8 +434,17 @@ async function handleLeadReplied(supabase: any, payload: any) {
         last_name: lead.last_name,
         company: lead.company,
         title: lead.title,
+        phone: leadDetails.phone,
+        address: leadDetails.address,
+        city: leadDetails.city,
+        state: leadDetails.state,
+        zip: leadDetails.zip,
+        renewal_date: leadDetails.renewal_date,
+        custom_variables: lead.custom_variables,
         pipeline_stage: 'interested',  // Map "replied" to "interested" for portal compatibility
+        interested: isExplicitlyInterested,  // Set interested flag based on AI classification
         bison_conversation_url: conversationUrl,
+        bison_lead_id: lead.id ? lead.id.toString() : null,
         date_received: reply?.date_received || new Date().toISOString(),
       }, {
         onConflict: 'workspace_name,lead_email',
@@ -407,7 +460,7 @@ async function handleLeadReplied(supabase: any, payload: any) {
 }
 
 async function handleLeadInterested(supabase: any, payload: any) {
-  const workspaceName = payload.event?.workspace_name
+  const workspaceName = (payload.event?.workspace_name || '').trim()
   const lead = payload.data?.lead
   const reply = payload.data?.reply
 
@@ -514,25 +567,10 @@ async function handleLeadInterested(supabase: any, payload: any) {
     ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
     : null
 
-  // Extract phone from custom variables with fallback to multiple field names
-  const extractPhoneNumber = (customVariables: any[]) => {
-    const phoneFieldNames = ['phone number', 'cell phone', 'phone', 'mobile', 'cell', 'phone_number']
+  // Extract all lead details from custom variables
+  const leadDetails = extractLeadDetails(lead)
 
-    for (const fieldName of phoneFieldNames) {
-      const variable = customVariables?.find((v: any) =>
-        v.name?.toLowerCase() === fieldName.toLowerCase()
-      )
-      if (variable?.value) {
-        return variable.value
-      }
-    }
-
-    return null
-  }
-
-  const phoneValue = extractPhoneNumber(lead.custom_variables)
-
-  // Upsert lead with interested status
+  // Upsert lead with interested status and all detail fields
   const { error } = await supabase
     .from('client_leads')
     .upsert({
@@ -540,7 +578,12 @@ async function handleLeadInterested(supabase: any, payload: any) {
       first_name: lead.first_name,
       last_name: lead.last_name,
       lead_email: lead.email,
-      phone: phoneValue,
+      phone: leadDetails.phone,
+      address: leadDetails.address,
+      city: leadDetails.city,
+      state: leadDetails.state,
+      zip: leadDetails.zip,
+      renewal_date: leadDetails.renewal_date,
       title: lead.title,
       company: lead.company,
       custom_variables: lead.custom_variables,
@@ -580,7 +623,7 @@ async function handleLeadInterested(supabase: any, payload: any) {
 }
 
 async function handleEmailBounced(supabase: any, payload: any) {
-  const workspaceName = payload.event?.workspace_name
+  const workspaceName = (payload.event?.workspace_name || '').trim()
   const lead = payload.data?.lead
 
   // Increment bounces_mtd counter
@@ -604,7 +647,7 @@ async function handleEmailBounced(supabase: any, payload: any) {
 }
 
 async function handleLeadUnsubscribed(supabase: any, payload: any) {
-  const workspaceName = payload.event?.workspace_name
+  const workspaceName = (payload.event?.workspace_name || '').trim()
   const lead = payload.data?.lead
 
   // Increment unsubscribes_mtd counter
@@ -632,7 +675,7 @@ async function handleLeadUnsubscribed(supabase: any, payload: any) {
 // ========================================
 
 async function handleAccountAdded(supabase: any, payload: any) {
-  const workspaceName = payload.event?.workspace_name
+  const workspaceName = (payload.event?.workspace_name || '').trim()
   const account = payload.data?.sender_email
 
   if (!account) {
@@ -646,7 +689,7 @@ async function handleAccountAdded(supabase: any, payload: any) {
 }
 
 async function handleAccountDisconnected(supabase: any, payload: any) {
-  const workspaceName = payload.event?.workspace_name
+  const workspaceName = (payload.event?.workspace_name || '').trim()
   const account = payload.data?.sender_email
 
   if (!account) {
@@ -672,7 +715,7 @@ async function handleAccountDisconnected(supabase: any, payload: any) {
 }
 
 async function handleAccountReconnected(supabase: any, payload: any) {
-  const workspaceName = payload.event?.workspace_name
+  const workspaceName = (payload.event?.workspace_name || '').trim()
   const account = payload.data?.sender_email
 
   if (!account) {

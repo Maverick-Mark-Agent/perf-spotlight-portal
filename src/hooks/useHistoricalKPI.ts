@@ -78,21 +78,19 @@ export function useHistoricalKPI() {
 
       if (metricsError) throw metricsError;
 
-      // Count interested leads per workspace from client_leads (source of truth)
+      // Count interested leads per workspace via RPC (source of truth)
       const nextMonth = month === 12 ? 1 : month + 1;
       const nextYear = month === 12 ? year + 1 : year;
       const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
-      const { data: interestedCounts } = await supabase
-        .from('client_leads')
-        .select('workspace_name')
-        .eq('interested', true)
-        .gte('date_received', startDate)
-        .lt('date_received', nextMonthStr);
+      const { data: interestedCounts } = await supabase.rpc('get_monthly_lead_counts', {
+        p_start_date: startDate,
+        p_end_date: nextMonthStr,
+      });
 
       const leadsCountMap: Record<string, number> = {};
-      (interestedCounts || []).forEach(row => {
-        leadsCountMap[row.workspace_name] = (leadsCountMap[row.workspace_name] || 0) + 1;
+      (interestedCounts || []).forEach((row: { workspace_name: string; lead_count: number }) => {
+        leadsCountMap[row.workspace_name] = row.lead_count;
       });
 
       // Override positive_replies_mtd with client_leads count (source of truth)

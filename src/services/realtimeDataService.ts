@@ -132,22 +132,21 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
       };
     }
 
-    // Count interested leads per workspace from client_leads (source of truth)
-    // This overrides client_metrics.positive_replies_mtd which can drift from the nightly sync
+    // Count interested leads per workspace via RPC (source of truth)
+    // Uses SECURITY DEFINER function to bypass RLS and return grouped counts
     const { firstDayStr, month, year } = getCurrentDateInfo();
     const nextMonth = month === 12 ? 1 : month + 1;
     const nextYear = month === 12 ? year + 1 : year;
     const nextMonthFirstDay = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-    const { data: interestedCounts } = await supabase
-      .from('client_leads')
-      .select('workspace_name')
-      .eq('interested', true)
-      .gte('date_received', firstDayStr)
-      .lt('date_received', nextMonthFirstDay);
+
+    const { data: interestedCounts } = await supabase.rpc('get_monthly_lead_counts', {
+      p_start_date: firstDayStr,
+      p_end_date: nextMonthFirstDay,
+    });
 
     const leadsCountMap: Record<string, number> = {};
-    (interestedCounts || []).forEach(row => {
-      leadsCountMap[row.workspace_name] = (leadsCountMap[row.workspace_name] || 0) + 1;
+    (interestedCounts || []).forEach((row: { workspace_name: string; lead_count: number }) => {
+      leadsCountMap[row.workspace_name] = row.lead_count;
     });
 
     console.log(`[KPI Realtime] client_leads interested counts:`, Object.keys(leadsCountMap).length, 'workspaces');

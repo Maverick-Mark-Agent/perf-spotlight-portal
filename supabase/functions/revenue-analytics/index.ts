@@ -479,12 +479,7 @@ serve(async (req) => {
     // Query daily billable lead data from client_leads table
     console.log('📊 Fetching daily billable revenue data from client_leads...');
 
-    // Calculate next month for proper date range (avoids "Nov 31" errors)
-    const [year, month] = currentMonthYear.split('-').map(Number);
-    const nextMonth = month === 12 ? 1 : month + 1;
-    const nextYear = month === 12 ? year + 1 : year;
-    const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-
+    // Reuse nextMonthStr from earlier for date range
     const { data: leadData, error: leadError } = await supabase
       .from('client_leads')
       .select(`

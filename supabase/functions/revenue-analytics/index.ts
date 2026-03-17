@@ -259,59 +259,41 @@ serve(async (req) => {
       };
     });
 
-    // Step 2: Get MTD KPI data
-    // For current month: use client_metrics table (real-time)
-    // For historical months: query client_leads directly
-    console.log('📥 Fetching MTD KPI data...');
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0]; // For meta.snapshot_date
+
+    // Step 2: Get MTD KPI data from client_leads (source of truth)
+    // Always count from client_leads WHERE interested=true for all months
+    console.log('📥 Fetching MTD lead counts from client_leads (source of truth)...');
 
     // Use the requested month for all calculations
     const currentMonthYear = requestedMonth;
 
-    let metricsData: any[] = [];
+    const nextMonth = reqMonth === 12 ? 1 : reqMonth + 1;
+    const nextYear = reqMonth === 12 ? reqYear + 1 : reqYear;
+    const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
-    if (isCurrentMonth) {
-      // Current month: use client_metrics for real-time data
-      const { data, error: metricsError } = await supabase
-        .from('client_metrics')
-        .select('workspace_name, positive_replies_mtd')
-        .eq('metric_date', today)
-        .eq('metric_type', 'mtd');
+    const { data: interestedLeads, error: leadsError } = await supabase
+      .from('client_leads')
+      .select('workspace_name')
+      .gte('date_received', `${requestedMonth}-01`)
+      .lt('date_received', nextMonthStr)
+      .eq('interested', true);
 
-      if (metricsError) {
-        throw new Error(`Error fetching client_metrics: ${metricsError.message}`);
-      }
-      metricsData = data || [];
-      console.log(`  Found ${metricsData.length} client metric records for today`);
-    } else {
-      // Historical month: query client_leads for that specific month
-      const nextMonth = reqMonth === 12 ? 1 : reqMonth + 1;
-      const nextYear = reqMonth === 12 ? reqYear + 1 : reqYear;
-      const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-
-      const { data: historicalLeads, error: historicalError } = await supabase
-        .from('client_leads')
-        .select('workspace_name')
-        .gte('date_received', `${requestedMonth}-01`)
-        .lt('date_received', nextMonthStr)
-        .eq('interested', true);
-
-      if (historicalError) {
-        throw new Error(`Error fetching historical leads: ${historicalError.message}`);
-      }
-
-      // Group by workspace to get MTD count
-      const workspaceCounts: Record<string, number> = {};
-      (historicalLeads || []).forEach(lead => {
-        workspaceCounts[lead.workspace_name] = (workspaceCounts[lead.workspace_name] || 0) + 1;
-      });
-
-      metricsData = Object.entries(workspaceCounts).map(([workspace_name, count]) => ({
-        workspace_name,
-        positive_replies_mtd: count,
-      }));
-      console.log(`  Found ${metricsData.length} clients with leads in ${requestedMonth}`);
+    if (leadsError) {
+      throw new Error(`Error fetching interested leads: ${leadsError.message}`);
     }
+
+    // Group by workspace to get MTD count
+    const workspaceCounts: Record<string, number> = {};
+    (interestedLeads || []).forEach(lead => {
+      workspaceCounts[lead.workspace_name] = (workspaceCounts[lead.workspace_name] || 0) + 1;
+    });
+
+    const metricsData = Object.entries(workspaceCounts).map(([workspace_name, count]) => ({
+      workspace_name,
+      positive_replies_mtd: count,
+    }));
+    console.log(`  Found ${metricsData.length} clients with interested leads in ${requestedMonth}`);
 
     // Step 3: Get costs for the requested month
     console.log(`📥 Calculating costs for ${currentMonthYear} (infrastructure + manual overrides)...`);

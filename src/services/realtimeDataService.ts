@@ -132,8 +132,30 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
       };
     }
 
+    // Count interested leads per workspace from client_leads (source of truth)
+    // This overrides client_metrics.positive_replies_mtd which can drift from the nightly sync
+    const { firstDayStr, todayStr: endDateStr } = getCurrentDateInfo();
+    const { data: interestedCounts } = await supabase
+      .from('client_leads')
+      .select('workspace_name')
+      .eq('interested', true)
+      .gte('date_received', firstDayStr)
+      .lte('date_received', endDateStr);
+
+    const leadsCountMap: Record<string, number> = {};
+    (interestedCounts || []).forEach(row => {
+      leadsCountMap[row.workspace_name] = (leadsCountMap[row.workspace_name] || 0) + 1;
+    });
+
+    console.log(`[KPI Realtime] client_leads interested counts:`, Object.keys(leadsCountMap).length, 'workspaces');
+
     // Transform database rows to KPIClient interface
-    const transformedData = metrics.map(row => transformToKPIClient(row));
+    // Override positive_replies_mtd with client_leads count (source of truth)
+    const transformedData = metrics.map(row => {
+      const wsName = row.workspace_name;
+      row.positive_replies_mtd = leadsCountMap[wsName] || 0;
+      return transformToKPIClient(row);
+    });
 
     // Validate transformed data
     const validation = validateKPIClients(transformedData);

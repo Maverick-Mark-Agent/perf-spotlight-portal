@@ -441,8 +441,7 @@ async function handleLeadReplied(supabase: any, payload: any) {
         zip: leadDetails.zip,
         renewal_date: leadDetails.renewal_date,
         custom_variables: lead.custom_variables,
-        pipeline_stage: 'interested',  // Map "replied" to "interested" for portal compatibility
-        interested: isExplicitlyInterested,  // Set interested flag based on AI classification
+        pipeline_stage: 'replied',  // Reply received, not yet confirmed interested by Bison
         bison_conversation_url: conversationUrl,
         bison_lead_id: lead.id ? lead.id.toString() : null,
         date_received: reply?.date_received || new Date().toISOString(),

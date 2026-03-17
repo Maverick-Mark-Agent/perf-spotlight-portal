@@ -289,11 +289,13 @@ serve(async (req) => {
       workspaceCounts[lead.workspace_name] = (workspaceCounts[lead.workspace_name] || 0) + 1;
     });
 
-    const metricsData = Object.entries(workspaceCounts).map(([workspace_name, count]) => ({
-      workspace_name,
-      positive_replies_mtd: count,
+    // Build metricsData from ALL active registry clients (not just those with leads)
+    // This ensures retainer clients and clients with 0 leads still appear
+    const metricsData = registryClients.map(client => ({
+      workspace_name: client.workspace_name,
+      positive_replies_mtd: workspaceCounts[client.workspace_name] || 0,
     }));
-    console.log(`  Found ${metricsData.length} clients with interested leads in ${requestedMonth}`);
+    console.log(`  Found ${Object.keys(workspaceCounts).length} clients with interested leads in ${requestedMonth} (${metricsData.length} total active clients)`);
 
     // Step 3: Get costs for the requested month
     console.log(`📥 Calculating costs for ${currentMonthYear} (infrastructure + manual overrides)...`);

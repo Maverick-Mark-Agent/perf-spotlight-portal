@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function LiveRepliesBoard() {
-  const { replies, loading, error, newReplyCount, clearNewReplyCount } = useLiveReplies();
+  const { replies, loading, error, newReplyCount, clearNewReplyCount, refreshReplies } = useLiveReplies();
 
   // Clear new reply count when user focuses window
   if (newReplyCount > 0 && document.hasFocus()) {
@@ -75,7 +75,7 @@ export default function LiveRepliesBoard() {
         ) : (
           <div className="space-y-3">
             {replies.map((reply) => (
-              <ReplyCard key={reply.id} reply={reply} />
+              <ReplyCard key={reply.id} reply={reply} onReplySent={refreshReplies} />
             ))}
           </div>
         )}
@@ -86,9 +86,10 @@ export default function LiveRepliesBoard() {
 
 interface ReplyCardProps {
   reply: LiveReply;
+  onReplySent: () => void;
 }
 
-function ReplyCard({ reply }: ReplyCardProps) {
+function ReplyCard({ reply, onReplySent }: ReplyCardProps) {
   const [showComposer, setShowComposer] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const leadName = reply.first_name && reply.last_name
@@ -333,9 +334,9 @@ function ReplyCard({ reply }: ReplyCardProps) {
         onClose={() => setShowComposer(false)}
         reply={reply}
         leadName={leadName}
+        onReplySent={onReplySent}
       />
     </Card>
   );
 }
 
-// AIReplyComposer is now imported from @/components/shared/AIReplyComposer

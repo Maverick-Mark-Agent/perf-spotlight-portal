@@ -5,7 +5,7 @@
  * to generate and send AI-powered replies via Email Bison.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -26,16 +26,34 @@ export interface AIReplyComposerProps {
   onClose: () => void;
   reply: LiveReply;
   leadName: string;
+  onReplySent?: () => void;
 }
 
-export function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyComposerProps) {
+export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent }: AIReplyComposerProps) {
   const [generatedReply, setGeneratedReply] = useState('');
   const [ccEmails, setCcEmails] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const { toast } = useToast();
+  // Track whether we've already kicked off generation for this open session
+  const hasGeneratedRef = useRef(false);
 
-  // Generate reply when dialog opens
+  // Auto-generate reply when dialog opens — only once per open session
+  useEffect(() => {
+    if (open && !hasGeneratedRef.current) {
+      hasGeneratedRef.current = true;
+      generateReply();
+    }
+    if (!open) {
+      // Reset for next open
+      hasGeneratedRef.current = false;
+      setGeneratedReply('');
+      setCcEmails([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Generate reply
   const generateReply = async () => {
     setIsGenerating(true);
     try {
@@ -93,17 +111,6 @@ export function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyCompo
     }
   };
 
-  // Auto-generate when dialog opens
-  if (open && !generatedReply && !isGenerating) {
-    generateReply();
-  }
-
-  // Reset state when dialog closes
-  if (!open && generatedReply) {
-    setGeneratedReply('');
-    setCcEmails([]);
-  }
-
   const handleSend = async () => {
     if (!generatedReply.trim()) {
       toast({
@@ -144,7 +151,8 @@ export function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyCompo
       );
 
       if (!response.ok) {
-        throw new Error('Failed to send reply');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Send failed (${response.status})`);
       }
 
       toast({
@@ -153,6 +161,7 @@ export function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyCompo
       });
 
       onClose();
+      onReplySent?.(); // Refresh list so the card immediately flips to "REPLIED"
     } catch (error: any) {
       console.error('Error sending reply:', error);
       toast({

@@ -187,11 +187,10 @@ serve(async (req) => {
     console.log(`📨 Bison Reply ID (numeric): ${bisonReplyId}`);
 
     // Step 3.5: Get sender email account ID
-    // Priority: 1) explicit param, 2) original_sender_email_id from reply record, 3) Bison API lookup
-    let senderEmailIdToUse = sender_email_id;
+    // Priority: 1) explicit param, 2) original_sender_email_id from reply record, 3) Bison API lookup, 4) most recent from workspace
+    let senderEmailIdToUse = sender_email_id || replyData.original_sender_email_id || null;
 
-    if (!senderEmailIdToUse && replyData.original_sender_email_id) {
-      senderEmailIdToUse = replyData.original_sender_email_id;
+    if (senderEmailIdToUse) {
       console.log(`✅ Using original sender email ID from reply record: ${senderEmailIdToUse}`);
     }
 
@@ -225,6 +224,24 @@ serve(async (req) => {
         }
       } catch (lookupError) {
         console.warn(`⚠️ Failed to fetch reply details from Bison:`, lookupError);
+      }
+    }
+
+    // Final fallback: find the most recent reply in this workspace that has a sender ID
+    if (!senderEmailIdToUse) {
+      console.log(`🔍 No sender_email_id from Bison API — looking up most recent one for workspace: ${workspace_name}`);
+      const { data: recentReply } = await supabase
+        .from('lead_replies')
+        .select('original_sender_email_id')
+        .eq('workspace_name', workspace_name)
+        .not('original_sender_email_id', 'is', null)
+        .order('reply_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recentReply?.original_sender_email_id) {
+        senderEmailIdToUse = recentReply.original_sender_email_id;
+        console.log(`✅ Using sender_email_id from recent reply in same workspace: ${senderEmailIdToUse}`);
       }
     }
 

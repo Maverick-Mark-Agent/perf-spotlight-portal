@@ -314,6 +314,88 @@ function extractLeadDetails(lead: any) {
 }
 
 // ========================================
+// ========================================
+// SAFE LEAD UPSERT
+// Matches by bison_lead_id first (stable), falls back to email.
+// Never overwrites user-managed fields (notes, pipeline_stage if already advanced).
+// ========================================
+
+const STAGE_RANK: Record<string, number> = {
+  'new': 0,
+  'replied': 1,
+  'interested': 2,
+  'quoting': 3,
+  'follow-up': 3,
+  'won': 4,
+  'lost': 4,
+  'unsubscribed': 4,
+  'bounced': 4,
+}
+
+async function safeUpsertClientLead(supabase: any, incoming: Record<string, any>): Promise<{ error: any }> {
+  const { workspace_name, lead_email, bison_lead_id } = incoming
+
+  // Step 1: Find existing record — try bison_lead_id first, then email
+  let existing: any = null
+
+  if (bison_lead_id) {
+    const { data } = await supabase
+      .from('client_leads')
+      .select('id, lead_email, pipeline_stage, notes, bison_lead_id')
+      .eq('workspace_name', workspace_name)
+      .eq('bison_lead_id', bison_lead_id)
+      .maybeSingle()
+    if (data) existing = data
+  }
+
+  if (!existing && lead_email) {
+    const { data } = await supabase
+      .from('client_leads')
+      .select('id, lead_email, pipeline_stage, notes, bison_lead_id')
+      .eq('workspace_name', workspace_name)
+      .eq('lead_email', lead_email)
+      .maybeSingle()
+    if (data) existing = data
+  }
+
+  // Step 2: Build the payload to write, protecting user-managed fields
+  const payload: Record<string, any> = { ...incoming }
+
+  if (existing) {
+    // Never overwrite notes with null/empty — keep whatever the team wrote
+    if (!incoming.notes && existing.notes) {
+      delete payload.notes
+    }
+
+    // Don't move a lead backwards in the pipeline
+    // (e.g. a new lead_replied event shouldn't reset 'quoting' back to 'replied')
+    const incomingRank = STAGE_RANK[incoming.pipeline_stage] ?? 0
+    const existingRank = STAGE_RANK[existing.pipeline_stage] ?? 0
+    if (incomingRank < existingRank) {
+      delete payload.pipeline_stage
+    }
+
+    // If we found by bison_lead_id but email differs, correct the email silently
+    // (don't create a duplicate — just update in place)
+    payload.updated_at = new Date().toISOString()
+
+    const { error } = await supabase
+      .from('client_leads')
+      .update(payload)
+      .eq('id', existing.id)
+
+    return { error }
+  }
+
+  // Step 3: No existing record — insert fresh
+  const { error } = await supabase
+    .from('client_leads')
+    .insert(payload)
+
+  return { error }
+}
+
+// ========================================
 // KPI EVENT HANDLERS
 // ========================================
 
@@ -416,39 +498,33 @@ async function handleLeadReplied(supabase: any, payload: any) {
     }
   }
 
-  // Update or create lead with replied status (existing logic - keep for backward compatibility)
+  // Update or create lead with replied status
   if (lead && lead.email) {
-    // Use inbox URL format with reply_uuid (same format as Slack - this one works!)
     const conversationUrl = reply?.uuid
       ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
       : null
 
     const leadDetails = extractLeadDetails(lead)
 
-    await supabase
-      .from('client_leads')
-      .upsert({
-        workspace_name: workspaceName,
-        lead_email: lead.email,
-        first_name: lead.first_name,
-        last_name: lead.last_name,
-        company: lead.company,
-        title: lead.title,
-        phone: leadDetails.phone,
-        address: leadDetails.address,
-        city: leadDetails.city,
-        state: leadDetails.state,
-        zip: leadDetails.zip,
-        renewal_date: leadDetails.renewal_date,
-        custom_variables: lead.custom_variables,
-        pipeline_stage: 'replied',  // Reply received, not yet confirmed interested by Bison
-        bison_conversation_url: conversationUrl,
-        bison_lead_id: lead.id ? lead.id.toString() : null,
-        date_received: reply?.date_received || new Date().toISOString(),
-      }, {
-        onConflict: 'workspace_name,lead_email',
-        ignoreDuplicates: false
-      })
+    await safeUpsertClientLead(supabase, {
+      workspace_name: workspaceName,
+      lead_email: lead.email,
+      first_name: lead.first_name,
+      last_name: lead.last_name,
+      company: lead.company,
+      title: lead.title,
+      phone: leadDetails.phone,
+      address: leadDetails.address,
+      city: leadDetails.city,
+      state: leadDetails.state,
+      zip: leadDetails.zip,
+      renewal_date: leadDetails.renewal_date,
+      custom_variables: lead.custom_variables,
+      pipeline_stage: 'replied',
+      bison_conversation_url: conversationUrl,
+      bison_lead_id: lead.id ? lead.id.toString() : null,
+      date_received: reply?.date_received || new Date().toISOString(),
+    })
   }
 
   // Send global "Replies Received All" notification for ALL replies
@@ -570,35 +646,29 @@ async function handleLeadInterested(supabase: any, payload: any) {
   const leadDetails = extractLeadDetails(lead)
 
   // Upsert lead with interested status and all detail fields
-  const { error } = await supabase
-    .from('client_leads')
-    .upsert({
-      workspace_name: workspaceName,
-      first_name: lead.first_name,
-      last_name: lead.last_name,
-      lead_email: lead.email,
-      phone: leadDetails.phone,
-      address: leadDetails.address,
-      city: leadDetails.city,
-      state: leadDetails.state,
-      zip: leadDetails.zip,
-      renewal_date: leadDetails.renewal_date,
-      title: lead.title,
-      company: lead.company,
-      custom_variables: lead.custom_variables,
-      bison_conversation_url: conversationUrl,
-      bison_lead_id: lead.id ? lead.id.toString() : null,
-      bison_workspace_id: payload.event?.workspace_id || null,
-      bison_reply_uuid: reply?.uuid || null,
-      pipeline_stage: 'interested',
-      date_received: reply?.date_received ?? new Date().toISOString(),
-      lead_value: 0,
-      tags: null,
-      interested: true,
-    }, {
-      onConflict: 'workspace_name,lead_email',
-      ignoreDuplicates: false
-    })
+  const { error } = await safeUpsertClientLead(supabase, {
+    workspace_name: workspaceName,
+    first_name: lead.first_name,
+    last_name: lead.last_name,
+    lead_email: lead.email,
+    phone: leadDetails.phone,
+    address: leadDetails.address,
+    city: leadDetails.city,
+    state: leadDetails.state,
+    zip: leadDetails.zip,
+    renewal_date: leadDetails.renewal_date,
+    title: lead.title,
+    company: lead.company,
+    custom_variables: lead.custom_variables,
+    bison_conversation_url: conversationUrl,
+    bison_lead_id: lead.id ? lead.id.toString() : null,
+    bison_workspace_id: payload.event?.workspace_id || null,
+    bison_reply_uuid: reply?.uuid || null,
+    pipeline_stage: 'interested',
+    date_received: reply?.date_received ?? new Date().toISOString(),
+    lead_value: 0,
+    interested: true,
+  })
 
   if (error) throw error
 

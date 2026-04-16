@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Send, RefreshCw, X, Check, CheckCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -23,7 +23,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function LiveRepliesBoard() {
-  const { replies, loading, error, newReplyCount, clearNewReplyCount } = useLiveReplies();
+  const { replies, loading, error, newReplyCount, clearNewReplyCount, refreshReplies } = useLiveReplies();
 
   // Clear new reply count when user focuses window
   if (newReplyCount > 0 && document.hasFocus()) {
@@ -84,7 +84,7 @@ export default function LiveRepliesBoard() {
         ) : (
           <div className="space-y-3">
             {replies.map((reply) => (
-              <ReplyCard key={reply.id} reply={reply} />
+              <ReplyCard key={reply.id} reply={reply} onReplySent={refreshReplies} />
             ))}
           </div>
         )}
@@ -95,9 +95,10 @@ export default function LiveRepliesBoard() {
 
 interface ReplyCardProps {
   reply: LiveReply;
+  onReplySent: () => void;
 }
 
-function ReplyCard({ reply }: ReplyCardProps) {
+function ReplyCard({ reply, onReplySent }: ReplyCardProps) {
   const [showComposer, setShowComposer] = useState(false);
   const leadName = reply.first_name && reply.last_name
     ? `${reply.first_name} ${reply.last_name}`
@@ -257,6 +258,7 @@ function ReplyCard({ reply }: ReplyCardProps) {
         onClose={() => setShowComposer(false)}
         reply={reply}
         leadName={leadName}
+        onReplySent={onReplySent}
       />
     </Card>
   );
@@ -267,14 +269,32 @@ interface AIReplyComposerProps {
   onClose: () => void;
   reply: LiveReply;
   leadName: string;
+  onReplySent: () => void;
 }
 
-function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyComposerProps) {
+function AIReplyComposer({ open, onClose, reply, leadName, onReplySent }: AIReplyComposerProps) {
   const [generatedReply, setGeneratedReply] = useState('');
   const [ccEmails, setCcEmails] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const { toast } = useToast();
+  // Track whether we've already kicked off generation for this open session
+  const hasGeneratedRef = useRef(false);
+
+  // Auto-generate reply when dialog opens — only once per open session
+  useEffect(() => {
+    if (open && !hasGeneratedRef.current) {
+      hasGeneratedRef.current = true;
+      generateReply();
+    }
+    if (!open) {
+      // Reset for next open
+      hasGeneratedRef.current = false;
+      setGeneratedReply('');
+      setCcEmails([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Generate reply when dialog opens
   const generateReply = async () => {
@@ -334,17 +354,6 @@ function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyComposerProp
     }
   };
 
-  // Auto-generate when dialog opens
-  if (open && !generatedReply && !isGenerating) {
-    generateReply();
-  }
-
-  // Reset state when dialog closes
-  if (!open && generatedReply) {
-    setGeneratedReply('');
-    setCcEmails([]);
-  }
-
   const handleSend = async () => {
     if (!generatedReply.trim()) {
       toast({
@@ -385,7 +394,8 @@ function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyComposerProp
       );
 
       if (!response.ok) {
-        throw new Error('Failed to send reply');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Send failed (${response.status})`);
       }
 
       toast({
@@ -394,6 +404,7 @@ function AIReplyComposer({ open, onClose, reply, leadName }: AIReplyComposerProp
       });
 
       onClose();
+      onReplySent(); // Refresh list so the card immediately flips to "REPLIED"
     } catch (error: any) {
       console.error('Error sending reply:', error);
       toast({

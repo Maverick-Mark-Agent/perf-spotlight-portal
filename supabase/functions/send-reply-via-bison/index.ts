@@ -60,7 +60,7 @@ serve(async (req) => {
     // Step 1: Get workspace API key and bison reply ID from lead_replies table
     const { data: replyData, error: replyError } = await supabase
       .from('lead_replies')
-      .select('bison_reply_numeric_id, bison_reply_id, lead_email, first_name, last_name, workspace_name')
+      .select('bison_reply_numeric_id, bison_reply_id, lead_email, first_name, last_name, workspace_name, original_sender_email_id')
       .eq('id', reply_uuid)
       .single();
 
@@ -186,37 +186,35 @@ serve(async (req) => {
 
     console.log(`📨 Bison Reply ID (numeric): ${bisonReplyId}`);
 
-    // Step 3.5: Get sender email account ID from email_accounts_raw
-    // If not provided as parameter, query from database
-    let senderEmailIdToUse = sender_email_id;
+    // Step 3.5: Get sender email account ID
+    // Priority: request param > original_sender_email_id from lead_replies > most recent sender ID from same workspace
+    let senderEmailIdToUse = sender_email_id || replyData.original_sender_email_id || null;
 
     if (!senderEmailIdToUse) {
-      console.log(`🔍 Fetching sender_email_id from email_accounts_raw for workspace: ${workspace_name}`);
-      const { data: emailAccount, error: emailAccountError } = await supabase
-        .from('email_accounts_raw')
-        .select('bison_account_id, email_address')
+      // Fallback: find the most recent reply in this workspace that has a sender ID
+      console.log(`🔍 No sender_email_id on this reply — looking up most recent one for workspace: ${workspace_name}`);
+      const { data: recentReply } = await supabase
+        .from('lead_replies')
+        .select('original_sender_email_id')
         .eq('workspace_name', workspace_name)
-        .eq('status', 'Connected')
-        .order('bison_account_id', { ascending: true })
+        .not('original_sender_email_id', 'is', null)
+        .order('reply_date', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (emailAccountError || !emailAccount) {
-        console.error('No connected email account found for workspace:', emailAccountError);
+      if (recentReply?.original_sender_email_id) {
+        senderEmailIdToUse = recentReply.original_sender_email_id;
+        console.log(`✅ Using sender_email_id from recent reply in same workspace: ${senderEmailIdToUse}`);
+      } else {
+        console.error(`❌ No sender_email_id found anywhere for workspace: ${workspace_name}`);
         return new Response(
           JSON.stringify({
             success: false,
-            error: `No connected email account found for workspace: ${workspace_name}. Please ensure at least one email account is connected in Email Bison.`
+            error: `No sender email available for this reply. No sender email ID found for workspace: ${workspace_name}.`
           }),
-          {
-            status: 400,
-            headers: corsHeaders
-          }
+          { status: 400, headers: corsHeaders }
         );
       }
-
-      senderEmailIdToUse = emailAccount.bison_account_id;
-      console.log(`✅ Using email account: ${emailAccount.email_address} (ID: ${senderEmailIdToUse})`);
     }
 
     // Step 4: Convert plain text reply to HTML with proper formatting

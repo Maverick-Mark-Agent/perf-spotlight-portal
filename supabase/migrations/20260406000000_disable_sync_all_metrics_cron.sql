@@ -1,0 +1,26 @@
+-- =====================================================
+-- DISABLE sync-all-metrics-daily CRON JOB
+-- =====================================================
+-- Purpose: Remove the nightly sync-all-metrics cron job that runs at 3 AM UTC
+--
+-- Problem: This function uses a shared API key + workspace switching and does
+-- a FULL UPSERT to client_metrics that OVERWRITES webhook-incremented values.
+-- When it fails to fetch stats for a workspace (e.g., Gaudio Insurance Group),
+-- it writes zeros, wiping out the real data accumulated by webhooks throughout
+-- the day.
+--
+-- This cron was originally created in 20251007000000_setup_daily_sync_cron.sql
+-- but was never disabled when the system moved to webhook-based metrics
+-- (via increment_metric RPC from universal-bison-webhook).
+--
+-- The newer sync-daily-kpi-metrics cron was already disabled in
+-- 20260316000000_disable_daily_kpi_sync.sql. This migration completes the
+-- cleanup by removing the older sync-all-metrics cron as well.
+--
+-- Impact: Webhook increment_metric calls continue working for all dashboards.
+-- Scheduled volume data (emails_scheduled_today/tomorrow) will no longer be
+-- populated by this cron — if needed, re-enable sync-daily-kpi-metrics with
+-- per-workspace API keys.
+-- =====================================================
+
+SELECT cron.unschedule('sync-all-metrics-daily');

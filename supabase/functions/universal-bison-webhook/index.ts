@@ -506,6 +506,11 @@ async function handleLeadReplied(supabase: any, payload: any) {
 
     const leadDetails = extractLeadDetails(lead)
 
+    // If Bison already classified this lead as interested (via reply or lead flags),
+    // promote the stage to 'interested' so the portal shows it even if the separate
+    // lead_interested webhook fires late or fails.
+    const isInterested = reply?.interested === true || lead.interested === true
+
     await safeUpsertClientLead(supabase, {
       workspace_name: workspaceName,
       lead_email: lead.email,
@@ -520,7 +525,8 @@ async function handleLeadReplied(supabase: any, payload: any) {
       zip: leadDetails.zip,
       renewal_date: leadDetails.renewal_date,
       custom_variables: lead.custom_variables,
-      pipeline_stage: 'replied',
+      pipeline_stage: isInterested ? 'interested' : 'replied',
+      interested: isInterested || undefined,
       bison_conversation_url: conversationUrl,
       bison_lead_id: lead.id ? lead.id.toString() : null,
       date_received: reply?.date_received || new Date().toISOString(),

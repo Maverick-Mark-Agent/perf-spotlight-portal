@@ -251,6 +251,7 @@ serve(async (req) => {
 
         // Pipeline (default to interested)
         pipeline_stage: 'interested',
+        interested: reply.interested === true, // Sync interested flag from Bison
         pipeline_position: 0,
 
         last_synced_at: new Date().toISOString(),

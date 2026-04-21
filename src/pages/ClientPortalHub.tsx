@@ -5,8 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Users, TrendingUp, MapPin, ArrowLeft, PieChart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/components/auth/ProtectedRoute";
-import { useSecureWorkspaceData } from "@/hooks/useSecureWorkspaceData";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 interface Workspace {
@@ -62,9 +60,6 @@ export default function ClientPortalHub() {
     }
   }, [searchTerm, workspaces]);
 
-  const { user } = useAuth();
-  const { getUserWorkspaces } = useSecureWorkspaceData();
-
   const fetchWorkspaces = async () => {
     try {
       setLoading(true);
@@ -90,63 +85,26 @@ export default function ClientPortalHub() {
         setIsAdmin(isAdmin);
         console.log('[ClientPortalHub] User is admin:', isAdmin);
 
-        if (isAdmin) {
-          // ADMIN: Show ALL workspaces from client_registry
-          console.log('[ClientPortalHub] Admin user - showing all workspaces');
+        // Server-side aggregation — immune to PostgREST row-limit
+        // truncation and consistent between admin and regular users.
+        // Pass null for admins (hardcoded or DB-flagged) so the RPC returns
+        // all client_registry workspaces instead of filtering by access rows.
+        const { data: rpcRows, error: rpcError } = await (supabase as any)
+          .rpc('get_workspace_lead_counts', {
+            p_user_id: isAdmin ? null : session.user.id,
+          });
 
-          const { data: allWorkspaces, error: workspacesError } = await (supabase as any)
-            .from('client_registry')
-            .select('workspace_name')
-            .order('workspace_name');
-
-          if (workspacesError) {
-            console.error('[ClientPortalHub] Error fetching workspaces:', workspacesError);
-            throw workspacesError;
-          }
-
-          // Get lead counts for all workspaces (only interested leads)
-          const { data: leadCounts, error: leadsError } = await (supabase as any)
-            .from('client_leads')
-            .select('workspace_name, pipeline_stage')
-            .eq('interested', true);
-
-          if (leadsError) {
-            console.error('[ClientPortalHub] Error fetching lead counts:', leadsError);
-            // Don't throw, just continue with empty counts
-          }
-
-          // Aggregate counts by workspace
-          const countsByWorkspace = leadCounts?.reduce((acc: any, lead: any) => {
-            if (!acc[lead.workspace_name]) {
-              acc[lead.workspace_name] = { total: 0, won: 0 };
-            }
-            acc[lead.workspace_name].total++;
-            if (lead.pipeline_stage === 'won') {
-              acc[lead.workspace_name].won++;
-            }
-            return acc;
-          }, {});
-
-          workspacesWithCounts = (allWorkspaces || []).map((w, idx) => ({
-            id: idx,
-            name: w.workspace_name,
-            leadsCount: countsByWorkspace?.[w.workspace_name]?.total || 0,
-            wonLeadsCount: countsByWorkspace?.[w.workspace_name]?.won || 0,
-          }));
-        } else {
-          // REGULAR USER: Only show their assigned workspaces
-          console.log('[ClientPortalHub] Regular user - showing assigned workspaces only');
-          const userWorkspacesData = await getUserWorkspaces();
-
-          console.log('[ClientPortalHub] User workspace data:', userWorkspacesData);
-
-          workspacesWithCounts = userWorkspacesData.map((w: any) => ({
-            id: w.workspace_id || 0,
-            name: w.workspace_name,
-            leadsCount: Number(w.leads_count) || 0,
-            wonLeadsCount: Number(w.won_leads_count) || 0,
-          }));
+        if (rpcError) {
+          console.error('[ClientPortalHub] Error fetching workspace counts:', rpcError);
+          throw rpcError;
         }
+
+        workspacesWithCounts = (rpcRows || []).map((w: any) => ({
+          id: Number(w.workspace_id) || 0,
+          name: w.workspace_name,
+          leadsCount: Number(w.leads_count) || 0,
+          wonLeadsCount: Number(w.won_leads_count) || 0,
+        }));
       } else {
         // This shouldn't happen since the route is protected
         console.error('[ClientPortalHub] No session found - this should not happen');

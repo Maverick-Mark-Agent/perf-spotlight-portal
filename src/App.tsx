@@ -194,13 +194,16 @@ const App = () => (
               />
               {/* /live-replies points at the newer LiveRepliesBoard component which
                   has the optimistic patch + send-triggered refetches + verified_at
-                  state machine. The older RepliesDashboard is kept around but only
-                  reachable via /live-replies-legacy if anyone needs it. */}
+                  state machine. Wrapped in MainLayout so the sidebar navigation
+                  stays visible (matching the old route's UX). The older
+                  RepliesDashboard is kept around at /live-replies-legacy. */}
               <Route
                 path="/live-replies"
                 element={
                   <AdminProtectedRoute>
-                    <LiveRepliesBoard />
+                    <MainLayout>
+                      <LiveRepliesBoard />
+                    </MainLayout>
                   </AdminProtectedRoute>
                 }
               />

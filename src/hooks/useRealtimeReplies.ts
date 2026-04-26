@@ -8,6 +8,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import type { SentReplyRow } from './useLiveReplies';
+export type { SentReplyRow } from './useLiveReplies';
+export { getReplyState, getSentReply, type ReplyState } from './useLiveReplies';
 
 export interface LeadReply {
   id: string;
@@ -34,17 +37,7 @@ export interface LeadReply {
   created_at: string;
   updated_at: string;
   // PostgREST returns object for one-to-one (UNIQUE constraint), array for one-to-many
-  sent_replies?: {
-    id: number;
-    sent_at: string;
-    status: string;
-    sent_by: string | null;
-  } | Array<{
-    id: number;
-    sent_at: string;
-    status: string;
-    sent_by: string | null;
-  }>;
+  sent_replies?: SentReplyRow | Array<SentReplyRow>;
   // Conversation tracking fields (from view, optional for backward compatibility)
   conversation_reply_count?: number;
   conversation_first_reply_date?: string;
@@ -84,7 +77,11 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
               id,
               sent_at,
               status,
-              sent_by
+              sent_by,
+              verified_at,
+              error_message,
+              retry_count,
+              last_retry_at
             )
           `)
           .order('reply_date', { ascending: false })

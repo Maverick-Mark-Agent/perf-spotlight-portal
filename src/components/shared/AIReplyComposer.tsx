@@ -166,6 +166,10 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, p
       // 1. Optimistic local patch — flip the card to PENDING (yellow) immediately.
       //    Status is 'sent' but verified_at is null, so getReplyState returns 'pending'.
       //    This avoids any dependency on realtime delivery for the immediate transition.
+      console.log('[AIReplyComposer] About to call patchReplyAfterSend', {
+        replyId: reply.id,
+        patchFnDefined: !!patchReplyAfterSend,
+      });
       patchReplyAfterSend?.(reply.id, {
         id: 0, // sentinel — real id comes in on the next refetch
         sent_at: new Date().toISOString(),
@@ -176,10 +180,12 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, p
         retry_count: 0,
         last_retry_at: null,
       });
+      console.log('[AIReplyComposer] patchReplyAfterSend called');
 
       onClose();
 
       // 2. Refresh now to pick up the canonical sent_replies row from the DB.
+      console.log('[AIReplyComposer] Calling onReplySent for immediate refetch');
       onReplySent?.();
 
       // 3. Schedule additional refreshes at 5s, 15s, 30s, 60s. Bison's

@@ -96,6 +96,11 @@ interface ReplyCardProps {
 }
 
 function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) {
+  // Debug: confirm the patch function arrives at this card.
+  if (typeof window !== 'undefined' && !(window as any).__patchLogged) {
+    console.log('[ReplyCard] mount — patchReplyAfterSend defined:', !!patchReplyAfterSend);
+    (window as any).__patchLogged = true;
+  }
   const [showComposer, setShowComposer] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const leadName = reply.first_name && reply.last_name

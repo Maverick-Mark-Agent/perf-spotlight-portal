@@ -10,15 +10,7 @@ const LONG_RUN_BISON_API_KEY = Deno.env.get('LONG_RUN_BISON_API_KEY');
 const SLACK_ALERT_URL = Deno.env.get('AI_REPLY_ALERTS_SLACK_WEBHOOK_URL');
 const MAVERICK_BASE_URL = 'https://send.maverickmarketingllc.com/api';
 const LONGRUN_BASE_URL = 'https://send.longrun.agency/api';
-
-async function sendSlackAlert(
-  workspaceName: string,
-  leadName: string,
-  leadEmail: string,
-  replyUuid: string,
-  errorDetail: string,
-  retryAttempted: boolean
-) {
+async function sendSlackAlert(workspaceName, leadName, leadEmail, replyUuid, errorDetail, retryAttempted) {
   if (!SLACK_ALERT_URL) {
     console.warn('AI_REPLY_ALERTS_SLACK_WEBHOOK_URL not set — skipping Slack alert');
     return;
@@ -29,32 +21,55 @@ async function sendSlackAlert(
     blocks: [
       {
         type: 'header',
-        text: { type: 'plain_text', text: '🚨 AI Reply Send Failed' }
+        text: {
+          type: 'plain_text',
+          text: '🚨 AI Reply Send Failed'
+        }
       },
       {
         type: 'section',
         fields: [
-          { type: 'mrkdwn', text: `*Workspace:*\n${workspaceName}` },
-          { type: 'mrkdwn', text: `*Lead:*\n${leadName}` },
-          { type: 'mrkdwn', text: `*Email:*\n${leadEmail}` },
-          { type: 'mrkdwn', text: `*Retry attempted:*\n${retryAttempted ? 'Yes (both failed)' : 'No'}` }
+          {
+            type: 'mrkdwn',
+            text: `*Workspace:*\n${workspaceName}`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*Lead:*\n${leadName}`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*Email:*\n${leadEmail}`
+          },
+          {
+            type: 'mrkdwn',
+            text: `*Retry attempted:*\n${retryAttempted ? 'Yes (both failed)' : 'No'}`
+          }
         ]
       },
       {
         type: 'section',
-        text: { type: 'mrkdwn', text: `*Error:*\n\`\`\`${truncatedError}\`\`\`` }
+        text: {
+          type: 'mrkdwn',
+          text: `*Error:*\n\`\`\`${truncatedError}\`\`\``
+        }
       },
       {
         type: 'context',
         elements: [
-          { type: 'mrkdwn', text: `reply_uuid: \`${replyUuid}\`` }
+          {
+            type: 'mrkdwn',
+            text: `reply_uuid: \`${replyUuid}\``
+          }
         ]
       }
     ]
   };
   const resp = await fetch(SLACK_ALERT_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json'
+    },
     body: JSON.stringify(body)
   });
   if (!resp.ok) {
@@ -332,7 +347,6 @@ serve(async (req)=>{
     console.log(`🔒 Claimed send lock for reply_uuid=${reply_uuid}`);
     // Step 6: Send reply via Email Bison API (with one auto-retry on failure)
     console.log(`🚀 Sending reply to Email Bison API...`);
-
     // Build the Bison send request body once — used for both initial attempt and retry
     const bisonRequestBody = JSON.stringify({
       message: htmlMessage,
@@ -340,8 +354,15 @@ serve(async (req)=>{
       inject_previous_email_body: true,
       use_dedicated_ips: true,
       sender_email_id: Number(senderEmailIdToUse),
-      to_emails: [{ name: leadName, email_address: replyData.lead_email }],
-      ...ccEmailsFormatted.length > 0 ? { cc_emails: ccEmailsFormatted } : {}
+      to_emails: [
+        {
+          name: leadName,
+          email_address: replyData.lead_email
+        }
+      ],
+      ...ccEmailsFormatted.length > 0 ? {
+        cc_emails: ccEmailsFormatted
+      } : {}
     });
     const bisonRequestInit = {
       method: 'POST',
@@ -352,43 +373,40 @@ serve(async (req)=>{
       },
       body: bisonRequestBody
     };
-
     async function attemptBisonSend(attempt) {
       console.log(`📨 Bison send attempt ${attempt}...`);
       const resp = await fetch(`${baseUrl}/replies/${bisonReplyId}/reply`, bisonRequestInit);
-      if (resp.ok) return { ok: true, resp };
+      if (resp.ok) return {
+        ok: true,
+        resp
+      };
       const errorText = await resp.text();
       console.error(`Bison attempt ${attempt} failed (status=${resp.status}):`, errorText);
-      return { ok: false, status: resp.status, errorText };
+      return {
+        ok: false,
+        status: resp.status,
+        errorText
+      };
     }
-
     let bisonResponse;
     let attemptResult = await attemptBisonSend(1);
     let retryAttempted = false;
     let lastError = null;
-
     if (!attemptResult.ok) {
       // First attempt failed — auto-retry once after a brief backoff.
       lastError = `attempt 1: status=${attemptResult.status} body=${attemptResult.errorText}`;
       retryAttempted = true;
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r)=>setTimeout(r, 2000));
       // Bump retry_count + last_retry_at on the in-flight row so observability is accurate
-      await supabase
-        .from('sent_replies')
-        .update({
-          retry_count: 1,
-          last_retry_at: new Date().toISOString()
-        })
-        .eq('reply_uuid', reply_uuid);
+      await supabase.from('sent_replies').update({
+        retry_count: 1,
+        last_retry_at: new Date().toISOString()
+      }).eq('reply_uuid', reply_uuid);
       attemptResult = await attemptBisonSend(2);
     }
-
     if (!attemptResult.ok) {
       // Both attempts failed — mark as failed and alert.
-      const finalError = retryAttempted
-        ? `${lastError} | attempt 2: status=${attemptResult.status} body=${attemptResult.errorText}`
-        : `attempt 1: status=${attemptResult.status} body=${attemptResult.errorText}`;
-
+      const finalError = retryAttempted ? `${lastError} | attempt 2: status=${attemptResult.status} body=${attemptResult.errorText}` : `attempt 1: status=${attemptResult.status} body=${attemptResult.errorText}`;
       await supabase.from('sent_replies').upsert({
         reply_uuid: reply_uuid,
         workspace_name: workspace_name,
@@ -404,12 +422,9 @@ serve(async (req)=>{
       }, {
         onConflict: 'reply_uuid'
       });
-
       // Slack alert: post to Failed Automations channel.
       // Don't await failure — best-effort notification, don't block the response.
-      sendSlackAlert(workspace_name, leadName, replyData.lead_email, reply_uuid, finalError, retryAttempted)
-        .catch((e) => console.error('Slack alert failed:', e));
-
+      sendSlackAlert(workspace_name, leadName, replyData.lead_email, reply_uuid, finalError, retryAttempted).catch((e)=>console.error('Slack alert failed:', e));
       return new Response(JSON.stringify({
         success: false,
         error: `Email Bison API error after ${retryAttempted ? 2 : 1} attempt${retryAttempted ? 's' : ''}: ${attemptResult.status}`,
@@ -419,7 +434,6 @@ serve(async (req)=>{
         headers: corsHeaders
       });
     }
-
     bisonResponse = attemptResult.resp;
     const bisonData = await bisonResponse.json();
     // Extract outbound reply identifiers — these are what manual_email_sent webhook

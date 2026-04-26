@@ -63,6 +63,7 @@ interface UseLiveRepliesReturn {
   newReplyCount: number;
   clearNewReplyCount: () => void;
   refreshReplies: () => void;
+  patchReplyAfterSend: (replyUuid: string, sentReply: SentReplyRow) => void;
 }
 
 export function useLiveReplies(): UseLiveRepliesReturn {
@@ -72,10 +73,18 @@ export function useLiveReplies(): UseLiveRepliesReturn {
   const [newReplyCount, setNewReplyCount] = useState(0);
   // Ref so the sent_replies realtime handler can call the latest fetchReplies
   const fetchRepliesRef = useRef<() => void>(() => {});
+  // Track whether the initial load has completed — refetches don't flash
+  // the loading spinner; only the very first fetch does.
+  const hasLoadedOnceRef = useRef(false);
 
   const fetchReplies = useCallback(async () => {
     try {
-      setLoading(true);
+      // Only show loading screen on initial load. Refetches happen in
+      // the background so the dashboard doesn't blink to a spinner every
+      // time a sent_replies INSERT/UPDATE fires.
+      if (!hasLoadedOnceRef.current) {
+        setLoading(true);
+      }
       setError(null);
 
       // Query the original table (preserves sent_replies FK relationship)
@@ -159,12 +168,24 @@ export function useLiveReplies(): UseLiveRepliesReturn {
       console.log('🔍 useLiveReplies - Leads in conversation:', conversationLeads.length);
 
       setReplies(repliesWithConversation);
+      hasLoadedOnceRef.current = true;
     } catch (err) {
       console.error('Error fetching replies:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch replies');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Optimistic patch: applied locally when the user clicks Send so the card
+  // flips to PENDING immediately, without waiting for realtime or refetch.
+  // The matching reply in state gets a placeholder sent_replies row with
+  // status='sent' and verified_at=null. A subsequent refetch (or realtime
+  // event) will replace this with the canonical row.
+  const patchReplyAfterSend = useCallback((replyUuid: string, sentReply: SentReplyRow) => {
+    setReplies((current) =>
+      current.map((r) => (r.id === replyUuid ? { ...r, sent_replies: sentReply } : r))
+    );
   }, []);
 
   // Keep ref in sync so realtime handlers always call the latest version
@@ -270,5 +291,6 @@ export function useLiveReplies(): UseLiveRepliesReturn {
     newReplyCount,
     clearNewReplyCount,
     refreshReplies: fetchReplies,
+    patchReplyAfterSend,
   };
 }

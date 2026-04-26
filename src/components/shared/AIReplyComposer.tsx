@@ -27,9 +27,12 @@ export interface AIReplyComposerProps {
   reply: LiveReply;
   leadName: string;
   onReplySent?: () => void;
+  // Optimistic update — flips the card to PENDING instantly when Send returns,
+  // before any realtime/refetch has a chance to land.
+  patchReplyAfterSend?: (replyUuid: string, sentReply: any) => void;
 }
 
-export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent }: AIReplyComposerProps) {
+export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, patchReplyAfterSend }: AIReplyComposerProps) {
   const [generatedReply, setGeneratedReply] = useState('');
   const [ccEmails, setCcEmails] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -160,8 +163,36 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent }:
         description: `Reply sent to ${leadName} with ${ccEmails.length} CC(s)`,
       });
 
+      // 1. Optimistic local patch — flip the card to PENDING (yellow) immediately.
+      //    Status is 'sent' but verified_at is null, so getReplyState returns 'pending'.
+      //    This avoids any dependency on realtime delivery for the immediate transition.
+      patchReplyAfterSend?.(reply.id, {
+        id: 0, // sentinel — real id comes in on the next refetch
+        sent_at: new Date().toISOString(),
+        status: 'sent',
+        sent_by: null,
+        verified_at: null,
+        error_message: null,
+        retry_count: 0,
+        last_retry_at: null,
+      });
+
       onClose();
-      onReplySent?.(); // Refresh list so the card immediately flips to "REPLIED"
+
+      // 2. Refresh now to pick up the canonical sent_replies row from the DB.
+      onReplySent?.();
+
+      // 3. Schedule additional refreshes at 5s, 15s, 30s, 60s. Bison's
+      //    manual_email_sent webhook usually arrives within ~10–30s and
+      //    stamps verified_at — the next refetch in this window will see
+      //    it and the card will flip to green REPLIED. If realtime is
+      //    delivering events, these refreshes are harmless duplicates.
+      //    If it isn't, this is the deterministic path to green.
+      [5_000, 15_000, 30_000, 60_000].forEach((ms) => {
+        setTimeout(() => {
+          onReplySent?.();
+        }, ms);
+      });
     } catch (error: any) {
       console.error('Error sending reply:', error);
       toast({

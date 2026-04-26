@@ -41,3 +41,5 @@ verify_jwt = false
 
 [functions.casanas-agency-webhook]
 verify_jwt = false
+[functions.reconcile-sent-replies]
+verify_jwt = false

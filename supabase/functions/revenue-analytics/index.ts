@@ -275,8 +275,8 @@ serve(async (req) => {
     const { data: interestedLeads, error: leadsError } = await supabase
       .from('client_leads')
       .select('workspace_name')
-      .gte('date_received', `${requestedMonth}-01`)
-      .lt('date_received', nextMonthStr)
+      .gte('interested_at', `${requestedMonth}-01`)
+      .lt('interested_at', nextMonthStr)
       .eq('interested', true);
 
     if (leadsError) {
@@ -483,14 +483,14 @@ serve(async (req) => {
     const { data: leadData, error: leadError } = await supabase
       .from('client_leads')
       .select(`
-        date_received,
+        interested_at,
         workspace_name,
         lead_value
       `)
-      .gte('date_received', `${currentMonthYear}-01`)
-      .lt('date_received', nextMonthStr) // Use < next month instead of <= last day
+      .gte('interested_at', `${currentMonthYear}-01`)
+      .lt('interested_at', nextMonthStr) // Use < next month instead of <= last day
       .eq('interested', true) // Only count interested leads (fixes MTD spike bug)
-      .order('date_received', { ascending: true });
+      .order('interested_at', { ascending: true });
 
     if (leadError) {
       console.error('⚠️ Error fetching lead data:', leadError);
@@ -511,7 +511,7 @@ serve(async (req) => {
       }
 
       // Convert UTC timestamp to CST date (handles DST automatically)
-      const date = getCstDateString(lead.date_received);
+      const date = getCstDateString(lead.interested_at);
 
       const pricePerLead = parseFloat(registryClient.price_per_lead) || 0;
 

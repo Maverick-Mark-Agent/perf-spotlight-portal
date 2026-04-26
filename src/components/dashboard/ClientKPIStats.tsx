@@ -104,10 +104,13 @@ export const ClientKPIStats = ({ workspaceName, totalLeads, wonLeads, newLeads, 
       // Fallback: Always calculate from client_leads if Edge Function didn't provide data
       console.log(`[ClientKPIStats] No Edge Function match found for "${workspaceName}", calculating from client_leads...`);
         
-        // Fetch leads for this workspace
+        // Fetch leads for this workspace. Bucket by interested_at (immutable
+        // first-interested timestamp) rather than date_received (latest reply,
+        // mutable) so a fresh reply on an older lead doesn't pull them into the
+        // current month's KPI count.
         const { data: leads, error: leadsError } = await supabase
           .from('client_leads')
-          .select('date_received')
+          .select('interested_at')
           .eq('workspace_name', workspaceName)
           .eq('interested', true);
 
@@ -127,21 +130,21 @@ export const ClientKPIStats = ({ workspaceName, totalLeads, wonLeads, newLeads, 
 
         // Calculate metrics from leads data
         const positiveRepliesCurrentMonth = leads?.filter(l => {
-          if (!l.date_received) return false;
-          const dateReceived = new Date(l.date_received);
-          return dateReceived >= monthStart;
+          if (!l.interested_at) return false;
+          const interestedAt = new Date(l.interested_at);
+          return interestedAt >= monthStart;
         }).length || 0;
 
         const positiveRepliesLast30Days = leads?.filter(l => {
-          if (!l.date_received) return false;
-          const dateReceived = new Date(l.date_received);
-          return dateReceived >= thirtyDaysAgo;
+          if (!l.interested_at) return false;
+          const interestedAt = new Date(l.interested_at);
+          return interestedAt >= thirtyDaysAgo;
         }).length || 0;
 
         const positiveRepliesLast7Days = leads?.filter(l => {
-          if (!l.date_received) return false;
-          const dateReceived = new Date(l.date_received);
-          return dateReceived >= sevenDaysAgo;
+          if (!l.interested_at) return false;
+          const interestedAt = new Date(l.interested_at);
+          return interestedAt >= sevenDaysAgo;
         }).length || 0;
 
         // Use monthlyKPI from registry (already fetched above)

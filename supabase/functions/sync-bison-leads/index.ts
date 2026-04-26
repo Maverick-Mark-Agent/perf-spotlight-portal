@@ -266,21 +266,49 @@ serve(async (req) => {
     let errorCount = 0;
     const errors: any[] = [];
 
+    // Ranks match the STAGE_RANK in universal-bison-webhook/safeUpsertClientLead.
+    // Keep these in sync with that file — they exist to prevent the sync from
+    // dragging leads backwards in the pipeline (e.g. from 'quoting' back to
+    // 'interested') when a user has manually progressed them.
+    const STAGE_RANK: Record<string, number> = {
+      'new': 0,
+      'replied': 1,
+      'interested': 2,
+      'quoting': 3,
+      'follow-up': 3,
+      'won': 4,
+      'lost': 4,
+      'unsubscribed': 4,
+      'bounced': 4,
+    };
+
     // Insert records one by one to handle duplicates gracefully
     for (const record of transformedRecords) {
       try {
         // Try to find existing record
         const { data: existing } = await supabase
           .from('client_leads')
-          .select('id')
+          .select('id, pipeline_stage, pipeline_position')
           .eq('bison_reply_id', record.bison_reply_id)
           .single();
 
         if (existing) {
-          // Update existing record
+          // Build an update payload that protects user-managed fields.
+          // - pipeline_stage: never move a lead backward (users drag-and-drop
+          //   leads forward in the Kanban; a re-sync shouldn't reset them)
+          // - pipeline_position: user-managed sort order within a column
+          const updatePayload: Record<string, any> = { ...record };
+
+          const incomingRank = STAGE_RANK[record.pipeline_stage] ?? 0;
+          const existingRank = STAGE_RANK[existing.pipeline_stage] ?? 0;
+          if (incomingRank < existingRank) {
+            delete updatePayload.pipeline_stage;
+          }
+          delete updatePayload.pipeline_position;
+
           const { error } = await supabase
             .from('client_leads')
-            .update(record)
+            .update(updatePayload)
             .eq('bison_reply_id', record.bison_reply_id);
 
           if (error) {

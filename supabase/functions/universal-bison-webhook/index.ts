@@ -341,7 +341,7 @@ async function safeUpsertClientLead(supabase: any, incoming: Record<string, any>
   if (bison_lead_id) {
     const { data } = await supabase
       .from('client_leads')
-      .select('id, lead_email, pipeline_stage, notes, bison_lead_id')
+      .select('id, lead_email, pipeline_stage, notes, bison_lead_id, interested, interested_at')
       .eq('workspace_name', workspace_name)
       .eq('bison_lead_id', bison_lead_id)
       .maybeSingle()
@@ -351,7 +351,7 @@ async function safeUpsertClientLead(supabase: any, incoming: Record<string, any>
   if (!existing && lead_email) {
     const { data } = await supabase
       .from('client_leads')
-      .select('id, lead_email, pipeline_stage, notes, bison_lead_id')
+      .select('id, lead_email, pipeline_stage, notes, bison_lead_id, interested, interested_at')
       .eq('workspace_name', workspace_name)
       .eq('lead_email', lead_email)
       .maybeSingle()
@@ -360,6 +360,21 @@ async function safeUpsertClientLead(supabase: any, incoming: Record<string, any>
 
   // Step 2: Build the payload to write, protecting user-managed fields
   const payload: Record<string, any> = { ...incoming }
+
+  // interested_at is the immutable "first time this lead flipped to interested"
+  // timestamp. Stamp it only on the first interested transition; never overwrite.
+  // All other write paths should leave it alone (don't include it in `incoming`).
+  if (payload.interested === true) {
+    if (!existing) {
+      payload.interested_at = new Date().toISOString()
+    } else if (existing.interested !== true && !existing.interested_at) {
+      payload.interested_at = new Date().toISOString()
+    } else {
+      delete payload.interested_at
+    }
+  } else {
+    delete payload.interested_at
+  }
 
   if (existing) {
     // Never overwrite notes with null/empty — keep whatever the team wrote

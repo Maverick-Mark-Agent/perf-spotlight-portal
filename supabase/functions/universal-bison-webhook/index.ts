@@ -1,30 +1,62 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+};
 // Dedupe cache for Slack notifications (reply_id -> timestamp)
 // Prevents duplicate Slack notifications when both lead_replied and lead_interested events fire
-const slackNotificationCache = new Map<string, number>()
-
-// ========================================
-// AI SENTIMENT ANALYSIS
-// ========================================
-
-interface SentimentAnalysis {
-  sentiment: 'positive' | 'negative' | 'neutral'
-  is_interested: boolean
-  confidence: number
-  reasoning: string
+const slackNotificationCache = new Map();
+// Model is env-driven so rotation = one secret update, not a redeploy.
+// Defaults to Haiku 4.5 — cheap + accurate for sentiment classification.
+const SENTIMENT_MODEL = Deno.env.get('ANTHROPIC_SENTIMENT_MODEL') || 'claude-haiku-4-5-20251001';
+// Patterns that reliably indicate an auto-reply / OOO / bounce — no AI call needed.
+// Keep conservative; false positives route real replies to "not interested".
+const AUTO_REPLY_PATTERNS = [
+  /\bout\s+of\s+(the\s+)?office\b/i,
+  /\bauto(?:matic|mated)?[\s-]?reply\b/i,
+  /\bauto[\s-]?response\b/i,
+  /\bi\s+am\s+(currently\s+)?(away|on\s+vacation|on\s+leave)\b/i,
+  /\bi\s+will\s+be\s+(out|away|returning)\b/i,
+  /\bthank\s+you\s+for\s+your\s+(email|message)[\s\S]{0,80}(out\s+of\s+office|away|vacation)/i,
+  /\bmailer[\s-]?daemon\b/i,
+  /\bundeliverable\b/i,
+  /\bdelivery\s+(status\s+notification|failure|has\s+failed)\b/i,
+  /\baddress\s+(not\s+found|does\s+not\s+exist|unknown)\b/i,
+  /\bno\s+longer\s+(works?|with|employed)\b.{0,40}(here|this\s+company|us)/i
+];
+function detectAutoReply(replyText) {
+  if (!replyText) return null;
+  // Only scan the first 400 chars — legitimate replies sometimes contain "Out of Office"
+  // or similar phrases in signatures/footers. Real auto-replies put the notice up top.
+  const head = replyText.trim().slice(0, 400);
+  if (head.length === 0) return null;
+  for (const pattern of AUTO_REPLY_PATTERNS){
+    const match = head.match(pattern);
+    if (match) return match[0];
+  }
+  return null;
 }
-
+/**
+ * Strip markdown code fences from a Claude response.
+ * Haiku/Sonnet 4.x sometimes wraps JSON in ```json ... ``` despite being asked not to.
+ */ function stripCodeFences(text) {
+  return text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+}
 /**
  * Analyze reply sentiment using Claude AI
  * Returns instant classification without waiting for Email Bison's delayed analysis
- */
-async function analyzeReplySentiment(replyText: string): Promise<SentimentAnalysis> {
+ */ async function analyzeReplySentiment(replyText) {
+  // Short-circuit obvious auto-replies / OOO / bounces — no Claude call.
+  const autoReplyMatch = detectAutoReply(replyText);
+  if (autoReplyMatch) {
+    console.log(`🚫 Auto-reply detected ("${autoReplyMatch}") — skipping AI sentiment call`);
+    return {
+      sentiment: 'neutral',
+      is_interested: false,
+      confidence: 100,
+      reasoning: `Auto-reply / OOO pattern matched: "${autoReplyMatch}"`
+    };
+  }
   try {
     const prompt = `Analyze this home insurance lead reply and classify it:
 
@@ -43,26 +75,24 @@ Guidelines:
 - Out of office, automated replies = neutral + not interested
 - Questions about coverage/pricing = positive + interested
 
-Respond ONLY with valid JSON:
+Respond with ONLY a raw JSON object (no markdown code fences, no prose before or after):
 {
   "sentiment": "positive|negative|neutral",
   "is_interested": true|false,
   "confidence": 85,
   "reasoning": "Lead said 'Yes, please do' indicating clear interest"
 }`;
-
-    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY')
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!anthropicApiKey) {
-      console.warn('⚠️ ANTHROPIC_API_KEY not set, falling back to Email Bison classification')
+      console.warn('⚠️ ANTHROPIC_API_KEY not set, falling back to Email Bison classification');
       // Return neutral classification as fallback
       return {
         sentiment: 'neutral',
         is_interested: false,
         confidence: 0,
         reasoning: 'AI API key not configured'
-      }
+      };
     }
-
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -71,65 +101,58 @@ Respond ONLY with valid JSON:
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-3-haiku-20240307',  // Fast + cheap ($0.00025 per request)
+        model: SENTIMENT_MODEL,
         max_tokens: 200,
-        messages: [{
-          role: 'user',
-          content: prompt
-        }]
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
       })
-    })
-
+    });
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`❌ Claude API error: ${response.status}`, errorText)
-      throw new Error(`Claude API error: ${response.status}`)
+      const errorText = await response.text();
+      console.error(`❌ Claude API error: ${response.status}`, errorText);
+      throw new Error(`Claude API error: ${response.status}`);
     }
-
-    const data = await response.json()
-    const contentText = data.content[0].text
-
-    // Parse JSON response
-    const analysis = JSON.parse(contentText) as SentimentAnalysis
-
-    console.log(`🤖 AI Analysis: sentiment=${analysis.sentiment}, interested=${analysis.is_interested}, confidence=${analysis.confidence}%`)
-    console.log(`   Reasoning: ${analysis.reasoning}`)
-
-    return analysis
-
+    const data = await response.json();
+    const contentText = data.content[0].text;
+    // Parse JSON response — strip markdown fences if the model added them.
+    const analysis = JSON.parse(stripCodeFences(contentText));
+    console.log(`🤖 AI Analysis: sentiment=${analysis.sentiment}, interested=${analysis.is_interested}, confidence=${analysis.confidence}%`);
+    console.log(`   Reasoning: ${analysis.reasoning}`);
+    return analysis;
   } catch (error) {
-    console.error('❌ Error analyzing sentiment with AI:', error)
+    console.error('❌ Error analyzing sentiment with AI:', error);
     // Return neutral classification as fallback
     return {
       sentiment: 'neutral',
       is_interested: false,
       confidence: 0,
       reasoning: `AI analysis failed: ${error.message}`
-    }
+    };
   }
 }
-
-Deno.serve(async (req) => {
+Deno.serve(async (req)=>{
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, {
+      headers: corsHeaders
+    });
   }
-
-  const startTime = Date.now()
-  let webhookLogId: string | null = null
-
+  const startTime = Date.now();
+  let webhookLogId = null;
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
-
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabase = createClient(supabaseUrl, supabaseKey);
     // Parse webhook payload
-    const payload = await req.json()
+    const payload = await req.json();
     const eventType = payload.event?.type?.toLowerCase() // Normalize to lowercase for consistent handling
-    const workspaceName = (payload.event?.workspace_name || 'Unknown').trim()
-
-    console.log(`📨 Webhook received: ${eventType} for ${workspaceName}`)
-
+    ;
+    const workspaceName = (payload.event?.workspace_name || 'Unknown').trim();
+    console.log(`📨 Webhook received: ${eventType} for ${workspaceName}`);
     // ========================================
     // WORKSPACE EXCLUSIONS
     // ========================================
@@ -138,189 +161,194 @@ Deno.serve(async (req) => {
       'StreetSmart Commercial',
       'StreetSmart Trucking',
       'StreetSmart P&C'
-    ]
-
+    ];
     if (EXCLUDED_WORKSPACES.includes(workspaceName)) {
-      console.log(`⏭️  Skipping ${workspaceName} - handled by dedicated edge function`)
+      console.log(`⏭️  Skipping ${workspaceName} - handled by dedicated edge function`);
       return new Response(JSON.stringify({
         status: 'skipped',
         message: 'Workspace has dedicated edge function',
         workspace: workspaceName
       }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        },
         status: 200
-      })
+      });
     }
-
     // Log webhook delivery
-    const { data: logData } = await supabase
-      .from('webhook_delivery_log')
-      .insert({
-        event_type: eventType,
-        workspace_name: workspaceName,
-        payload: payload,
-        success: false, // Will update to true if processing succeeds
-      })
-      .select('id')
-      .single()
-
-    webhookLogId = logData?.id
-
+    const { data: logData } = await supabase.from('webhook_delivery_log').insert({
+      event_type: eventType,
+      workspace_name: workspaceName,
+      payload: payload,
+      success: false
+    }).select('id').single();
+    webhookLogId = logData?.id;
     // Route to appropriate handler based on event type
-    let result
-    switch (eventType) {
+    let result;
+    switch(eventType){
       // ========================================
       // KPI EVENTS (5 events)
       // ========================================
-
       case 'email_sent':
-        result = await handleEmailSent(supabase, payload)
-        break
-
+        result = await handleEmailSent(supabase, payload);
+        break;
+      case 'manual_email_sent':
+        result = await handleManualEmailSent(supabase, payload);
+        break;
       case 'lead_replied':
-        result = await handleLeadReplied(supabase, payload)
-        break
-
+        result = await handleLeadReplied(supabase, payload);
+        break;
       case 'lead_interested':
-        result = await handleLeadInterested(supabase, payload)
-        break
-
+        result = await handleLeadInterested(supabase, payload);
+        break;
       case 'email_bounced':
-        result = await handleEmailBounced(supabase, payload)
-        break
-
+        result = await handleEmailBounced(supabase, payload);
+        break;
       case 'lead_unsubscribed':
-        result = await handleLeadUnsubscribed(supabase, payload)
-        break
-
+        result = await handleLeadUnsubscribed(supabase, payload);
+        break;
       // ========================================
       // INFRASTRUCTURE EVENTS (3 events)
       // ========================================
-
       case 'email_account_added':
-        result = await handleAccountAdded(supabase, payload)
-        break
-
+        result = await handleAccountAdded(supabase, payload);
+        break;
       case 'email_account_disconnected':
-        result = await handleAccountDisconnected(supabase, payload)
-        break
-
+        result = await handleAccountDisconnected(supabase, payload);
+        break;
       case 'email_account_reconnected':
-        result = await handleAccountReconnected(supabase, payload)
-        break
-
+        result = await handleAccountReconnected(supabase, payload);
+        break;
       default:
-        console.warn(`⚠️ Unknown event type: ${eventType}`)
-        return new Response(
-          JSON.stringify({ error: 'Unknown event type', received: eventType }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+        console.warn(`⚠️ Unknown event type: ${eventType}`);
+        return new Response(JSON.stringify({
+          error: 'Unknown event type',
+          received: eventType
+        }), {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
     }
-
-    const processingTime = Date.now() - startTime
-
+    const processingTime = Date.now() - startTime;
     // Update webhook log as successful
     if (webhookLogId) {
-      await supabase
-        .from('webhook_delivery_log')
-        .update({
-          success: true,
-          processing_time_ms: processingTime,
-        })
-        .eq('id', webhookLogId)
+      await supabase.from('webhook_delivery_log').update({
+        success: true,
+        processing_time_ms: processingTime
+      }).eq('id', webhookLogId);
     }
-
     // Update workspace webhook health
-    await updateWebhookHealth(supabase, workspaceName, true, null)
-
-    console.log(`✅ Webhook processed successfully in ${processingTime}ms`)
-
-    return new Response(
-      JSON.stringify({ success: true, ...result, processing_time_ms: processingTime }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
-
+    await updateWebhookHealth(supabase, workspaceName, true, null);
+    console.log(`✅ Webhook processed successfully in ${processingTime}ms`);
+    return new Response(JSON.stringify({
+      success: true,
+      ...result,
+      processing_time_ms: processingTime
+    }), {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    });
   } catch (error) {
-    const processingTime = Date.now() - startTime
-    console.error('❌ Webhook processing error:', error)
-
+    const processingTime = Date.now() - startTime;
+    console.error('❌ Webhook processing error:', error);
     // Update webhook log with error
     if (webhookLogId) {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-      const supabase = createClient(supabaseUrl, supabaseKey)
-
-      await supabase
-        .from('webhook_delivery_log')
-        .update({
-          success: false,
-          processing_time_ms: processingTime,
-          error_message: error.message,
-        })
-        .eq('id', webhookLogId)
-
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      await supabase.from('webhook_delivery_log').update({
+        success: false,
+        processing_time_ms: processingTime,
+        error_message: error.message
+      }).eq('id', webhookLogId);
       // Update webhook health with error
-      const workspaceName = await getWorkspaceNameFromLog(supabase, webhookLogId)
-      await updateWebhookHealth(supabase, workspaceName, false, error.message)
+      const workspaceName = await getWorkspaceNameFromLog(supabase, webhookLogId);
+      await updateWebhookHealth(supabase, workspaceName, false, error.message);
     }
-
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({
+      error: error.message
+    }), {
+      status: 500,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    });
   }
-})
-
+});
 // ========================================
 // SHARED HELPERS FOR CUSTOM VARIABLE EXTRACTION
 // ========================================
-
 /**
  * Extract a custom variable value by trying multiple possible field names
- */
-function getCustomVar(customVariables: any[], possibleNames: string[]): string | null {
-  for (const name of possibleNames) {
-    const variable = customVariables?.find((v: any) =>
-      v.name?.toLowerCase() === name.toLowerCase()
-    )
+ */ function getCustomVar(customVariables, possibleNames) {
+  for (const name of possibleNames){
+    const variable = customVariables?.find((v)=>v.name?.toLowerCase() === name.toLowerCase());
     if (variable?.value) {
-      return variable.value
+      return variable.value;
     }
   }
-  return null
+  return null;
 }
-
 /**
  * Extract phone number from custom variables
- */
-function extractPhoneNumber(customVariables: any[]): string | null {
-  return getCustomVar(customVariables, ['phone number', 'cell phone', 'cellphone', 'company phone', 'phone', 'mobile', 'cell', 'phone_number'])
+ */ function extractPhoneNumber(customVariables) {
+  return getCustomVar(customVariables, [
+    'phone number',
+    'cell phone',
+    'cellphone',
+    'company phone',
+    'phone',
+    'mobile',
+    'cell',
+    'phone_number'
+  ]);
 }
-
 /**
  * Extract all lead detail fields from Bison custom variables into dedicated columns
  * Used by both handleLeadReplied and handleLeadInterested
- */
-function extractLeadDetails(lead: any) {
-  const cv = lead.custom_variables || []
+ */ function extractLeadDetails(lead) {
+  const cv = lead.custom_variables || [];
   return {
     phone: extractPhoneNumber(cv),
-    address: getCustomVar(cv, ['street address', 'address', 'street']),
-    city: getCustomVar(cv, ['city']),
-    state: getCustomVar(cv, ['state']),
-    zip: getCustomVar(cv, ['zip', 'zip code', 'zipcode', 'postal code']),
-    renewal_date: getCustomVar(cv, ['renewal', 'renewal date', 'policy renewal', 'expiry date']),
-  }
+    address: getCustomVar(cv, [
+      'street address',
+      'address',
+      'street'
+    ]),
+    city: getCustomVar(cv, [
+      'city'
+    ]),
+    state: getCustomVar(cv, [
+      'state'
+    ]),
+    zip: getCustomVar(cv, [
+      'zip',
+      'zip code',
+      'zipcode',
+      'postal code'
+    ]),
+    renewal_date: getCustomVar(cv, [
+      'renewal',
+      'renewal date',
+      'policy renewal',
+      'expiry date'
+    ])
+  };
 }
-
 // ========================================
 // ========================================
 // SAFE LEAD UPSERT
 // Matches by bison_lead_id first (stable), falls back to email.
 // Never overwrites user-managed fields (notes, pipeline_stage if already advanced).
 // ========================================
-
-const STAGE_RANK: Record<string, number> = {
+const STAGE_RANK = {
   'new': 0,
   'replied': 1,
   'interested': 2,
@@ -329,198 +357,263 @@ const STAGE_RANK: Record<string, number> = {
   'won': 4,
   'lost': 4,
   'unsubscribed': 4,
-  'bounced': 4,
-}
-
-async function safeUpsertClientLead(supabase: any, incoming: Record<string, any>): Promise<{ error: any }> {
-  const { workspace_name, lead_email, bison_lead_id } = incoming
-
+  'bounced': 4
+};
+async function safeUpsertClientLead(supabase, incoming) {
+  const { workspace_name, lead_email, bison_lead_id } = incoming;
   // Step 1: Find existing record — try bison_lead_id first, then email
-  let existing: any = null
-
+  let existing = null;
   if (bison_lead_id) {
-    const { data } = await supabase
-      .from('client_leads')
-      .select('id, lead_email, pipeline_stage, notes, bison_lead_id, interested, interested_at')
-      .eq('workspace_name', workspace_name)
-      .eq('bison_lead_id', bison_lead_id)
-      .maybeSingle()
-    if (data) existing = data
+    const { data } = await supabase.from('client_leads').select('id, lead_email, pipeline_stage, notes, bison_lead_id, interested, interested_at').eq('workspace_name', workspace_name).eq('bison_lead_id', bison_lead_id).maybeSingle();
+    if (data) existing = data;
   }
-
   if (!existing && lead_email) {
-    const { data } = await supabase
-      .from('client_leads')
-      .select('id, lead_email, pipeline_stage, notes, bison_lead_id, interested, interested_at')
-      .eq('workspace_name', workspace_name)
-      .eq('lead_email', lead_email)
-      .maybeSingle()
-    if (data) existing = data
+    const { data } = await supabase.from('client_leads').select('id, lead_email, pipeline_stage, notes, bison_lead_id, interested, interested_at').eq('workspace_name', workspace_name).eq('lead_email', lead_email).maybeSingle();
+    if (data) existing = data;
   }
-
   // Step 2: Build the payload to write, protecting user-managed fields
-  const payload: Record<string, any> = { ...incoming }
-
+  const payload = {
+    ...incoming
+  };
   // interested_at is the immutable "first time this lead flipped to interested"
   // timestamp. Stamp it only on the first interested transition; never overwrite.
   // All other write paths should leave it alone (don't include it in `incoming`).
   if (payload.interested === true) {
     if (!existing) {
-      payload.interested_at = new Date().toISOString()
+      payload.interested_at = new Date().toISOString();
     } else if (existing.interested !== true && !existing.interested_at) {
-      payload.interested_at = new Date().toISOString()
+      payload.interested_at = new Date().toISOString();
     } else {
-      delete payload.interested_at
+      delete payload.interested_at;
     }
   } else {
-    delete payload.interested_at
+    delete payload.interested_at;
   }
-
   if (existing) {
     // Never overwrite notes with null/empty — keep whatever the team wrote
     if (!incoming.notes && existing.notes) {
-      delete payload.notes
+      delete payload.notes;
     }
-
     // Don't move a lead backwards in the pipeline
     // (e.g. a new lead_replied event shouldn't reset 'quoting' back to 'replied')
-    const incomingRank = STAGE_RANK[incoming.pipeline_stage] ?? 0
-    const existingRank = STAGE_RANK[existing.pipeline_stage] ?? 0
+    const incomingRank = STAGE_RANK[incoming.pipeline_stage] ?? 0;
+    const existingRank = STAGE_RANK[existing.pipeline_stage] ?? 0;
     if (incomingRank < existingRank) {
-      delete payload.pipeline_stage
+      delete payload.pipeline_stage;
     }
-
     // If we found by bison_lead_id but email differs, correct the email silently
     // (don't create a duplicate — just update in place)
-    payload.updated_at = new Date().toISOString()
-
-    const { error } = await supabase
-      .from('client_leads')
-      .update(payload)
-      .eq('id', existing.id)
-
-    return { error }
+    payload.updated_at = new Date().toISOString();
+    const { error } = await supabase.from('client_leads').update(payload).eq('id', existing.id);
+    return {
+      error
+    };
   }
-
   // Step 3: No existing record — insert fresh
-  const { error } = await supabase
-    .from('client_leads')
-    .insert(payload)
-
-  return { error }
+  const { error } = await supabase.from('client_leads').insert(payload);
+  return {
+    error
+  };
 }
-
 // ========================================
 // KPI EVENT HANDLERS
 // ========================================
-
-async function handleEmailSent(supabase: any, payload: any) {
-  const workspaceName = (payload.event?.workspace_name || '').trim()
-
+async function handleEmailSent(supabase, payload) {
+  const workspaceName = (payload.event?.workspace_name || '').trim();
   // Increment emails_sent_mtd counter
   await supabase.rpc('increment_metric', {
     p_workspace_name: workspaceName,
     p_metric_name: 'emails_sent_mtd',
     p_increment_by: 1
-  })
-
-  console.log(`📧 Email sent recorded for ${workspaceName}`)
-  return { message: 'Email sent count incremented' }
+  });
+  console.log(`📧 Email sent recorded for ${workspaceName}`);
+  return {
+    message: 'Email sent count incremented'
+  };
 }
 
-async function handleLeadReplied(supabase: any, payload: any) {
-  const workspaceName = (payload.event?.workspace_name || '').trim()
-  const lead = payload.data?.lead
-  const reply = payload.data?.reply
+// Fired by Bison when an outbound reply (sent via POST /api/replies/{id}/reply) is
+// actually delivered. We use this as the second-step verification that the email
+// truly went out — distinct from the API call returning 200.
+//
+// Matching strategy (in order of precision):
+//   1. data.reply.id  → sent_replies.bison_outbound_reply_id   (primary key, set going forward)
+//   2. data.reply.uuid → sent_replies.bison_outbound_reply_uuid (backup key)
+//   3. (workspace, lead_email, status='sent', recent, unverified) → most-recent-match (legacy fallback for rows
+//      sent before Phase 3 deployed; less precise but works while we phase in)
+async function handleManualEmailSent(supabase, payload) {
+  const workspaceName = (payload.event?.workspace_name || '').trim();
+  const reply = payload.data?.reply;
+  const outboundReplyId = reply?.id ?? null;
+  const outboundReplyUuid = reply?.uuid ?? null;
+  const leadEmail = payload.data?.lead?.email
+    ?? (Array.isArray(reply?.to) ? reply.to[0]?.address : null)
+    ?? null;
 
+  console.log(`📤 manual_email_sent received (workspace=${workspaceName}, outbound_id=${outboundReplyId}, uuid=${outboundReplyUuid})`);
+
+  if (!outboundReplyId && !outboundReplyUuid) {
+    console.warn('manual_email_sent missing both reply.id and reply.uuid — skipping verification');
+    return { message: 'manual_email_sent: no reply identifier in payload' };
+  }
+
+  // 1. Try precise match by outbound reply id
+  let target = null;
+  if (outboundReplyId) {
+    const { data } = await supabase
+      .from('sent_replies')
+      .select('id, status, verified_at')
+      .eq('bison_outbound_reply_id', outboundReplyId)
+      .maybeSingle();
+    if (data) target = data;
+  }
+
+  // 2. Try uuid match
+  if (!target && outboundReplyUuid) {
+    const { data } = await supabase
+      .from('sent_replies')
+      .select('id, status, verified_at')
+      .eq('bison_outbound_reply_uuid', outboundReplyUuid)
+      .maybeSingle();
+    if (data) target = data;
+  }
+
+  // 3. Legacy fallback: workspace + lead_email + recent unverified sent
+  // (handles rows sent before Phase 3 was deployed when we didn't save the outbound id)
+  if (!target && workspaceName && leadEmail) {
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data } = await supabase
+      .from('sent_replies')
+      .select('id, status, verified_at')
+      .eq('workspace_name', workspaceName)
+      .eq('lead_email', leadEmail)
+      .eq('status', 'sent')
+      .is('verified_at', null)
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      target = data;
+      console.log(`🔎 manual_email_sent matched via fallback (workspace+lead_email+recent) — sent_replies.id=${data.id}`);
+    }
+  }
+
+  if (!target) {
+    // Either this manual_email_sent was for an email NOT sent by us (unlikely but possible
+    // if someone sends from Bison UI directly), or our matching logic missed it.
+    // Log for observability but don't error.
+    console.log(`ℹ️  manual_email_sent unmatched (no sent_replies row found for outbound_id=${outboundReplyId}, lead=${leadEmail})`);
+    return { message: 'manual_email_sent: no matching sent_replies row' };
+  }
+
+  if (target.verified_at) {
+    console.log(`ℹ️  manual_email_sent already verified for sent_replies.id=${target.id}`);
+    return { message: 'manual_email_sent: already verified' };
+  }
+
+  // Stamp verified_at + backfill any missing outbound id/uuid for legacy fallback hits
+  const updates = { verified_at: new Date().toISOString() };
+  if (outboundReplyId) updates.bison_outbound_reply_id = outboundReplyId;
+  if (outboundReplyUuid) updates.bison_outbound_reply_uuid = outboundReplyUuid;
+
+  const { error: updateError } = await supabase
+    .from('sent_replies')
+    .update(updates)
+    .eq('id', target.id);
+
+  if (updateError) {
+    console.error('Failed to stamp verified_at:', updateError);
+    return { message: 'manual_email_sent: update failed', error: updateError.message };
+  }
+
+  console.log(`✅ Verified delivery for sent_replies.id=${target.id} (outbound_id=${outboundReplyId})`);
+  return { message: 'manual_email_sent: verification stamped', sent_replies_id: target.id };
+}
+
+async function handleLeadReplied(supabase, payload) {
+  const workspaceName = (payload.event?.workspace_name || '').trim();
+  const lead = payload.data?.lead;
+  const reply = payload.data?.reply;
   // Increment replies_mtd counter
   await supabase.rpc('increment_metric', {
     p_workspace_name: workspaceName,
     p_metric_name: 'replies_mtd',
     p_increment_by: 1
-  })
-
+  });
   // Insert ALL replies into lead_replies table for real-time dashboard
   if (lead && lead.email && reply) {
     // Use inbox URL format with reply_uuid (same format as Slack - this one works!)
-    const conversationUrl = reply?.uuid
-      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
-      : null
-
+    const conversationUrl = reply?.uuid ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}` : null;
     // Use AI to analyze sentiment INSTANTLY (don't wait for Email Bison's delayed analysis)
-    const replyText = reply.text_body || reply.body_plain || reply.text || ''
-    const aiAnalysis = await analyzeReplySentiment(replyText)
-
+    const replyText = reply.text_body || reply.body_plain || reply.text || '';
+    const aiAnalysis = await analyzeReplySentiment(replyText);
     // Use AI classification as primary source
-    let sentiment: 'positive' | 'negative' | 'neutral' = aiAnalysis.sentiment
-    let isExplicitlyInterested = aiAnalysis.is_interested
-
-    console.log(`🤖 AI Sentiment for ${lead.email}: sentiment=${sentiment}, interested=${isExplicitlyInterested}, confidence=${aiAnalysis.confidence}%`)
-    console.log(`   Email Bison flags: reply.interested=${reply?.interested}, reply.automated_reply=${reply?.automated_reply}, lead.interested=${lead.interested}`)
-
+    let sentiment = aiAnalysis.sentiment;
+    let isExplicitlyInterested = aiAnalysis.is_interested;
+    console.log(`🤖 AI Sentiment for ${lead.email}: sentiment=${sentiment}, interested=${isExplicitlyInterested}, confidence=${aiAnalysis.confidence}%`);
+    console.log(`   Email Bison flags: reply.interested=${reply?.interested}, reply.automated_reply=${reply?.automated_reply}, lead.interested=${lead.interested}`);
     // Extract phone number from custom variables
-    const extractPhoneNumber = (customVariables: any[]) => {
-      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'company phone', 'phone', 'mobile', 'cell', 'phone_number']
-      for (const fieldName of phoneFieldNames) {
-        const variable = customVariables?.find((v: any) =>
-          v.name?.toLowerCase() === fieldName.toLowerCase()
-        )
+    const extractPhoneNumber = (customVariables)=>{
+      const phoneFieldNames = [
+        'phone number',
+        'cell phone',
+        'cellphone',
+        'company phone',
+        'phone',
+        'mobile',
+        'cell',
+        'phone_number'
+      ];
+      for (const fieldName of phoneFieldNames){
+        const variable = customVariables?.find((v)=>v.name?.toLowerCase() === fieldName.toLowerCase());
         if (variable?.value) {
-          return variable.value
+          return variable.value;
         }
       }
-      return null
-    }
-    const phoneValue = extractPhoneNumber(lead.custom_variables)
-
+      return null;
+    };
+    const phoneValue = extractPhoneNumber(lead.custom_variables);
     // Upsert into lead_replies (update if exists, insert if new)
     // Uses AI sentiment analysis for instant classification
-    const { error: replyInsertError } = await supabase
-      .from('lead_replies')
-      .upsert({
-        workspace_name: workspaceName,
-        lead_email: lead.email,
-        first_name: lead.first_name,
-        last_name: lead.last_name,
-        company: lead.company,
-        title: lead.title,
-        phone: phoneValue,
-        reply_text: replyText,
-        reply_date: reply.date_received || new Date().toISOString(),
-        sentiment: sentiment,
-        is_interested: isExplicitlyInterested,
-        // AI sentiment columns
-        confidence_score: aiAnalysis.confidence,
-        ai_reasoning: aiAnalysis.reasoning,
-        sentiment_source: 'ai',
-        // Email Bison data
-        bison_lead_id: lead.id ? lead.id.toString() : null,
-        bison_reply_id: reply.uuid || reply.id ? (reply.uuid || reply.id.toString()) : null,
-        bison_reply_numeric_id: reply.id || null,  // Numeric ID for Email Bison API
-        bison_conversation_url: conversationUrl,
-        bison_workspace_id: payload.event?.workspace_id || null,
-        original_sender_email_id: payload.data?.sender_email?.id || null,
-      }, {
-        onConflict: 'bison_reply_id',
-        ignoreDuplicates: false  // Allow updates
-      })
-
+    const { error: replyInsertError } = await supabase.from('lead_replies').upsert({
+      workspace_name: workspaceName,
+      lead_email: lead.email,
+      first_name: lead.first_name,
+      last_name: lead.last_name,
+      company: lead.company,
+      title: lead.title,
+      phone: phoneValue,
+      reply_text: replyText,
+      reply_date: reply.date_received || new Date().toISOString(),
+      sentiment: sentiment,
+      is_interested: isExplicitlyInterested,
+      // AI sentiment columns
+      confidence_score: aiAnalysis.confidence,
+      ai_reasoning: aiAnalysis.reasoning,
+      sentiment_source: 'ai',
+      // Email Bison data
+      bison_lead_id: lead.id ? lead.id.toString() : null,
+      bison_reply_id: reply.uuid || reply.id ? reply.uuid || reply.id.toString() : null,
+      bison_reply_numeric_id: reply.id || null,
+      bison_conversation_url: conversationUrl,
+      bison_workspace_id: payload.event?.workspace_id || null,
+      original_sender_email_id: payload.data?.sender_email?.id || null
+    }, {
+      onConflict: 'bison_reply_id',
+      ignoreDuplicates: false // Allow updates
+    });
     // Log any errors
     if (replyInsertError) {
-      console.error(`❌ Error upserting reply for ${workspaceName}:`, replyInsertError)
+      console.error(`❌ Error upserting reply for ${workspaceName}:`, replyInsertError);
     } else {
-      console.log(`💬 Reply upserted in lead_replies for ${workspaceName}: ${lead.email}`)
+      console.log(`💬 Reply upserted in lead_replies for ${workspaceName}: ${lead.email}`);
     }
   }
-
   // Update or create lead with replied status
   if (lead && lead.email) {
-    const conversationUrl = reply?.uuid
-      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
-      : null
-
-    const leadDetails = extractLeadDetails(lead)
-
+    const conversationUrl = reply?.uuid ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}` : null;
+    const leadDetails = extractLeadDetails(lead);
     await safeUpsertClientLead(supabase, {
       workspace_name: workspaceName,
       lead_email: lead.email,
@@ -538,128 +631,108 @@ async function handleLeadReplied(supabase: any, payload: any) {
       pipeline_stage: 'replied',
       bison_conversation_url: conversationUrl,
       bison_lead_id: lead.id ? lead.id.toString() : null,
-      date_received: reply?.date_received || new Date().toISOString(),
-    })
+      date_received: reply?.date_received || new Date().toISOString()
+    });
   }
-
   // Send global "Replies Received All" notification for ALL replies
-  await sendGlobalSlackNotification(workspaceName, lead, reply)
-
-  console.log(`💬 Reply recorded for ${workspaceName}`)
-  return { message: 'Reply count incremented and lead updated' }
+  await sendGlobalSlackNotification(workspaceName, lead, reply);
+  console.log(`💬 Reply recorded for ${workspaceName}`);
+  return {
+    message: 'Reply count incremented and lead updated'
+  };
 }
-
-async function handleLeadInterested(supabase: any, payload: any) {
-  const workspaceName = (payload.event?.workspace_name || '').trim()
-  const lead = payload.data?.lead
-  const reply = payload.data?.reply
-
+async function handleLeadInterested(supabase, payload) {
+  const workspaceName = (payload.event?.workspace_name || '').trim();
+  const lead = payload.data?.lead;
+  const reply = payload.data?.reply;
   if (!lead || !lead.email) {
-    throw new Error('Missing lead data in interested webhook')
+    throw new Error('Missing lead data in interested webhook');
   }
-
   // Increment interested_mtd counter
   await supabase.rpc('increment_metric', {
     p_workspace_name: workspaceName,
     p_metric_name: 'interested_mtd',
     p_increment_by: 1
-  })
-
+  });
   // Insert into lead_replies table for real-time dashboard (ALL interested leads)
   if (lead && lead.email && reply) {
     // Use inbox URL format with reply_uuid (same format as Slack - this one works!)
-    const replyConversationUrl = reply?.uuid
-      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
-      : null
-
+    const replyConversationUrl = reply?.uuid ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}` : null;
     // Extract reply text (use cleaned version or raw)
-    const replyText = reply.text_body || reply.body_plain || reply.text || null
-
+    const replyText = reply.text_body || reply.body_plain || reply.text || null;
     // Extract phone number from custom variables
-    const extractPhoneNumber = (customVariables: any[]) => {
-      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'company phone', 'phone', 'mobile', 'cell', 'phone_number']
-      for (const fieldName of phoneFieldNames) {
-        const variable = customVariables?.find((v: any) =>
-          v.name?.toLowerCase() === fieldName.toLowerCase()
-        )
+    const extractPhoneNumber = (customVariables)=>{
+      const phoneFieldNames = [
+        'phone number',
+        'cell phone',
+        'cellphone',
+        'company phone',
+        'phone',
+        'mobile',
+        'cell',
+        'phone_number'
+      ];
+      for (const fieldName of phoneFieldNames){
+        const variable = customVariables?.find((v)=>v.name?.toLowerCase() === fieldName.toLowerCase());
         if (variable?.value) {
-          return variable.value
+          return variable.value;
         }
       }
-      return null
-    }
-    const phoneValue = extractPhoneNumber(lead.custom_variables)
-
+      return null;
+    };
+    const phoneValue = extractPhoneNumber(lead.custom_variables);
     // Check if AI already classified this reply
-    const replyId = reply.uuid || reply.id ? (reply.uuid || reply.id.toString()) : null
-    const { data: existingReply } = await supabase
-      .from('lead_replies')
-      .select('sentiment, is_interested, sentiment_source, confidence_score')
-      .eq('bison_reply_id', replyId)
-      .single()
-
+    const replyId = reply.uuid || reply.id ? reply.uuid || reply.id.toString() : null;
+    const { data: existingReply } = await supabase.from('lead_replies').select('sentiment, is_interested, sentiment_source, confidence_score').eq('bison_reply_id', replyId).single();
     // Email Bison says interested - store as validation
-    const bisonSentiment = 'positive'
-    const bisonInterested = true
-
+    const bisonSentiment = 'positive';
+    const bisonInterested = true;
     // Determine if AI and Bison disagree (flag for review)
-    const needsReview = existingReply && existingReply.sentiment_source === 'ai' && (
-      existingReply.sentiment !== bisonSentiment || existingReply.is_interested !== bisonInterested
-    )
-
+    const needsReview = existingReply && existingReply.sentiment_source === 'ai' && (existingReply.sentiment !== bisonSentiment || existingReply.is_interested !== bisonInterested);
     if (needsReview) {
-      console.log(`⚠️ AI/Bison disagreement for ${lead.email}: AI=${existingReply.sentiment}/${existingReply.is_interested}, Bison=${bisonSentiment}/${bisonInterested}`)
+      console.log(`⚠️ AI/Bison disagreement for ${lead.email}: AI=${existingReply.sentiment}/${existingReply.is_interested}, Bison=${bisonSentiment}/${bisonInterested}`);
     }
-
     // Upsert into lead_replies - override AI with Bison if they disagree (Bison wins for explicit interest)
-    const { error: replyInsertError } = await supabase
-      .from('lead_replies')
-      .upsert({
-        workspace_name: workspaceName,
-        lead_email: lead.email,
-        first_name: lead.first_name,
-        last_name: lead.last_name,
-        company: lead.company,
-        title: lead.title,
-        phone: phoneValue,
-        reply_text: replyText,
-        reply_date: reply.date_received || new Date().toISOString(),
-        sentiment: 'positive', // Bison says interested - override AI if needed
-        is_interested: true,
-        // Store Bison's classification for comparison
-        bison_sentiment: bisonSentiment,
-        sentiment_source: existingReply?.sentiment_source === 'ai' ? 'hybrid' : 'bison',
-        needs_review: needsReview || false,
-        // Keep AI reasoning and confidence if they exist
-        confidence_score: existingReply?.confidence_score || null,
-        // Email Bison data
-        bison_lead_id: lead.id ? lead.id.toString() : null,
-        bison_reply_id: replyId,
-        bison_reply_numeric_id: reply.id || null,
-        bison_conversation_url: replyConversationUrl,
-        bison_workspace_id: payload.event?.workspace_id || null,
-        original_sender_email_id: payload.data?.sender_email?.id || null,
-      }, {
-        onConflict: 'bison_reply_id',
-        ignoreDuplicates: false  // Allow updates
-      })
-
+    const { error: replyInsertError } = await supabase.from('lead_replies').upsert({
+      workspace_name: workspaceName,
+      lead_email: lead.email,
+      first_name: lead.first_name,
+      last_name: lead.last_name,
+      company: lead.company,
+      title: lead.title,
+      phone: phoneValue,
+      reply_text: replyText,
+      reply_date: reply.date_received || new Date().toISOString(),
+      sentiment: 'positive',
+      is_interested: true,
+      // Store Bison's classification for comparison
+      bison_sentiment: bisonSentiment,
+      sentiment_source: existingReply?.sentiment_source === 'ai' ? 'hybrid' : 'bison',
+      needs_review: needsReview || false,
+      // Keep AI reasoning and confidence if they exist
+      confidence_score: existingReply?.confidence_score || null,
+      // Email Bison data
+      bison_lead_id: lead.id ? lead.id.toString() : null,
+      bison_reply_id: replyId,
+      bison_reply_numeric_id: reply.id || null,
+      bison_conversation_url: replyConversationUrl,
+      bison_workspace_id: payload.event?.workspace_id || null,
+      original_sender_email_id: payload.data?.sender_email?.id || null
+    }, {
+      onConflict: 'bison_reply_id',
+      ignoreDuplicates: false // Allow updates
+    });
     // Log any errors
     if (replyInsertError) {
-      console.error(`❌ Error upserting interested reply for ${workspaceName}:`, replyInsertError)
+      console.error(`❌ Error upserting interested reply for ${workspaceName}:`, replyInsertError);
     } else {
-      console.log(`⭐ Interested reply upserted (Bison validation) for ${workspaceName}: ${lead.email}`)
+      console.log(`⭐ Interested reply upserted (Bison validation) for ${workspaceName}: ${lead.email}`);
     }
   }
-
   // Build conversation URL using reply UUID (same format as Slack - this one works!)
-  const conversationUrl = reply?.uuid
-    ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
-    : null
-
+  const conversationUrl = reply?.uuid ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}` : null;
   // Extract all lead details from custom variables
-  const leadDetails = extractLeadDetails(lead)
-
+  const leadDetails = extractLeadDetails(lead);
   // Upsert lead with interested status and all detail fields
   const { error } = await safeUpsertClientLead(supabase, {
     workspace_name: workspaceName,
@@ -682,335 +755,295 @@ async function handleLeadInterested(supabase: any, payload: any) {
     pipeline_stage: 'interested',
     date_received: reply?.date_received ?? new Date().toISOString(),
     lead_value: 0,
-    interested: true,
-  })
-
-  if (error) throw error
-
-  console.log(`⭐ Interested lead recorded for ${workspaceName}: ${lead.email}`)
-
+    interested: true
+  });
+  if (error) throw error;
+  console.log(`⭐ Interested lead recorded for ${workspaceName}: ${lead.email}`);
   // Send Slack notification if webhook URL is configured
-  await sendSlackNotification(supabase, workspaceName, lead, reply)
-
+  await sendSlackNotification(supabase, workspaceName, lead, reply);
   // Send global "Replies Received All" notification (with deduplication)
   // NOTE: Some replies only trigger lead_interested (not lead_replied), so we need this here too
   // Duplicate detection prevents sending twice when both events fire
-  await sendGlobalSlackNotification(workspaceName, lead, reply)
-
+  await sendGlobalSlackNotification(workspaceName, lead, reply);
   // Route to external APIs (e.g., Allstate) if configured
-  await routeToAllstateAPI(supabase, workspaceName, lead)
-
+  await routeToAllstateAPI(supabase, workspaceName, lead);
   // Route to generic external APIs (e.g., Agency Zoom, Zapier) if configured
-  await routeToExternalAPI(supabase, workspaceName, lead, reply)
-
-  return { message: 'Interested lead recorded', lead_email: lead.email }
+  await routeToExternalAPI(supabase, workspaceName, lead, reply);
+  return {
+    message: 'Interested lead recorded',
+    lead_email: lead.email
+  };
 }
-
-async function handleEmailBounced(supabase: any, payload: any) {
-  const workspaceName = (payload.event?.workspace_name || '').trim()
-  const lead = payload.data?.lead
-
+async function handleEmailBounced(supabase, payload) {
+  const workspaceName = (payload.event?.workspace_name || '').trim();
+  const lead = payload.data?.lead;
   // Increment bounces_mtd counter
   await supabase.rpc('increment_metric', {
     p_workspace_name: workspaceName,
     p_metric_name: 'bounces_mtd',
     p_increment_by: 1
-  })
-
+  });
   // Update lead status if we have the email
   if (lead && lead.email) {
-    await supabase
-      .from('client_leads')
-      .update({ pipeline_stage: 'bounced' })
-      .eq('workspace_name', workspaceName)
-      .eq('lead_email', lead.email)
+    await supabase.from('client_leads').update({
+      pipeline_stage: 'bounced'
+    }).eq('workspace_name', workspaceName).eq('lead_email', lead.email);
   }
-
-  console.log(`🔙 Bounce recorded for ${workspaceName}`)
-  return { message: 'Bounce count incremented' }
+  console.log(`🔙 Bounce recorded for ${workspaceName}`);
+  return {
+    message: 'Bounce count incremented'
+  };
 }
-
-async function handleLeadUnsubscribed(supabase: any, payload: any) {
-  const workspaceName = (payload.event?.workspace_name || '').trim()
-  const lead = payload.data?.lead
-
+async function handleLeadUnsubscribed(supabase, payload) {
+  const workspaceName = (payload.event?.workspace_name || '').trim();
+  const lead = payload.data?.lead;
   // Increment unsubscribes_mtd counter
   await supabase.rpc('increment_metric', {
     p_workspace_name: workspaceName,
     p_metric_name: 'unsubscribes_mtd',
     p_increment_by: 1
-  })
-
+  });
   // Update lead status if we have the email
   if (lead && lead.email) {
-    await supabase
-      .from('client_leads')
-      .update({ pipeline_stage: 'unsubscribed' })
-      .eq('workspace_name', workspaceName)
-      .eq('lead_email', lead.email)
+    await supabase.from('client_leads').update({
+      pipeline_stage: 'unsubscribed'
+    }).eq('workspace_name', workspaceName).eq('lead_email', lead.email);
   }
-
-  console.log(`🚫 Unsubscribe recorded for ${workspaceName}`)
-  return { message: 'Unsubscribe count incremented' }
+  console.log(`🚫 Unsubscribe recorded for ${workspaceName}`);
+  return {
+    message: 'Unsubscribe count incremented'
+  };
 }
-
 // ========================================
 // INFRASTRUCTURE EVENT HANDLERS
 // ========================================
-
-async function handleAccountAdded(supabase: any, payload: any) {
-  const workspaceName = (payload.event?.workspace_name || '').trim()
-  const account = payload.data?.sender_email
-
+async function handleAccountAdded(supabase, payload) {
+  const workspaceName = (payload.event?.workspace_name || '').trim();
+  const account = payload.data?.sender_email;
   if (!account) {
-    throw new Error('Missing sender_email data in account_added webhook')
+    throw new Error('Missing sender_email data in account_added webhook');
   }
-
-  console.log(`✨ New account added: ${account.email} for ${workspaceName}`)
-
+  console.log(`✨ New account added: ${account.email} for ${workspaceName}`);
   // Log the event (will be fetched during next polling cycle)
-  return { message: 'Account added event logged', email: account.email }
+  return {
+    message: 'Account added event logged',
+    email: account.email
+  };
 }
-
-async function handleAccountDisconnected(supabase: any, payload: any) {
-  const workspaceName = (payload.event?.workspace_name || '').trim()
-  const account = payload.data?.sender_email
-
+async function handleAccountDisconnected(supabase, payload) {
+  const workspaceName = (payload.event?.workspace_name || '').trim();
+  const account = payload.data?.sender_email;
   if (!account) {
-    throw new Error('Missing sender_email data in account_disconnected webhook')
+    throw new Error('Missing sender_email data in account_disconnected webhook');
   }
-
   // Update account status in cache if it exists
-  await supabase
-    .from('sender_emails_cache')
-    .update({
-      status: 'Disconnected',
-      updated_at: new Date().toISOString()
-    })
-    .eq('workspace_name', workspaceName)
-    .eq('email_address', account.email)
-
-  console.log(`🚨 Account disconnected: ${account.email} for ${workspaceName}`)
-
+  await supabase.from('sender_emails_cache').update({
+    status: 'Disconnected',
+    updated_at: new Date().toISOString()
+  }).eq('workspace_name', workspaceName).eq('email_address', account.email);
+  console.log(`🚨 Account disconnected: ${account.email} for ${workspaceName}`);
   // TODO: Send Slack alert for critical disconnections
   // await sendSlackAlert(`🚨 Account disconnected: ${account.email} (${workspaceName})`)
-
-  return { message: 'Account marked as disconnected', email: account.email }
+  return {
+    message: 'Account marked as disconnected',
+    email: account.email
+  };
 }
-
-async function handleAccountReconnected(supabase: any, payload: any) {
-  const workspaceName = (payload.event?.workspace_name || '').trim()
-  const account = payload.data?.sender_email
-
+async function handleAccountReconnected(supabase, payload) {
+  const workspaceName = (payload.event?.workspace_name || '').trim();
+  const account = payload.data?.sender_email;
   if (!account) {
-    throw new Error('Missing sender_email data in account_reconnected webhook')
+    throw new Error('Missing sender_email data in account_reconnected webhook');
   }
-
   // Update account status in cache if it exists
-  await supabase
-    .from('sender_emails_cache')
-    .update({
-      status: 'Connected',
-      updated_at: new Date().toISOString()
-    })
-    .eq('workspace_name', workspaceName)
-    .eq('email_address', account.email)
-
-  console.log(`✅ Account reconnected: ${account.email} for ${workspaceName}`)
-
-  return { message: 'Account marked as connected', email: account.email }
+  await supabase.from('sender_emails_cache').update({
+    status: 'Connected',
+    updated_at: new Date().toISOString()
+  }).eq('workspace_name', workspaceName).eq('email_address', account.email);
+  console.log(`✅ Account reconnected: ${account.email} for ${workspaceName}`);
+  return {
+    message: 'Account marked as connected',
+    email: account.email
+  };
 }
-
 // ========================================
 // HELPER FUNCTIONS
 // ========================================
-
-async function updateWebhookHealth(supabase: any, workspaceName: string, success: boolean, errorMessage: string | null) {
-  const now = new Date().toISOString()
-
+async function updateWebhookHealth(supabase, workspaceName, success, errorMessage) {
+  const now = new Date().toISOString();
   // Get current health record
-  const { data: current } = await supabase
-    .from('webhook_health')
-    .select('*')
-    .eq('workspace_name', workspaceName)
-    .single()
-
+  const { data: current } = await supabase.from('webhook_health').select('*').eq('workspace_name', workspaceName).single();
   if (current) {
     // Calculate new success rate (rolling 24h window)
-    const successRate = success
-      ? Math.min(100, current.success_rate_24h + 1)
-      : Math.max(0, current.success_rate_24h - 5) // Penalize failures more
-
-    const isHealthy = successRate >= 95
-
-    await supabase
-      .from('webhook_health')
-      .update({
-        last_webhook_at: now,
-        webhook_count_24h: current.webhook_count_24h + 1,
-        success_rate_24h: successRate,
-        is_healthy: isHealthy,
-        last_error_message: success ? null : errorMessage,
-        updated_at: now
-      })
-      .eq('workspace_name', workspaceName)
+    const successRate = success ? Math.min(100, current.success_rate_24h + 1) : Math.max(0, current.success_rate_24h - 5) // Penalize failures more
+    ;
+    const isHealthy = successRate >= 95;
+    await supabase.from('webhook_health').update({
+      last_webhook_at: now,
+      webhook_count_24h: current.webhook_count_24h + 1,
+      success_rate_24h: successRate,
+      is_healthy: isHealthy,
+      last_error_message: success ? null : errorMessage,
+      updated_at: now
+    }).eq('workspace_name', workspaceName);
   } else {
     // Create new health record
-    await supabase
-      .from('webhook_health')
-      .insert({
-        workspace_name: workspaceName,
-        last_webhook_at: now,
-        webhook_count_24h: 1,
-        success_rate_24h: success ? 100 : 80,
-        is_healthy: success,
-        last_error_message: success ? null : errorMessage
-      })
+    await supabase.from('webhook_health').insert({
+      workspace_name: workspaceName,
+      last_webhook_at: now,
+      webhook_count_24h: 1,
+      success_rate_24h: success ? 100 : 80,
+      is_healthy: success,
+      last_error_message: success ? null : errorMessage
+    });
   }
 }
-
-async function getWorkspaceNameFromLog(supabase: any, logId: string): Promise<string> {
-  const { data } = await supabase
-    .from('webhook_delivery_log')
-    .select('workspace_name')
-    .eq('id', logId)
-    .single()
-
-  return data?.workspace_name || 'Unknown'
+async function getWorkspaceNameFromLog(supabase, logId) {
+  const { data } = await supabase.from('webhook_delivery_log').select('workspace_name').eq('id', logId).single();
+  return data?.workspace_name || 'Unknown';
 }
-
-async function sendSlackNotification(supabase: any, workspaceName: string, lead: any, reply: any) {
+async function sendSlackNotification(supabase, workspaceName, lead, reply) {
   try {
     // Check for duplicate using database (replaces in-memory cache)
-    const replyId = reply?.uuid || reply?.id?.toString()
-
+    const replyId = reply?.uuid || reply?.id?.toString();
     if (!replyId) {
-      console.log(`⚠️ No reply ID found, skipping client Slack notification for ${workspaceName}: ${lead?.email || 'unknown'}`)
-      return
+      console.log(`⚠️ No reply ID found, skipping client Slack notification for ${workspaceName}: ${lead?.email || 'unknown'}`);
+      return;
     }
-
     // Check if we already sent a client notification for this reply
-    const { data: existingNotification } = await supabase
-      .from('slack_notifications_sent')
-      .select('id, sent_at')
-      .eq('reply_id', replyId)
-      .eq('notification_type', 'client')
-      .single()
-
+    const { data: existingNotification } = await supabase.from('slack_notifications_sent').select('id, sent_at').eq('reply_id', replyId).eq('notification_type', 'client').single();
     if (existingNotification) {
-      console.log(`⏭️ Skipping duplicate client Slack notification for reply ${replyId} (${workspaceName}: ${lead?.email || 'unknown'}) - already sent at ${existingNotification.sent_at}`)
-      return
+      console.log(`⏭️ Skipping duplicate client Slack notification for reply ${replyId} (${workspaceName}: ${lead?.email || 'unknown'}) - already sent at ${existingNotification.sent_at}`);
+      return;
     }
-
     // Get the Slack webhook URL for this workspace
-    const { data: client } = await supabase
-      .from('client_registry')
-      .select('slack_webhook_url')
-      .eq('workspace_name', workspaceName)
-      .single()
-
-    const slackWebhookUrl = client?.slack_webhook_url
-
+    const { data: client } = await supabase.from('client_registry').select('slack_webhook_url').eq('workspace_name', workspaceName).single();
+    const slackWebhookUrl = client?.slack_webhook_url;
     if (!slackWebhookUrl) {
-      console.log(`No Slack webhook configured for ${workspaceName}`)
-      return
+      console.log(`No Slack webhook configured for ${workspaceName}`);
+      return;
     }
-
     // Extract custom variables with support for multiple field name variations
-    const getCustomVar = (possibleNames: string[]) => {
-      for (const name of possibleNames) {
-        const variable = lead.custom_variables?.find((v: any) =>
-          v.name?.toLowerCase() === name.toLowerCase()
-        )
+    const getCustomVar = (possibleNames)=>{
+      for (const name of possibleNames){
+        const variable = lead.custom_variables?.find((v)=>v.name?.toLowerCase() === name.toLowerCase());
         if (variable?.value) {
-          return variable.value
+          return variable.value;
         }
       }
-      return 'N/A'
-    }
-
+      return 'N/A';
+    };
     // Get phone number with fallback to multiple field names
-    const getPhoneNumber = () => {
+    const getPhoneNumber = ()=>{
       // Try multiple possible phone field names in priority order
       // Includes "company phone" for commercial clients like StreetSmart Commercial
-      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'company phone', 'phone', 'mobile', 'cell']
-
-      for (const fieldName of phoneFieldNames) {
-        const variable = lead.custom_variables?.find((v: any) =>
-          v.name?.toLowerCase() === fieldName.toLowerCase()
-        )
+      const phoneFieldNames = [
+        'phone number',
+        'cell phone',
+        'cellphone',
+        'company phone',
+        'phone',
+        'mobile',
+        'cell'
+      ];
+      for (const fieldName of phoneFieldNames){
+        const variable = lead.custom_variables?.find((v)=>v.name?.toLowerCase() === fieldName.toLowerCase());
         if (variable?.value && variable.value !== 'N/A') {
-          return variable.value
+          return variable.value;
         }
       }
-
-      return 'N/A'
-    }
-
+      return 'N/A';
+    };
     // Clean the reply text using OpenAI
-    const replyPreview = await cleanReplyWithAI(reply?.text_body || reply?.body_plain || 'No reply text available')
-
+    const replyPreview = await cleanReplyWithAI(reply?.text_body || reply?.body_plain || 'No reply text available');
     // Build the conversation URL (reply URL)
-    const replyUrl = reply?.uuid
-      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
-      : null
-
+    const replyUrl = reply?.uuid ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}` : null;
     // Build lead info lines with available fields
-    const leadInfo: string[] = [
+    const leadInfo = [
       `:fire: *New Lead!*`,
       `*Name:* ${lead.first_name || ''} ${lead.last_name || ''}`,
       `*Email:* ${lead.email}`
-    ]
-
+    ];
     // Add fields that exist (home insurance or commercial)
-    const birthday = getCustomVar(['date of birth', 'dob', 'birthday', 'birth date'])
-    if (birthday !== 'N/A') leadInfo.push(`*Birthday:* ${birthday}`)
-
-    const address = getCustomVar(['street address', 'address', 'street'])
-    if (address !== 'N/A') leadInfo.push(`*Address:* ${address}`)
-
-    const city = getCustomVar(['city'])
-    if (city !== 'N/A') leadInfo.push(`*City:* ${city}`)
-
-    const state = getCustomVar(['state'])
-    if (state !== 'N/A') leadInfo.push(`*State:* ${state}`)
-
-    const zip = getCustomVar(['zip', 'zip code', 'zipcode', 'postal code'])
-    if (zip !== 'N/A') leadInfo.push(`*ZIP:* ${zip}`)
-
-    const renewal = getCustomVar(['renewal', 'renewal date', 'policy renewal', 'expiry date'])
-    if (renewal !== 'N/A') leadInfo.push(`*Renewal Date:* ${renewal}`)
-
+    const birthday = getCustomVar([
+      'date of birth',
+      'dob',
+      'birthday',
+      'birth date'
+    ]);
+    if (birthday !== 'N/A') leadInfo.push(`*Birthday:* ${birthday}`);
+    const address = getCustomVar([
+      'street address',
+      'address',
+      'street'
+    ]);
+    if (address !== 'N/A') leadInfo.push(`*Address:* ${address}`);
+    const city = getCustomVar([
+      'city'
+    ]);
+    if (city !== 'N/A') leadInfo.push(`*City:* ${city}`);
+    const state = getCustomVar([
+      'state'
+    ]);
+    if (state !== 'N/A') leadInfo.push(`*State:* ${state}`);
+    const zip = getCustomVar([
+      'zip',
+      'zip code',
+      'zipcode',
+      'postal code'
+    ]);
+    if (zip !== 'N/A') leadInfo.push(`*ZIP:* ${zip}`);
+    const renewal = getCustomVar([
+      'renewal',
+      'renewal date',
+      'policy renewal',
+      'expiry date'
+    ]);
+    if (renewal !== 'N/A') leadInfo.push(`*Renewal Date:* ${renewal}`);
     // Always show phone field, even if missing
-    const phone = getPhoneNumber()
+    const phone = getPhoneNumber();
     if (phone !== 'N/A') {
-      leadInfo.push(`*Phone:* ${phone}`)
+      leadInfo.push(`*Phone:* ${phone}`);
     } else {
-      leadInfo.push(`*Phone:* (Phone Number Requested in Reply Email)`)
+      leadInfo.push(`*Phone:* (Phone Number Requested in Reply Email)`);
     }
-
     // Commercial-specific fields
-    const dotNo = getCustomVar(['dotno', 'dot number', 'dot no'])
-    if (dotNo !== 'N/A') leadInfo.push(`*DOT Number:* ${dotNo}`)
-
-    const docketNo = getCustomVar(['docket number', 'mc number'])
-    if (docketNo !== 'N/A') leadInfo.push(`*MC Number:* ${docketNo}`)
-
-    const classCode = getCustomVar(['class code', 'class', 'industry code'])
-    if (classCode !== 'N/A') leadInfo.push(`*Class Code:* ${classCode}`)
-
-    const fein = getCustomVar(['fein', 'tax id', 'ein'])
-    if (fein !== 'N/A') leadInfo.push(`*FEIN:* ${fein}`)
-
-    const website = getCustomVar(['website', 'web site', 'url'])
-    if (website !== 'N/A') leadInfo.push(`*Website:* ${website}`)
-
-    const currentCarrier = getCustomVar(['current carrier', 'carrier'])
-    if (currentCarrier !== 'N/A') leadInfo.push(`*Current Carrier:* ${currentCarrier}`)
-
+    const dotNo = getCustomVar([
+      'dotno',
+      'dot number',
+      'dot no'
+    ]);
+    if (dotNo !== 'N/A') leadInfo.push(`*DOT Number:* ${dotNo}`);
+    const docketNo = getCustomVar([
+      'docket number',
+      'mc number'
+    ]);
+    if (docketNo !== 'N/A') leadInfo.push(`*MC Number:* ${docketNo}`);
+    const classCode = getCustomVar([
+      'class code',
+      'class',
+      'industry code'
+    ]);
+    if (classCode !== 'N/A') leadInfo.push(`*Class Code:* ${classCode}`);
+    const fein = getCustomVar([
+      'fein',
+      'tax id',
+      'ein'
+    ]);
+    if (fein !== 'N/A') leadInfo.push(`*FEIN:* ${fein}`);
+    const website = getCustomVar([
+      'website',
+      'web site',
+      'url'
+    ]);
+    if (website !== 'N/A') leadInfo.push(`*Website:* ${website}`);
+    const currentCarrier = getCustomVar([
+      'current carrier',
+      'carrier'
+    ]);
+    if (currentCarrier !== 'N/A') leadInfo.push(`*Current Carrier:* ${currentCarrier}`);
     // Add reply preview
-    leadInfo.push(`\n*Reply Preview:*\n${replyPreview}`)
-
+    leadInfo.push(`\n*Reply Preview:*\n${replyPreview}`);
     // Build the Slack message
     const slackMessage = {
       text: ':fire: New Lead!',
@@ -1022,7 +1055,7 @@ async function sendSlackNotification(supabase: any, workspaceName: string, lead:
             text: leadInfo.join('\n')
           }
         },
-        ...(replyUrl ? [
+        ...replyUrl ? [
           {
             type: 'divider'
           },
@@ -1041,96 +1074,75 @@ async function sendSlackNotification(supabase: any, workspaceName: string, lead:
               }
             ]
           }
-        ] : [])
+        ] : []
       ]
-    }
-
+    };
     // Send to Slack
     const slackResponse = await fetch(slackWebhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify(slackMessage)
-    })
-
+    });
     if (!slackResponse.ok) {
-      const errorBody = await slackResponse.text()
-      console.error(`❌ Failed to send workspace Slack notification:`)
-      console.error(`   Status: ${slackResponse.status} ${slackResponse.statusText}`)
-      console.error(`   Response: ${errorBody}`)
-      console.error(`   Workspace: ${workspaceName}`)
-      console.error(`   Lead: ${lead.email}`)
-      console.error(`   Webhook URL: ${slackWebhookUrl}`)
+      const errorBody = await slackResponse.text();
+      console.error(`❌ Failed to send workspace Slack notification:`);
+      console.error(`   Status: ${slackResponse.status} ${slackResponse.statusText}`);
+      console.error(`   Response: ${errorBody}`);
+      console.error(`   Workspace: ${workspaceName}`);
+      console.error(`   Lead: ${lead.email}`);
+      console.error(`   Webhook URL: ${slackWebhookUrl}`);
     } else {
-      console.log(`✅ Workspace Slack notification sent for ${workspaceName}: ${lead.email}`)
-
+      console.log(`✅ Workspace Slack notification sent for ${workspaceName}: ${lead.email}`);
       // Record notification in database to prevent future duplicates
-      const { error: insertError } = await supabase
-        .from('slack_notifications_sent')
-        .insert({
-          reply_id: replyId,
-          workspace_name: workspaceName,
-          notification_type: 'client'
-        })
-
+      const { error: insertError } = await supabase.from('slack_notifications_sent').insert({
+        reply_id: replyId,
+        workspace_name: workspaceName,
+        notification_type: 'client'
+      });
       if (insertError) {
         // Log but don't fail - duplicate key errors are expected in race conditions
-        if (insertError.code !== '23505') { // 23505 = unique_violation
-          console.error(`⚠️ Error recording client Slack notification:`, insertError)
+        if (insertError.code !== '23505') {
+          console.error(`⚠️ Error recording client Slack notification:`, insertError);
         }
       } else {
-        console.log(`📝 Recorded client notification for reply ${replyId}`)
+        console.log(`📝 Recorded client notification for reply ${replyId}`);
       }
     }
   } catch (error) {
-    console.error(`❌ Error sending workspace Slack notification:`)
-    console.error(`   Workspace: ${workspaceName}`)
-    console.error(`   Lead: ${lead?.email || 'unknown'}`)
-    console.error(`   Error:`, error)
-    // Don't throw - we don't want Slack failures to break webhook processing
+    console.error(`❌ Error sending workspace Slack notification:`);
+    console.error(`   Workspace: ${workspaceName}`);
+    console.error(`   Lead: ${lead?.email || 'unknown'}`);
+    console.error(`   Error:`, error);
+  // Don't throw - we don't want Slack failures to break webhook processing
   }
 }
-
-async function sendGlobalSlackNotification(workspaceName: string, lead: any, reply: any) {
+async function sendGlobalSlackNotification(workspaceName, lead, reply) {
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
-
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabase = createClient(supabaseUrl, supabaseKey);
     // Check for duplicate using database (replaces in-memory cache)
-    const replyId = reply?.uuid || reply?.id?.toString()
-
+    const replyId = reply?.uuid || reply?.id?.toString();
     if (!replyId) {
-      console.log(`⚠️ No reply ID found, skipping global Slack notification for ${workspaceName}: ${lead?.email || 'unknown'}`)
-      return
+      console.log(`⚠️ No reply ID found, skipping global Slack notification for ${workspaceName}: ${lead?.email || 'unknown'}`);
+      return;
     }
-
     // Check if we already sent a global notification for this reply
-    const { data: existingNotification } = await supabase
-      .from('slack_notifications_sent')
-      .select('id, sent_at')
-      .eq('reply_id', replyId)
-      .eq('notification_type', 'global')
-      .single()
-
+    const { data: existingNotification } = await supabase.from('slack_notifications_sent').select('id, sent_at').eq('reply_id', replyId).eq('notification_type', 'global').single();
     if (existingNotification) {
-      console.log(`⏭️ Skipping duplicate global Slack notification for reply ${replyId} (${workspaceName}: ${lead?.email || 'unknown'}) - already sent at ${existingNotification.sent_at}`)
-      return
+      console.log(`⏭️ Skipping duplicate global Slack notification for reply ${replyId} (${workspaceName}: ${lead?.email || 'unknown'}) - already sent at ${existingNotification.sent_at}`);
+      return;
     }
-
     // Global "Replies Received All" webhook URL - Updated Nov 17, 2025
     // Construct from environment parts to avoid secret scanner
-    const WEBHOOK_PATH = 'T06R9MD2U2W/B09MTHQNBNF/haXZM09b6DP6DyY9YqoSwFtt'
-    const GLOBAL_SLACK_WEBHOOK = Deno.env.get('GLOBAL_SLACK_WEBHOOK_URL') ||
-      `https://hooks.slack.com/services/${WEBHOOK_PATH}`
-
+    const WEBHOOK_PATH = 'T06R9MD2U2W/B09MTHQNBNF/haXZM09b6DP6DyY9YqoSwFtt';
+    const GLOBAL_SLACK_WEBHOOK = Deno.env.get('GLOBAL_SLACK_WEBHOOK_URL') || `https://hooks.slack.com/services/${WEBHOOK_PATH}`;
     // Clean the reply text using OpenAI
-    const replyPreview = await cleanReplyWithAI(reply?.text_body || reply?.body_plain || 'No reply text available')
-
+    const replyPreview = await cleanReplyWithAI(reply?.text_body || reply?.body_plain || 'No reply text available');
     // Build the conversation URL (reply URL)
-    const replyUrl = reply?.uuid
-      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
-      : null
-
+    const replyUrl = reply?.uuid ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}` : null;
     // Build simplified Slack message for global channel (matches n8n format)
     const slackMessage = {
       text: 'New Reply Received',
@@ -1162,7 +1174,7 @@ async function sendGlobalSlackNotification(workspaceName: string, lead: any, rep
             text: `*Reply Preview:*\n${replyPreview}`
           }
         },
-        ...(replyUrl ? [
+        ...replyUrl ? [
           {
             type: 'divider'
           },
@@ -1181,63 +1193,56 @@ async function sendGlobalSlackNotification(workspaceName: string, lead: any, rep
               }
             ]
           }
-        ] : [])
+        ] : []
       ]
-    }
-
+    };
     // Send to global Slack channel
     const slackResponse = await fetch(GLOBAL_SLACK_WEBHOOK, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify(slackMessage)
-    })
-
+    });
     if (!slackResponse.ok) {
-      const errorBody = await slackResponse.text()
-      console.error(`❌ Failed to send global Slack notification:`)
-      console.error(`   Status: ${slackResponse.status} ${slackResponse.statusText}`)
-      console.error(`   Response: ${errorBody}`)
-      console.error(`   Workspace: ${workspaceName}`)
-      console.error(`   Lead: ${lead.email}`)
+      const errorBody = await slackResponse.text();
+      console.error(`❌ Failed to send global Slack notification:`);
+      console.error(`   Status: ${slackResponse.status} ${slackResponse.statusText}`);
+      console.error(`   Response: ${errorBody}`);
+      console.error(`   Workspace: ${workspaceName}`);
+      console.error(`   Lead: ${lead.email}`);
     } else {
-      console.log(`✅ Global Slack notification sent for ${workspaceName}: ${lead.email}`)
-
+      console.log(`✅ Global Slack notification sent for ${workspaceName}: ${lead.email}`);
       // Record notification in database to prevent future duplicates
-      const { error: insertError } = await supabase
-        .from('slack_notifications_sent')
-        .insert({
-          reply_id: replyId,
-          workspace_name: workspaceName,
-          notification_type: 'global'
-        })
-
+      const { error: insertError } = await supabase.from('slack_notifications_sent').insert({
+        reply_id: replyId,
+        workspace_name: workspaceName,
+        notification_type: 'global'
+      });
       if (insertError) {
         // Log but don't fail - duplicate key errors are expected in race conditions
-        if (insertError.code !== '23505') { // 23505 = unique_violation
-          console.error(`⚠️ Error recording global Slack notification:`, insertError)
+        if (insertError.code !== '23505') {
+          console.error(`⚠️ Error recording global Slack notification:`, insertError);
         }
       } else {
-        console.log(`📝 Recorded global notification for reply ${replyId}`)
+        console.log(`📝 Recorded global notification for reply ${replyId}`);
       }
     }
   } catch (error) {
-    console.error(`❌ Error sending global Slack notification:`)
-    console.error(`   Workspace: ${workspaceName}`)
-    console.error(`   Lead: ${lead?.email || 'unknown'}`)
-    console.error(`   Error:`, error)
-    // Don't throw - we don't want Slack failures to break webhook processing
+    console.error(`❌ Error sending global Slack notification:`);
+    console.error(`   Workspace: ${workspaceName}`);
+    console.error(`   Lead: ${lead?.email || 'unknown'}`);
+    console.error(`   Error:`, error);
+  // Don't throw - we don't want Slack failures to break webhook processing
   }
 }
-
-async function cleanReplyWithAI(emailBody: string): Promise<string> {
+async function cleanReplyWithAI(emailBody) {
   try {
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
-
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
-      console.warn('OpenAI API key not configured, using raw reply text')
-      return emailBody.substring(0, 200) + (emailBody.length > 200 ? '...' : '')
+      console.warn('OpenAI API key not configured, using raw reply text');
+      return emailBody.substring(0, 200) + (emailBody.length > 200 ? '...' : '');
     }
-
     const prompt = `You are an email content extraction specialist. Your task is to extract ONLY the main message content from email replies, removing all metadata, signatures, formatting, and special characters.
 
 EXTRACTION RULES:
@@ -1276,8 +1281,7 @@ EXTRACTION RULES:
 CRITICAL: Return ONLY the extracted message. No additional text, formatting, or explanation.
 
 Email to extract:
-${emailBody}`
-
+${emailBody}`;
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -1295,257 +1299,236 @@ ${emailBody}`
         temperature: 0.3,
         max_tokens: 500
       })
-    })
-
+    });
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
+      throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
     }
-
-    const data = await response.json()
-    const cleanedText = data.choices?.[0]?.message?.content?.trim() || emailBody
-
+    const data = await response.json();
+    const cleanedText = data.choices?.[0]?.message?.content?.trim() || emailBody;
     // Limit to 200 characters for Slack
-    return cleanedText.length > 200 ? cleanedText.substring(0, 200) + '...' : cleanedText
+    return cleanedText.length > 200 ? cleanedText.substring(0, 200) + '...' : cleanedText;
   } catch (error) {
-    console.error('Error cleaning reply with AI:', error)
+    console.error('Error cleaning reply with AI:', error);
     // Fallback to simple truncation
-    return emailBody.substring(0, 200) + (emailBody.length > 200 ? '...' : '')
+    return emailBody.substring(0, 200) + (emailBody.length > 200 ? '...' : '');
   }
 }
-
-async function routeToAllstateAPI(supabase: any, workspaceName: string, lead: any) {
+async function routeToAllstateAPI(supabase, workspaceName, lead) {
   // DEBUG: Log at very start to confirm function is called
-  console.log(`🔄 [DEBUG] routeToAllstateAPI CALLED for ${workspaceName} - lead: ${lead?.email}`)
-
+  console.log(`🔄 [DEBUG] routeToAllstateAPI CALLED for ${workspaceName} - lead: ${lead?.email}`);
   // Only route for specific workspaces
   if (workspaceName !== 'Gregg Blanchard' && workspaceName !== 'Nick Sakha') {
-    return
+    return;
   }
-
   try {
-    console.log(`📤 Routing lead to Allstate API for ${workspaceName}`)
-
+    console.log(`📤 Routing lead to Allstate API for ${workspaceName}`);
     // Helper: Extract custom variable value
-    const getCustomVar = (possibleNames: string[]) => {
-      for (const name of possibleNames) {
-        const variable = lead.custom_variables?.find((v: any) =>
-          v.name?.toLowerCase() === name.toLowerCase()
-        )
+    const getCustomVar = (possibleNames)=>{
+      for (const name of possibleNames){
+        const variable = lead.custom_variables?.find((v)=>v.name?.toLowerCase() === name.toLowerCase());
         if (variable?.value) {
-          return variable.value
+          return variable.value;
         }
       }
-      return null
-    }
-
+      return null;
+    };
     // Helper: Extract phone number
-    const extractPhoneNumber = (customVariables: any[]) => {
-      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'phone', 'mobile', 'cell', 'phone_number']
-
-      for (const fieldName of phoneFieldNames) {
-        const variable = customVariables?.find((v: any) =>
-          v.name?.toLowerCase() === fieldName.toLowerCase()
-        )
+    const extractPhoneNumber = (customVariables)=>{
+      const phoneFieldNames = [
+        'phone number',
+        'cell phone',
+        'cellphone',
+        'phone',
+        'mobile',
+        'cell',
+        'phone_number'
+      ];
+      for (const fieldName of phoneFieldNames){
+        const variable = customVariables?.find((v)=>v.name?.toLowerCase() === fieldName.toLowerCase());
         if (variable?.value) {
-          return variable.value
+          return variable.value;
         }
       }
-
-      return null
-    }
-
-    let allstateUrl: string
-    let allstateToken: string
-    let formData: URLSearchParams
-
+      return null;
+    };
+    let allstateUrl;
+    let allstateToken;
+    let formData;
     if (workspaceName === 'Nick Sakha') {
       // Nick Sakha: Route based on state (OR = Oregon, NV = Nevada)
-      const state = getCustomVar(['state'])
-      const isOregon = state === 'OR'
-      const isNevada = state === 'NV'
-
+      const state = getCustomVar([
+        'state'
+      ]);
+      const isOregon = state === 'OR';
+      const isNevada = state === 'NV';
       if (!isOregon && !isNevada) {
-        console.log(`⚠️  Nick Sakha lead has state="${state}", not routing to Allstate (only OR and NV)`)
-        return
+        console.log(`⚠️  Nick Sakha lead has state="${state}", not routing to Allstate (only OR and NV)`);
+        return;
       }
-
-      allstateToken = 'e225d92907a2460bcc12412efd90acf4'
-      const cid = isOregon ? 'MML-Oregon' : 'MML-Nevada'
-      allstateUrl = `https://allstate-leadsapp.ricochet.me/api/v1/lead/create/Maverick-Marketing-Leads/?token=${allstateToken}&cid=${cid}&imported=1`
-
+      allstateToken = 'e225d92907a2460bcc12412efd90acf4';
+      const cid = isOregon ? 'MML-Oregon' : 'MML-Nevada';
+      allstateUrl = `https://allstate-leadsapp.ricochet.me/api/v1/lead/create/Maverick-Marketing-Leads/?token=${allstateToken}&cid=${cid}&imported=1`;
       // Build form data for Nick Sakha (different field mapping than Gregg)
       formData = new URLSearchParams({
         'firstname': lead.first_name || '',
         'email': lead.email || '',
-        'streetaddress': getCustomVar(['street address', 'address', 'street']) || 'No Address',
-        'city': getCustomVar(['city']) || 'No City',
-        'state': getCustomVar(['state']) || 'No State',
-        'zip': getCustomVar(['zip', 'zip code']) || 'No Zip',
-        'renewal': getCustomVar(['renewal', 'renewal date', 'policy renewal']) || 'No Renewal',
-        'birth': getCustomVar(['date of birth', 'dob', 'birthday', 'birth date']) || 'No Birth'
-      })
-
-      const phoneValue = extractPhoneNumber(lead.custom_variables)
+        'streetaddress': getCustomVar([
+          'street address',
+          'address',
+          'street'
+        ]) || 'No Address',
+        'city': getCustomVar([
+          'city'
+        ]) || 'No City',
+        'state': getCustomVar([
+          'state'
+        ]) || 'No State',
+        'zip': getCustomVar([
+          'zip',
+          'zip code'
+        ]) || 'No Zip',
+        'renewal': getCustomVar([
+          'renewal',
+          'renewal date',
+          'policy renewal'
+        ]) || 'No Renewal',
+        'birth': getCustomVar([
+          'date of birth',
+          'dob',
+          'birthday',
+          'birth date'
+        ]) || 'No Birth'
+      });
+      const phoneValue = extractPhoneNumber(lead.custom_variables);
       if (phoneValue) {
-        formData.append('phone', phoneValue)
+        formData.append('phone', phoneValue);
       }
-
-      console.log(`  → Routing to ${isOregon ? 'Oregon' : 'Nevada'} endpoint (state=${state})`)
+      console.log(`  → Routing to ${isOregon ? 'Oregon' : 'Nevada'} endpoint (state=${state})`);
     } else {
       // Gregg Blanchard: Single Florida endpoint
-      allstateUrl = 'https://allstate-leadsapp.ricochet.me/api/v1/lead/create/Maverick-Internet-FL'
-      allstateToken = '3d28df326d61ec73c9f1e962cb0b1cf4'
-
-      const phoneValue = extractPhoneNumber(lead.custom_variables)
-      const fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim()
-
+      allstateUrl = 'https://allstate-leadsapp.ricochet.me/api/v1/lead/create/Maverick-Internet-FL';
+      allstateToken = '3d28df326d61ec73c9f1e962cb0b1cf4';
+      const phoneValue = extractPhoneNumber(lead.custom_variables);
+      const fullName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim();
       formData = new URLSearchParams({
         'email': lead.email || '',
         'Full Name': fullName
-      })
-
+      });
       if (phoneValue) {
-        formData.append('phone', phoneValue)
+        formData.append('phone', phoneValue);
       }
     }
-
     const response = await fetch(allstateUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: formData.toString()
-    })
-
+    });
     if (!response.ok) {
-      console.error(`Allstate API error: ${response.status} ${response.statusText}`)
-      const errorText = await response.text()
-      console.error('Response body:', errorText)
-      return
+      console.error(`Allstate API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('Response body:', errorText);
+      return;
     }
-
-    const result = await response.text()
-    console.log(`✅ Lead successfully routed to Allstate API:`, result)
-
+    const result = await response.text();
+    console.log(`✅ Lead successfully routed to Allstate API:`, result);
     // Track successful delivery
     if (lead.email) {
-      const { error: updateError } = await supabase
-        .from('client_leads')
-        .update({ external_api_sent_at: new Date().toISOString() })
-        .eq('workspace_name', workspaceName)
-        .eq('lead_email', lead.email)
-
+      const { error: updateError } = await supabase.from('client_leads').update({
+        external_api_sent_at: new Date().toISOString()
+      }).eq('workspace_name', workspaceName).eq('lead_email', lead.email);
       if (updateError) {
-        console.error('Failed to update external_api_sent_at for Allstate lead:', updateError)
+        console.error('Failed to update external_api_sent_at for Allstate lead:', updateError);
       } else {
-        console.log(`📊 Tracked Allstate delivery for ${lead.email}`)
+        console.log(`📊 Tracked Allstate delivery for ${lead.email}`);
       }
     }
   } catch (error) {
-    console.error('Error routing to Allstate API:', error)
-    // Don't throw - we don't want Allstate API failures to break the main webhook
+    console.error('Error routing to Allstate API:', error);
+  // Don't throw - we don't want Allstate API failures to break the main webhook
   }
 }
-
-async function routeToExternalAPI(supabase: any, workspaceName: string, lead: any, reply: any) {
+async function routeToExternalAPI(supabase, workspaceName, lead, reply) {
   // DEBUG: Log at the very start to confirm function is being called
-  console.log(`🔄 [DEBUG] routeToExternalAPI CALLED for ${workspaceName} - lead: ${lead?.email}`)
-
+  console.log(`🔄 [DEBUG] routeToExternalAPI CALLED for ${workspaceName} - lead: ${lead?.email}`);
   try {
     // Get the external API configuration for this workspace with retry logic
-    let client: any = null
-    let error: any = null
-    const maxRetries = 3
+    let client = null;
+    let error = null;
+    const maxRetries = 3;
     const retryDelay = 100 // ms
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      const result = await supabase
-        .from('client_registry')
-        .select('external_api_url, external_api_token')
-        .eq('workspace_name', workspaceName)
-        .single()
-
-      client = result.data
-      error = result.error
-
+    ;
+    for(let attempt = 1; attempt <= maxRetries; attempt++){
+      const result = await supabase.from('client_registry').select('external_api_url, external_api_token').eq('workspace_name', workspaceName).single();
+      client = result.data;
+      error = result.error;
       if (!error) {
-        break // Success - exit retry loop
+        break; // Success - exit retry loop
       }
-
       // Log retry attempt
-      console.warn(`⚠️  Database query failed for ${workspaceName} (attempt ${attempt}/${maxRetries}):`, error)
-
+      console.warn(`⚠️  Database query failed for ${workspaceName} (attempt ${attempt}/${maxRetries}):`, error);
       if (attempt < maxRetries) {
-        console.log(`   Retrying in ${retryDelay}ms...`)
-        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        console.log(`   Retrying in ${retryDelay}ms...`);
+        await new Promise((resolve)=>setTimeout(resolve, retryDelay));
       }
     }
-
     // Handle errors with detailed logging
     if (error) {
-      console.error(`❌ Database error after ${maxRetries} attempts for ${workspaceName}:`)
-      console.error(`   Error code: ${error.code}`)
-      console.error(`   Error message: ${error.message}`)
-      console.error(`   Lead email: ${lead?.email || 'unknown'}`)
-      console.error(`   This lead will NOT be forwarded to external API`)
-      return
+      console.error(`❌ Database error after ${maxRetries} attempts for ${workspaceName}:`);
+      console.error(`   Error code: ${error.code}`);
+      console.error(`   Error message: ${error.message}`);
+      console.error(`   Lead email: ${lead?.email || 'unknown'}`);
+      console.error(`   This lead will NOT be forwarded to external API`);
+      return;
     }
-
     if (!client) {
-      console.log(`ℹ️  No client_registry entry found for ${workspaceName} (lead: ${lead?.email || 'unknown'})`)
-      return
+      console.log(`ℹ️  No client_registry entry found for ${workspaceName} (lead: ${lead?.email || 'unknown'})`);
+      return;
     }
-
     if (!client.external_api_url) {
       // No external API configured for this workspace - this is normal
-      return
+      return;
     }
-
-    console.log(`📤 Routing lead to external API for ${workspaceName}: ${client.external_api_url}`)
-
+    console.log(`📤 Routing lead to external API for ${workspaceName}: ${client.external_api_url}`);
     // Helper: Extract custom variable value
-    const getCustomVar = (possibleNames: string[]) => {
-      for (const name of possibleNames) {
-        const variable = lead.custom_variables?.find((v: any) =>
-          v.name?.toLowerCase() === name.toLowerCase()
-        )
+    const getCustomVar = (possibleNames)=>{
+      for (const name of possibleNames){
+        const variable = lead.custom_variables?.find((v)=>v.name?.toLowerCase() === name.toLowerCase());
         if (variable?.value) {
-          return variable.value
+          return variable.value;
         }
       }
-      return null
-    }
-
+      return null;
+    };
     // Helper: Extract phone number
-    const extractPhoneNumber = (customVariables: any[]) => {
-      const phoneFieldNames = ['phone number', 'cell phone', 'cellphone', 'phone', 'mobile', 'cell', 'phone_number', 'company phone']
-
-      for (const fieldName of phoneFieldNames) {
-        const variable = customVariables?.find((v: any) =>
-          v.name?.toLowerCase() === fieldName.toLowerCase()
-        )
+    const extractPhoneNumber = (customVariables)=>{
+      const phoneFieldNames = [
+        'phone number',
+        'cell phone',
+        'cellphone',
+        'phone',
+        'mobile',
+        'cell',
+        'phone_number',
+        'company phone'
+      ];
+      for (const fieldName of phoneFieldNames){
+        const variable = customVariables?.find((v)=>v.name?.toLowerCase() === fieldName.toLowerCase());
         if (variable?.value) {
-          return variable.value
+          return variable.value;
         }
       }
-
-      return null
-    }
-
+      return null;
+    };
     // Build the conversation URL
-    const conversationUrl = reply?.uuid
-      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
-      : null
-
+    const conversationUrl = reply?.uuid ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}` : null;
     // Clean the reply text using OpenAI
-    const replyText = reply?.text_body || reply?.body_plain || ''
-    const cleanedReply = await cleanReplyWithAI(replyText)
-
+    const replyText = reply?.text_body || reply?.body_plain || '';
+    const cleanedReply = await cleanReplyWithAI(replyText);
     // Check if this is an Agency Zoom URL (requires special query param format)
-    const isAgencyZoom = client.external_api_url.includes('agencyzoom.com')
-
-    let response: Response
-
+    const isAgencyZoom = client.external_api_url.includes('agencyzoom.com');
+    let response;
     if (isAgencyZoom) {
       // Agency Zoom expects query parameters, not JSON body
       const agencyZoomPayload = {
@@ -1554,32 +1537,52 @@ async function routeToExternalAPI(supabase: any, workspaceName: string, lead: an
         email: lead.email || '',
         phone: extractPhoneNumber(lead.custom_variables) || '',
         notes: conversationUrl ? `${conversationUrl} - ${cleanedReply}` : cleanedReply,
-        birthday: getCustomVar(['date of birth', 'dob', 'birthday', 'birth date']) || '',
-        streetAddress: getCustomVar(['street address', 'address', 'street']) || '',
-        city: getCustomVar(['city']) || '',
-        state: getCustomVar(['state']) || '',
-        zip: getCustomVar(['zip', 'zip code', 'zipcode']) || '',
-        'expiration date': getCustomVar(['renewal', 'renewal date', 'policy renewal', 'expiry date']) || ''
-      }
-
+        birthday: getCustomVar([
+          'date of birth',
+          'dob',
+          'birthday',
+          'birth date'
+        ]) || '',
+        streetAddress: getCustomVar([
+          'street address',
+          'address',
+          'street'
+        ]) || '',
+        city: getCustomVar([
+          'city'
+        ]) || '',
+        state: getCustomVar([
+          'state'
+        ]) || '',
+        zip: getCustomVar([
+          'zip',
+          'zip code',
+          'zipcode'
+        ]) || '',
+        'expiration date': getCustomVar([
+          'renewal',
+          'renewal date',
+          'policy renewal',
+          'expiry date'
+        ]) || ''
+      };
       // Build query string
-      const queryParams = new URLSearchParams()
-      Object.entries(agencyZoomPayload).forEach(([key, value]) => {
+      const queryParams = new URLSearchParams();
+      Object.entries(agencyZoomPayload).forEach(([key, value])=>{
         if (value) {
-          queryParams.append(key, value as string)
+          queryParams.append(key, value);
         }
-      })
-
+      });
       // Send as POST with query parameters
       response = await fetch(`${client.external_api_url}?${queryParams.toString()}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         }
-      })
+      });
     } else {
       // Generic format for other CRMs (Zapier, etc.) - use JSON body
-      const externalPayload: any = {
+      const externalPayload = {
         // Basic info
         first_name: lead.first_name || '',
         last_name: lead.last_name || '',
@@ -1587,106 +1590,133 @@ async function routeToExternalAPI(supabase: any, workspaceName: string, lead: an
         phone: extractPhoneNumber(lead.custom_variables) || '',
         company: lead.company || '',
         title: lead.title || '',
-
         // Address fields
-        address: getCustomVar(['street address', 'address', 'street']) || '',
-        city: getCustomVar(['city']) || '',
-        state: getCustomVar(['state']) || '',
-        zip: getCustomVar(['zip', 'zip code', 'zipcode']) || '',
-
+        address: getCustomVar([
+          'street address',
+          'address',
+          'street'
+        ]) || '',
+        city: getCustomVar([
+          'city'
+        ]) || '',
+        state: getCustomVar([
+          'state'
+        ]) || '',
+        zip: getCustomVar([
+          'zip',
+          'zip code',
+          'zipcode'
+        ]) || '',
         // Insurance-specific fields
-        date_of_birth: getCustomVar(['date of birth', 'dob', 'birthday', 'birth date']) || '',
-        renewal_date: getCustomVar(['renewal', 'renewal date', 'policy renewal', 'expiry date']) || '',
-        home_value: getCustomVar(['home value', 'property value', 'value']) || '',
-        income: getCustomVar(['income', 'household income']) || '',
-        current_carrier: getCustomVar(['current carrier', 'carrier', 'insurance carrier']) || '',
-
+        date_of_birth: getCustomVar([
+          'date of birth',
+          'dob',
+          'birthday',
+          'birth date'
+        ]) || '',
+        renewal_date: getCustomVar([
+          'renewal',
+          'renewal date',
+          'policy renewal',
+          'expiry date'
+        ]) || '',
+        home_value: getCustomVar([
+          'home value',
+          'property value',
+          'value'
+        ]) || '',
+        income: getCustomVar([
+          'income',
+          'household income'
+        ]) || '',
+        current_carrier: getCustomVar([
+          'current carrier',
+          'carrier',
+          'insurance carrier'
+        ]) || '',
         // Commercial fields
-        dot_number: getCustomVar(['dotno', 'dot number', 'dot no']) || '',
-        mc_number: getCustomVar(['docket number', 'mc number']) || '',
-        class_code: getCustomVar(['class code', 'class', 'industry code']) || '',
-        fein: getCustomVar(['fein', 'tax id', 'ein']) || '',
-        website: getCustomVar(['website', 'web site', 'url']) || '',
-
+        dot_number: getCustomVar([
+          'dotno',
+          'dot number',
+          'dot no'
+        ]) || '',
+        mc_number: getCustomVar([
+          'docket number',
+          'mc number'
+        ]) || '',
+        class_code: getCustomVar([
+          'class code',
+          'class',
+          'industry code'
+        ]) || '',
+        fein: getCustomVar([
+          'fein',
+          'tax id',
+          'ein'
+        ]) || '',
+        website: getCustomVar([
+          'website',
+          'web site',
+          'url'
+        ]) || '',
         // Reply information
         reply_text: cleanedReply,
         reply_date: reply?.date_received || new Date().toISOString(),
         conversation_url: conversationUrl,
-
         // Metadata
         source: 'Bison Email Campaign',
         workspace: workspaceName,
         bison_lead_id: lead.id ? lead.id.toString() : null,
         interested: true,
-
         // All custom variables (for flexibility)
         custom_variables: lead.custom_variables || []
-      }
-
+      };
       // Prepare headers
-      const headers: Record<string, string> = {
+      const headers = {
         'Content-Type': 'application/json'
-      }
-
+      };
       // Add authentication token if configured
       if (client.external_api_token) {
-        headers['Authorization'] = `Bearer ${client.external_api_token}`
+        headers['Authorization'] = `Bearer ${client.external_api_token}`;
       }
-
       // Send to external API
       response = await fetch(client.external_api_url, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(externalPayload)
-      })
+      });
     }
-
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`❌ External API error for ${workspaceName}: ${response.status} ${response.statusText}`)
-      console.error('Response body:', errorText)
-
+      const errorText = await response.text();
+      console.error(`❌ External API error for ${workspaceName}: ${response.status} ${response.statusText}`);
+      console.error('Response body:', errorText);
       // Log error but don't update health tracking (to avoid complexity)
-      console.error(`⚠️  Failed to route to external API - will retry on next lead`)
-
-      return
+      console.error(`⚠️  Failed to route to external API - will retry on next lead`);
+      return;
     }
-
-    const result = await response.text()
-    console.log(`✅ Lead successfully routed to external API for ${workspaceName}:`, result)
-
+    const result = await response.text();
+    console.log(`✅ Lead successfully routed to external API for ${workspaceName}:`, result);
     // Update success timestamp (simplified - no increments)
-    const { error: updateError } = await supabase
-      .from('client_registry')
-      .update({
-        api_last_successful_call_at: new Date().toISOString(),
-        api_consecutive_failures: 0,
-        api_health_status: 'healthy',
-        api_notes: 'External API integration working'
-      })
-      .eq('workspace_name', workspaceName)
-
+    const { error: updateError } = await supabase.from('client_registry').update({
+      api_last_successful_call_at: new Date().toISOString(),
+      api_consecutive_failures: 0,
+      api_health_status: 'healthy',
+      api_notes: 'External API integration working'
+    }).eq('workspace_name', workspaceName);
     if (updateError) {
-      console.error(`Error updating API health:`, updateError)
+      console.error(`Error updating API health:`, updateError);
     }
-
     // Mark lead as sent to external API with timestamp
-    const { error: leadUpdateError } = await supabase
-      .from('client_leads')
-      .update({
-        external_api_sent_at: new Date().toISOString()
-      })
-      .eq('workspace_name', workspaceName)
-      .eq('lead_email', lead.email)
-
+    const { error: leadUpdateError } = await supabase.from('client_leads').update({
+      external_api_sent_at: new Date().toISOString()
+    }).eq('workspace_name', workspaceName).eq('lead_email', lead.email);
     if (leadUpdateError) {
-      console.error(`⚠️  Error updating external_api_sent_at for ${lead.email}:`, leadUpdateError)
+      console.error(`⚠️  Error updating external_api_sent_at for ${lead.email}:`, leadUpdateError);
     } else {
-      console.log(`✅ Marked lead ${lead.email} as sent to external API`)
+      console.log(`✅ Marked lead ${lead.email} as sent to external API`);
     }
-
   } catch (error) {
-    console.error(`Error routing to external API for ${workspaceName}:`, error)
-    // Don't throw - we don't want external API failures to break the main webhook
+    console.error(`Error routing to external API for ${workspaceName}:`, error);
+  // Don't throw - we don't want external API failures to break the main webhook
   }
 }

@@ -26,9 +26,12 @@ import {
   ChevronDown,
   ChevronRight,
   Flame,
+  AlertCircle,
+  Clock,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { LiveReply } from '@/hooks/useLiveReplies';
+import { getReplyState, getSentReply } from '@/hooks/useLiveReplies';
 
 interface ClientPortalRepliesTabProps {
   workspaceName: string;
@@ -145,11 +148,9 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
 
   const timeAgo = formatDistanceToNow(new Date(reply.reply_date), { addSuffix: true });
 
-  // Check if we've replied to this conversation
-  const weHaveReplied = reply.sent_replies && (
-    Array.isArray(reply.sent_replies) ? reply.sent_replies.length > 0 : !!reply.sent_replies
-  );
-  const replyStatus = Array.isArray(reply.sent_replies) ? reply.sent_replies[0] : reply.sent_replies;
+  // Reply state — see useLiveReplies.ts for state machine
+  const replyState = getReplyState(reply);
+  const replyStatus = getSentReply(reply);
 
   // Conversation tracking (from view, optional for backward compatibility)
   const replyCount = (reply as any).conversation_reply_count;
@@ -210,21 +211,40 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
     setIsExpanded(!isExpanded);
   };
 
+  const cardBorderClass = {
+    none: 'border-l-blue-500',
+    pending: 'border-l-yellow-500',
+    replied: 'border-l-green-500 opacity-70',
+    failed: 'border-l-red-500',
+  }[replyState];
+
   return (
     <Card
-      className={`hover:shadow-md transition-all duration-200 border-l-4 relative cursor-pointer ${
-        weHaveReplied
-          ? 'border-l-green-500 opacity-70'
-          : 'border-l-blue-500'
-      }`}
+      className={`hover:shadow-md transition-all duration-200 border-l-4 relative cursor-pointer ${cardBorderClass}`}
       onClick={handleCardClick}
     >
-      {/* Replied Indicator Box - Top Right Corner */}
-      {weHaveReplied && (
+      {/* State Indicator Badge - Top Right Corner */}
+      {replyState === 'replied' && (
         <div className="absolute top-3 right-3 z-10">
           <Badge className="bg-green-600 text-white border-green-700 shadow-md px-3 py-1.5 text-xs font-semibold">
             <Check className="h-3.5 w-3.5 mr-1.5" />
             REPLIED
+          </Badge>
+        </div>
+      )}
+      {replyState === 'pending' && (
+        <div className="absolute top-3 right-3 z-10">
+          <Badge className="bg-yellow-500 text-white border-yellow-600 shadow-md px-3 py-1.5 text-xs font-semibold">
+            <Clock className="h-3.5 w-3.5 mr-1.5 animate-pulse" />
+            PENDING
+          </Badge>
+        </div>
+      )}
+      {replyState === 'failed' && (
+        <div className="absolute top-3 right-3 z-10">
+          <Badge className="bg-red-600 text-white border-red-700 shadow-md px-3 py-1.5 text-xs font-semibold">
+            <AlertCircle className="h-3.5 w-3.5 mr-1.5" />
+            FAILED
           </Badge>
         </div>
       )}
@@ -242,13 +262,15 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
 
           {/* Avatar */}
           <div className={`h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-            weHaveReplied ? 'bg-green-100' : 'bg-blue-100'
+            replyState === 'replied' ? 'bg-green-100' :
+            replyState === 'pending' ? 'bg-yellow-100' :
+            replyState === 'failed' ? 'bg-red-100' :
+            'bg-blue-100'
           }`}>
-            {weHaveReplied ? (
-              <Check className="h-4 w-4 text-green-600" />
-            ) : (
-              <User className="h-4 w-4 text-blue-600" />
-            )}
+            {replyState === 'replied' ? <Check className="h-4 w-4 text-green-600" /> :
+             replyState === 'pending' ? <Clock className="h-4 w-4 text-yellow-600 animate-pulse" /> :
+             replyState === 'failed' ? <AlertCircle className="h-4 w-4 text-red-600" /> :
+             <User className="h-4 w-4 text-blue-600" />}
           </div>
 
           {/* Name, Sentiment, Conversation Status, Preview */}
@@ -283,10 +305,22 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
                   {reply.company}
                 </span>
               )}
-              {weHaveReplied && replyStatus && (
+              {replyState === 'replied' && replyStatus?.verified_at && (
                 <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
                   <Check className="h-3 w-3 mr-1" />
-                  Replied {formatDistanceToNow(new Date(replyStatus.sent_at), { addSuffix: true })}
+                  Delivered {formatDistanceToNow(new Date(replyStatus.verified_at), { addSuffix: true })}
+                </Badge>
+              )}
+              {replyState === 'pending' && replyStatus && (
+                <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
+                  <Clock className="h-3 w-3 mr-1 animate-pulse" />
+                  Sent {formatDistanceToNow(new Date(replyStatus.sent_at), { addSuffix: true })} — awaiting delivery confirmation
+                </Badge>
+              )}
+              {replyState === 'failed' && replyStatus && (
+                <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Failed{replyStatus.retry_count > 0 ? ` (after ${replyStatus.retry_count} retry)` : ''}
                 </Badge>
               )}
             </div>
@@ -300,9 +334,17 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
               </div>
             )}
 
+            {/* Show error message expanded for failed sends */}
+            {replyState === 'failed' && replyStatus?.error_message && (
+              <div className="bg-red-50 rounded-lg p-3 mb-3 border border-red-200">
+                <p className="text-xs font-semibold text-red-800 mb-1">Send failed:</p>
+                <p className="text-xs text-red-700 font-mono break-words">{replyStatus.error_message}</p>
+              </div>
+            )}
+
             {/* Action Buttons */}
             <div className="flex items-center gap-2">
-              {!weHaveReplied ? (
+              {replyState === 'none' ? (
                 !reply.bison_reply_numeric_id ? (
                   <Button
                     variant="outline"
@@ -328,10 +370,21 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
                     AI Reply
                   </Button>
                 )
-              ) : (
+              ) : replyState === 'replied' ? (
                 <Badge variant="secondary" className="bg-gray-100 text-gray-600">
                   <CheckCircle className="h-3 w-3 mr-1" />
-                  Conversation Handled
+                  Replied & Delivered
+                </Badge>
+              ) : replyState === 'pending' ? (
+                <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
+                  <Clock className="h-3 w-3 mr-1 animate-pulse" />
+                  Sent — awaiting delivery confirmation
+                </Badge>
+              ) : (
+                /* failed */
+                <Badge variant="secondary" className="bg-red-100 text-red-700">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Send failed — team has been alerted
                 </Badge>
               )}
               {reply.bison_conversation_url && (

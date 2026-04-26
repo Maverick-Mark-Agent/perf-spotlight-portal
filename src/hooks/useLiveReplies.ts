@@ -183,17 +183,9 @@ export function useLiveReplies(): UseLiveRepliesReturn {
   // status='sent' and verified_at=null. A subsequent refetch (or realtime
   // event) will replace this with the canonical row.
   const patchReplyAfterSend = useCallback((replyUuid: string, sentReply: SentReplyRow) => {
-    console.log('[useLiveReplies] patchReplyAfterSend invoked', { replyUuid, sentReply });
-    setReplies((current) => {
-      const matching = current.find((r) => r.id === replyUuid);
-      console.log('[useLiveReplies] match in current state?', !!matching, 'total replies in state:', current.length);
-      if (matching) {
-        console.log('[useLiveReplies] before patch — sent_replies:', matching.sent_replies);
-      }
-      const next = current.map((r) => (r.id === replyUuid ? { ...r, sent_replies: sentReply } : r));
-      console.log('[useLiveReplies] state patched, new length:', next.length);
-      return next;
-    });
+    setReplies((current) =>
+      current.map((r) => (r.id === replyUuid ? { ...r, sent_replies: sentReply } : r))
+    );
   }, []);
 
   // Keep ref in sync so realtime handlers always call the latest version

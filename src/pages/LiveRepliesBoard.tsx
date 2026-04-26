@@ -1,25 +1,45 @@
 /**
  * Live Replies Message Board
  *
- * Gmail-style message board showing ALL replies in real-time
+ * Gmail-style message board showing the most recent 300 replies in real-time,
+ * with workspace filtering and triage-state stats.
  */
 
 import { useLiveReplies, type LiveReply, getReplyState, getSentReply } from '@/hooks/useLiveReplies';
+import { useReplyWorkspaces } from '@/hooks/useRealtimeReplies';
 import { AIReplyComposer } from '@/components/shared/AIReplyComposer';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame, RefreshCw, AlertCircle, Clock } from 'lucide-react';
-import { useState } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame, RefreshCw, AlertCircle, Clock, Inbox } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function LiveRepliesBoard() {
   const { replies, loading, error, newReplyCount, clearNewReplyCount, refreshReplies, patchReplyAfterSend } = useLiveReplies();
+  const { workspaces } = useReplyWorkspaces();
+  const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
 
   // Clear new reply count when user focuses window
   if (newReplyCount > 0 && document.hasFocus()) {
     clearNewReplyCount();
   }
+
+  // Filter by workspace if one is selected; otherwise show all.
+  const filteredReplies = useMemo(() => {
+    if (!selectedWorkspace) return replies;
+    return replies.filter((r) => r.workspace_name === selectedWorkspace);
+  }, [replies, selectedWorkspace]);
+
+  // Triage-state counts driven off the same state machine as the cards.
+  // 'none' = needs a response (no send attempted), 'pending' = sent waiting for delivery
+  // confirmation, 'replied' = delivery verified, 'failed' = both attempts errored.
+  const stateCounts = useMemo(() => {
+    const counts = { none: 0, pending: 0, replied: 0, failed: 0 };
+    for (const r of filteredReplies) counts[getReplyState(r)]++;
+    return counts;
+  }, [filteredReplies]);
 
   if (loading) {
     return (
@@ -58,23 +78,86 @@ export default function LiveRepliesBoard() {
               </div>
             </div>
             <div className="text-sm text-muted-foreground">
-              {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+              {filteredReplies.length} of {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+              {selectedWorkspace ? ` — ${selectedWorkspace}` : ''}
             </div>
           </div>
         </div>
       </div>
 
+      {/* Stats + Filter */}
+      <div className="max-w-6xl mx-auto px-6 py-4 space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard
+            icon={<Inbox className="h-4 w-4" />}
+            label="Need Response"
+            value={stateCounts.none}
+            tone="blue"
+          />
+          <StatCard
+            icon={<Clock className="h-4 w-4" />}
+            label="Pending"
+            value={stateCounts.pending}
+            tone="yellow"
+          />
+          <StatCard
+            icon={<CheckCircle className="h-4 w-4" />}
+            label="Replied"
+            value={stateCounts.replied}
+            tone="green"
+          />
+          <StatCard
+            icon={<AlertCircle className="h-4 w-4" />}
+            label="Failed"
+            value={stateCounts.failed}
+            tone="red"
+          />
+        </div>
+
+        {/* Workspace filter */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Workspace:</span>
+          <Select
+            value={selectedWorkspace || 'all'}
+            onValueChange={(value) => setSelectedWorkspace(value === 'all' ? null : value)}
+          >
+            <SelectTrigger className="w-full md:w-72">
+              <SelectValue placeholder="All workspaces" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All workspaces</SelectItem>
+              {workspaces.map((ws) => (
+                <SelectItem key={ws} value={ws}>
+                  {ws}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedWorkspace && (
+            <Button variant="ghost" size="sm" onClick={() => setSelectedWorkspace(null)}>
+              Clear
+            </Button>
+          )}
+        </div>
+      </div>
+
       {/* Messages List */}
-      <div className="max-w-6xl mx-auto px-6 py-6">
-        {replies.length === 0 ? (
+      <div className="max-w-6xl mx-auto px-6 pb-6">
+        {filteredReplies.length === 0 ? (
           <div className="text-center py-12">
             <Mail className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-foreground mb-2">No replies yet</h3>
-            <p className="text-muted-foreground">New replies will appear here automatically</p>
+            <h3 className="text-lg font-medium text-foreground mb-2">
+              {selectedWorkspace ? `No replies for ${selectedWorkspace}` : 'No replies yet'}
+            </h3>
+            <p className="text-muted-foreground">
+              {selectedWorkspace
+                ? 'Try clearing the workspace filter or wait for new replies'
+                : 'New replies will appear here automatically'}
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {replies.map((reply) => (
+            {filteredReplies.map((reply) => (
               <ReplyCard
                 key={reply.id}
                 reply={reply}
@@ -86,6 +169,43 @@ export default function LiveRepliesBoard() {
         )}
       </div>
     </div>
+  );
+}
+
+// Tone colors map to the same scheme as the card border-l states so the dashboard
+// reads as a single visual language: blue=needs-action, yellow=pending,
+// green=verified, red=failed.
+const STAT_TONES = {
+  blue: { ring: 'border-l-blue-500', text: 'text-blue-500' },
+  yellow: { ring: 'border-l-yellow-500', text: 'text-yellow-500' },
+  green: { ring: 'border-l-green-500', text: 'text-green-500' },
+  red: { ring: 'border-l-red-500', text: 'text-red-500' },
+} as const;
+
+function StatCard({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  tone: keyof typeof STAT_TONES;
+}) {
+  const t = STAT_TONES[tone];
+  return (
+    <Card className={`border-l-4 ${t.ring}`}>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+            {label}
+          </span>
+          <span className={t.text}>{icon}</span>
+        </div>
+        <div className="text-2xl font-bold text-foreground mt-1">{value}</div>
+      </CardContent>
+    </Card>
   );
 }
 

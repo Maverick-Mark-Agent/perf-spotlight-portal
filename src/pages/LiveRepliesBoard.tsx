@@ -33,11 +33,22 @@ export default function LiveRepliesBoard() {
   }, [replies, selectedWorkspace]);
 
   // Triage-state counts driven off the same state machine as the cards.
-  // 'none' = needs a response (no send attempted), 'pending' = sent waiting for delivery
-  // confirmation, 'replied' = delivery verified, 'failed' = both attempts errored.
+  // - "needResponse": positive-sentiment replies with no send attempted yet.
+  //   Negatives ("not interested"), neutrals (OOO/auto-replies), and bounces
+  //   are excluded — they don't need a reply, so counting them as a queue
+  //   creates noise. This is the actionable inbox.
+  // - "pending": we sent a reply, waiting for Bison delivery confirmation.
+  // - "replied": delivery verified.
+  // - "failed": both send attempts errored — needs human intervention.
   const stateCounts = useMemo(() => {
-    const counts = { none: 0, pending: 0, replied: 0, failed: 0 };
-    for (const r of filteredReplies) counts[getReplyState(r)]++;
+    const counts = { needResponse: 0, pending: 0, replied: 0, failed: 0 };
+    for (const r of filteredReplies) {
+      const state = getReplyState(r);
+      if (state === 'pending') counts.pending++;
+      else if (state === 'replied') counts.replied++;
+      else if (state === 'failed') counts.failed++;
+      else if (state === 'none' && r.sentiment === 'positive') counts.needResponse++;
+    }
     return counts;
   }, [filteredReplies]);
 
@@ -91,7 +102,7 @@ export default function LiveRepliesBoard() {
           <StatCard
             icon={<Inbox className="h-4 w-4" />}
             label="Need Response"
-            value={stateCounts.none}
+            value={stateCounts.needResponse}
             tone="blue"
           />
           <StatCard

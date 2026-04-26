@@ -118,7 +118,7 @@ export function useLiveReplies(): UseLiveRepliesReturn {
           )
         `)
         .order('reply_date', { ascending: false })
-        .limit(100);
+        .limit(300);
 
       if (fetchError) throw fetchError;
 

@@ -142,8 +142,8 @@ export async function fetchKPIDataRealtime(): Promise<DataFetchResult<KPIClient[
       .from('client_leads')
       .select('workspace_name')
       .eq('interested', true)
-      .gte('date_received', firstDayStr)
-      .lt('date_received', nextMonthFirstDay);
+      .gte('interested_at', firstDayStr)
+      .lt('interested_at', nextMonthFirstDay);
 
     const leadsCountMap: Record<string, number> = {};
     (interestedCounts || []).forEach(row => {

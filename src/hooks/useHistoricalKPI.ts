@@ -87,8 +87,8 @@ export function useHistoricalKPI() {
         .from('client_leads')
         .select('workspace_name')
         .eq('interested', true)
-        .gte('date_received', startDate)
-        .lt('date_received', nextMonthStr);
+        .gte('interested_at', startDate)
+        .lt('interested_at', nextMonthStr);
 
       const leadsCountMap: Record<string, number> = {};
       (interestedCounts || []).forEach(row => {

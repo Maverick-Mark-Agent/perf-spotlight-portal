@@ -46,6 +46,7 @@ export function ClientPortalRepliesTab({ workspaceName, onSwitchToTemplates }: C
     newReplyCount,
     clearNewReplyCount,
     refreshData,
+    patchReplyAfterSend,
   } = useRealtimeReplies({ workspaceName });
 
   // Clear new reply count when user focuses window
@@ -126,6 +127,8 @@ export function ClientPortalRepliesTab({ workspaceName, onSwitchToTemplates }: C
               key={reply.id}
               reply={reply as unknown as LiveReply}
               onSwitchToTemplates={onSwitchToTemplates}
+              onReplySent={refreshData}
+              patchReplyAfterSend={patchReplyAfterSend}
             />
           ))}
         </div>
@@ -137,9 +140,11 @@ export function ClientPortalRepliesTab({ workspaceName, onSwitchToTemplates }: C
 interface ReplyCardProps {
   reply: LiveReply;
   onSwitchToTemplates?: () => void;
+  onReplySent: () => void;
+  patchReplyAfterSend: (replyUuid: string, sentReply: any) => void;
 }
 
-function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
+function ReplyCard({ reply, onSwitchToTemplates, onReplySent, patchReplyAfterSend }: ReplyCardProps) {
   const [showComposer, setShowComposer] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const leadName = reply.first_name && reply.last_name
@@ -417,6 +422,8 @@ function ReplyCard({ reply, onSwitchToTemplates }: ReplyCardProps) {
         onClose={() => setShowComposer(false)}
         reply={reply}
         leadName={leadName}
+        onReplySent={onReplySent}
+        patchReplyAfterSend={patchReplyAfterSend}
       />
     </Card>
   );

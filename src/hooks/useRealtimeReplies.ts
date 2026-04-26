@@ -60,12 +60,17 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [newReplyCount, setNewReplyCount] = useState(0);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  // Track whether the initial load has completed so refetches don't flash
+  // the loading spinner.
+  const hasLoadedOnceRef = useRef(false);
 
   // Separate effect for initial data fetch (runs when filters change)
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        setLoading(true);
+        if (!hasLoadedOnceRef.current) {
+          setLoading(true);
+        }
         setError(null);
 
         // Query the original table (preserves sent_replies FK relationship)
@@ -136,6 +141,7 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
         });
 
         setData(repliesWithConversation);
+        hasLoadedOnceRef.current = true;
         console.log(`[Realtime Replies] Loaded ${repliesWithConversation.length} initial replies`);
 
         // Debug: Check for conversation data
@@ -266,12 +272,22 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
     console.log(`[Realtime Replies] Marked reply ${replyId} as handled by ${assignedTo}`);
   };
 
+  // Optimistic patch — flips a card to PENDING (yellow) immediately when the
+  // user clicks Send, without waiting for realtime/refetch.
+  const patchReplyAfterSend = (replyUuid: string, sentReply: SentReplyRow) => {
+    setData((current) =>
+      current.map((r) => (r.id === replyUuid ? { ...r, sent_replies: sentReply } : r))
+    );
+  };
+
   const refreshData = async () => {
     console.log('[Realtime Replies] Manually refreshing data...');
-    setLoading(true);
+    // Don't set loading=true on refreshes — that flashes the dashboard.
+    // Only the initial load sets loading=true.
 
     try {
       // Query the original table (preserves sent_replies FK relationship)
+      // Match the columns selected in the initial fetch so the state shape stays consistent.
       let query = supabase
         .from('lead_replies')
         .select(`
@@ -280,7 +296,11 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
             id,
             sent_at,
             status,
-            sent_by
+            sent_by,
+            verified_at,
+            error_message,
+            retry_count,
+            last_retry_at
           )
         `)
         .order('reply_date', { ascending: false })
@@ -337,8 +357,6 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
     } catch (err: any) {
       console.error('[Realtime Replies] Error refreshing data:', err);
       setError(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -350,6 +368,7 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
     clearNewReplyCount,
     markAsHandled,
     refreshData,
+    patchReplyAfterSend,
   };
 }
 

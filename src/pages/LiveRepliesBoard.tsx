@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function LiveRepliesBoard() {
-  const { replies, loading, error, newReplyCount, clearNewReplyCount, refreshReplies } = useLiveReplies();
+  const { replies, loading, error, newReplyCount, clearNewReplyCount, refreshReplies, patchReplyAfterSend } = useLiveReplies();
 
   // Clear new reply count when user focuses window
   if (newReplyCount > 0 && document.hasFocus()) {
@@ -75,7 +75,12 @@ export default function LiveRepliesBoard() {
         ) : (
           <div className="space-y-3">
             {replies.map((reply) => (
-              <ReplyCard key={reply.id} reply={reply} onReplySent={refreshReplies} />
+              <ReplyCard
+                key={reply.id}
+                reply={reply}
+                onReplySent={refreshReplies}
+                patchReplyAfterSend={patchReplyAfterSend}
+              />
             ))}
           </div>
         )}
@@ -87,9 +92,10 @@ export default function LiveRepliesBoard() {
 interface ReplyCardProps {
   reply: LiveReply;
   onReplySent: () => void;
+  patchReplyAfterSend: (replyUuid: string, sentReply: any) => void;
 }
 
-function ReplyCard({ reply, onReplySent }: ReplyCardProps) {
+function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) {
   const [showComposer, setShowComposer] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const leadName = reply.first_name && reply.last_name
@@ -388,6 +394,7 @@ function ReplyCard({ reply, onReplySent }: ReplyCardProps) {
         reply={reply}
         leadName={leadName}
         onReplySent={onReplySent}
+        patchReplyAfterSend={patchReplyAfterSend}
       />
     </Card>
   );

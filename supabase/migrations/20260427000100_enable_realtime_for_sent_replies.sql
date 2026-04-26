@@ -1,0 +1,12 @@
+-- Enable Realtime broadcast on sent_replies so the Live Reply dashboard
+-- gets live updates when a row's status flips from 'sending' to 'sent',
+-- when verified_at gets stamped (via manual_email_sent webhook), or
+-- when status flips to 'failed'.
+--
+-- Without this, the frontend's postgres_changes subscription registers
+-- but never receives events — the dashboard only updates on manual refresh.
+-- This was missed when sent_replies was first created and only surfaced
+-- after the verification flow was wired up (the original use case was a
+-- one-shot full refetch on subscription, which masked the missing publication
+-- because every refetch hit the joined sent_replies via lead_replies anyway).
+ALTER PUBLICATION supabase_realtime ADD TABLE sent_replies;

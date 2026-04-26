@@ -44,20 +44,20 @@ export default function LiveRepliesBoard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
+      <div className="bg-card border-b sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Mail className="h-6 w-6 text-blue-600" />
-              <h1 className="text-2xl font-semibold text-gray-900">Live Replies</h1>
+              <h1 className="text-2xl font-semibold text-foreground">Live Replies</h1>
               <div className="flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-sm text-gray-600 font-medium">LIVE</span>
+                <span className="text-sm text-muted-foreground font-medium">LIVE</span>
               </div>
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-muted-foreground">
               {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
             </div>
           </div>
@@ -68,9 +68,9 @@ export default function LiveRepliesBoard() {
       <div className="max-w-6xl mx-auto px-6 py-6">
         {replies.length === 0 ? (
           <div className="text-center py-12">
-            <Mail className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No replies yet</h3>
-            <p className="text-gray-600">New replies will appear here automatically</p>
+            <Mail className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">No replies yet</h3>
+            <p className="text-muted-foreground">New replies will appear here automatically</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -216,7 +216,7 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
         {/* Compact Header Row */}
         <div className="flex items-center gap-3">
           {/* Expand/Collapse Icon */}
-          <div className="text-gray-400">
+          <div className="text-muted-foreground">
             {isExpanded ? (
               <ChevronDown className="h-4 w-4" />
             ) : (
@@ -240,15 +240,15 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
           {/* Name, Sentiment, Conversation Status, Preview */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold text-gray-900">{leadName}</h3>
+              <h3 className="font-semibold text-foreground">{leadName}</h3>
               {getSentimentBadge()}
               {getConversationBadge()}
-              <span className="text-xs text-gray-500">{timeAgo}</span>
-              <span className="text-xs text-blue-600 font-medium">{reply.workspace_name}</span>
+              <span className="text-xs text-muted-foreground">{timeAgo}</span>
+              <span className="text-xs text-blue-500 font-medium">{reply.workspace_name}</span>
             </div>
             {/* Preview text when collapsed */}
             {!isExpanded && previewText && (
-              <p className="text-sm text-gray-600 truncate mt-0.5">
+              <p className="text-sm text-muted-foreground truncate mt-0.5">
                 {previewText}
               </p>
             )}
@@ -259,7 +259,7 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
         {isExpanded && (
           <div className="mt-4 ml-11">
             {/* Contact Info */}
-            <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
               <span className="flex items-center gap-1">
                 <Mail className="h-3.5 w-3.5" />
                 {reply.lead_email}
@@ -292,8 +292,8 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
 
             {/* Full Reply Text */}
             {reply.reply_text && (
-              <div className="bg-gray-50 rounded-lg p-4 mb-3 border border-gray-200">
-                <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">
+              <div className="bg-muted rounded-lg p-4 mb-3 border">
+                <p className="text-foreground text-sm leading-relaxed whitespace-pre-wrap">
                   {reply.reply_text}
                 </p>
               </div>
@@ -337,7 +337,7 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
                 )
               ) : replyState === 'replied' ? (
                 <>
-                  <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+                  <Badge variant="secondary" className="bg-muted text-muted-foreground">
                     <CheckCircle className="h-3 w-3 mr-1" />
                     Replied & Delivered
                   </Badge>

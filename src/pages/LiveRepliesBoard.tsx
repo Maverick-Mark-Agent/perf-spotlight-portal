@@ -7,19 +7,45 @@
 
 import { useLiveReplies, type LiveReply, getReplyState, getSentReply } from '@/hooks/useLiveReplies';
 import { useReplyWorkspaces } from '@/hooks/useRealtimeReplies';
+import { useAutoReplyQueue } from '@/hooks/useAutoReplyQueue';
 import { AIReplyComposer } from '@/components/shared/AIReplyComposer';
+import { AutoReplyReviewCard } from '@/components/shared/AutoReplyReviewCard';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame, RefreshCw, AlertCircle, Clock, Inbox } from 'lucide-react';
+import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame, RefreshCw, AlertCircle, Clock, Inbox, Bot, Eye } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, startOfDay } from 'date-fns';
 
 export default function LiveRepliesBoard() {
   const { replies, loading, error, newReplyCount, clearNewReplyCount, refreshReplies, patchReplyAfterSend } = useLiveReplies();
   const { workspaces } = useReplyWorkspaces();
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
+
+  // Auto-reply queue: shows items the audit gate flagged for human review,
+  // plus today's auto-sent items (for visibility into what fired automatically).
+  const {
+    rows: autoReplyRows,
+    patchRow: patchAutoReplyRow,
+    removeRow: removeAutoReplyRow,
+  } = useAutoReplyQueue({
+    statuses: ['review_required', 'auto_sent'],
+    workspaceName: selectedWorkspace,
+  });
+
+  const reviewRows = useMemo(
+    () => autoReplyRows.filter((r) => r.status === 'review_required'),
+    [autoReplyRows]
+  );
+
+  // Today's auto-sent count (workspace-filtered, day starts in viewer's local time).
+  const autoSentTodayCount = useMemo(() => {
+    const todayStart = startOfDay(new Date()).getTime();
+    return autoReplyRows.filter(
+      (r) => r.status === 'auto_sent' && new Date(r.updated_at).getTime() >= todayStart
+    ).length;
+  }, [autoReplyRows]);
 
   // Clear new reply count when user focuses window
   if (newReplyCount > 0 && document.hasFocus()) {
@@ -98,12 +124,24 @@ export default function LiveRepliesBoard() {
 
       {/* Stats + Filter */}
       <div className="max-w-6xl mx-auto px-6 py-4 space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard
             icon={<Inbox className="h-4 w-4" />}
             label="Need Response"
             value={stateCounts.needResponse}
             tone="blue"
+          />
+          <StatCard
+            icon={<Eye className="h-4 w-4" />}
+            label="Awaiting Review"
+            value={reviewRows.length}
+            tone="orange"
+          />
+          <StatCard
+            icon={<Bot className="h-4 w-4" />}
+            label="Auto-Sent Today"
+            value={autoSentTodayCount}
+            tone="purple"
           />
           <StatCard
             icon={<Clock className="h-4 w-4" />}
@@ -152,6 +190,36 @@ export default function LiveRepliesBoard() {
         </div>
       </div>
 
+      {/* Awaiting Review section — auto-reply drafts the audit gate flagged
+          for human approval. Sits above the main replies list because each
+          one is actively blocking an outbound send and deserves attention. */}
+      {reviewRows.length > 0 && (
+        <div className="max-w-6xl mx-auto px-6 pb-2">
+          <div className="flex items-center gap-2 mb-3 mt-2">
+            <Eye className="h-5 w-5 text-orange-600" />
+            <h2 className="text-lg font-semibold text-foreground">
+              Awaiting Review
+            </h2>
+            <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-200">
+              {reviewRows.length} draft{reviewRows.length === 1 ? '' : 's'}
+            </Badge>
+            <span className="text-xs text-muted-foreground ml-2">
+              Auto-reply drafts that need a human eye before sending
+            </span>
+          </div>
+          <div className="space-y-3">
+            {reviewRows.map((row) => (
+              <AutoReplyReviewCard
+                key={row.id}
+                row={row}
+                patchRow={patchAutoReplyRow}
+                removeRow={removeAutoReplyRow}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Messages List */}
       <div className="max-w-6xl mx-auto px-6 pb-6">
         {filteredReplies.length === 0 ? (
@@ -185,12 +253,14 @@ export default function LiveRepliesBoard() {
 
 // Tone colors map to the same scheme as the card border-l states so the dashboard
 // reads as a single visual language: blue=needs-action, yellow=pending,
-// green=verified, red=failed.
+// green=verified, red=failed, orange=awaiting human review, purple=AI auto-sent.
 const STAT_TONES = {
   blue: { ring: 'border-l-blue-500', text: 'text-blue-500' },
   yellow: { ring: 'border-l-yellow-500', text: 'text-yellow-500' },
   green: { ring: 'border-l-green-500', text: 'text-green-500' },
   red: { ring: 'border-l-red-500', text: 'text-red-500' },
+  orange: { ring: 'border-l-orange-500', text: 'text-orange-500' },
+  purple: { ring: 'border-l-purple-500', text: 'text-purple-500' },
 } as const;
 
 function StatCard({

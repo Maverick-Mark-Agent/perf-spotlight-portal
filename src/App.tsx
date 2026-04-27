@@ -32,6 +32,7 @@ import ClientProfile from "./pages/ClientProfile";
 import UserManagement from "./pages/UserManagement";
 import RepliesDashboard from "./pages/RepliesDashboard";
 import LiveRepliesBoard from "./pages/LiveRepliesBoard";
+import AutoReplySettingsPage from "./pages/AutoReplySettingsPage";
 import TasksPage from "./pages/TasksPage";
 
 // Error pages
@@ -213,6 +214,16 @@ const App = () => (
                   <AdminProtectedRoute>
                     <MainLayout>
                       <RepliesDashboard />
+                    </MainLayout>
+                  </AdminProtectedRoute>
+                }
+              />
+              <Route
+                path="/auto-reply-settings"
+                element={
+                  <AdminProtectedRoute>
+                    <MainLayout>
+                      <AutoReplySettingsPage />
                     </MainLayout>
                   </AdminProtectedRoute>
                 }

@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { enqueueAutoReplyIfEligible } from '../_shared/autoReplyEligibility.ts';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
@@ -769,6 +770,35 @@ async function handleLeadInterested(supabase, payload) {
   await routeToAllstateAPI(supabase, workspaceName, lead);
   // Route to generic external APIs (e.g., Agency Zoom, Zapier) if configured
   await routeToExternalAPI(supabase, workspaceName, lead, reply);
+  // Auto-reply enqueue (best-effort; never blocks webhook return).
+  // Eligibility: workspace must have auto_reply_enabled=TRUE and a timezone
+  // synced from Bison; reply must clear the per-workspace sentiment confidence
+  // bar; row scheduled into the workspace's Mon-Fri 7am-7pm local window.
+  // All skip paths log to auto_reply_skip_log for "why didn't this fire?" debugging.
+  try {
+    const bisonReplyKey = reply?.uuid || (reply?.id ? String(reply.id) : null);
+    if (bisonReplyKey) {
+      const { data: leadReplyRow } = await supabase
+        .from('lead_replies')
+        .select('id')
+        .eq('bison_reply_id', bisonReplyKey)
+        .maybeSingle();
+      if (leadReplyRow?.id) {
+        const outcome = await enqueueAutoReplyIfEligible({
+          supabase,
+          replyUuid: leadReplyRow.id,
+          workspaceName
+        });
+        if (outcome.enqueued) {
+          console.log(`🤖 Auto-reply enqueued for ${lead.email} (queue=${outcome.queueRowId}, scheduled_for=${outcome.scheduledFor.toISOString()})`);
+        } else {
+          console.log(`⏭️  Auto-reply skipped for ${lead.email}: ${outcome.reason}`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Auto-reply enqueue failed (non-fatal):', e);
+  }
   return {
     message: 'Interested lead recorded',
     lead_email: lead.email

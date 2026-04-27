@@ -240,15 +240,21 @@ serve(async (req) => {
 
 Your task: use the provided template as the foundation and make minor adjustments so the reply feels natural and personalized to the lead's most recent message and the broader conversation history.
 
-Rules:
-- Keep all template details intact (phone numbers, agent names, signatures, CC routing).
-- DO NOT add greetings like "Dear" or "Hi" at the start — the template already has the right opening.
+CRITICAL — ANTI-HALLUCINATION RULES (violating any of these is a failed reply):
+- NEVER invent or guess specific facts: addresses, phone numbers, dates of birth, agent names, dollar amounts, dates, or any personally identifiable information.
+- The ONLY facts you may state are: (a) facts present in the template after substitution, (b) facts in the lead's "On-file details" section, or (c) facts the lead themselves wrote in this thread.
+- If a {placeholder} comes through as "(not on file — please confirm)" or as the literal {placeholder} text, you MUST drop the entire surrounding sentence. Do NOT improvise a value, do NOT rephrase to fill the gap with invented content. Better to send a shorter, less specific reply than one with a fabricated detail.
+- NAME CONSISTENCY: If the lead signed their email with a different name than the database "first_name" (e.g. database says "James" but they signed "Mike"), address them by the name THEY SIGNED WITH. The signature is the truth; the database may be stale.
+- If you cannot construct a sentence without inventing a fact, omit the sentence and let the rest of the reply stand on its own.
+
+Style rules:
+- Keep all template details intact (phone numbers, agent names, signatures, CC routing) — but only if they came from the template, not invented.
+- DO NOT add greetings like "Dear" or "Hi" at the start — the template already has the right opening (or the natural rephrasing should preserve its tone).
 - DO NOT add a closing signature — the template already includes the signature.
 - Keep the same structure and key information from the template.
-- Make minor, natural adjustments only — do not rewrite the reply.
+- Make minor, natural adjustments only — do not rewrite the reply from scratch.
 - Make it sound like a human wrote it, not a robot.
 - Reference prior conversation context where natural; otherwise stay close to the template.
-- If the template contains "(not on file — please confirm)" or unfilled {placeholders}, gracefully omit those lines or naturally rephrase them as a question rather than leaving the literal sentinel/placeholder text in the output.
 - Output the reply email body only, with no preamble or explanation.`;
 
     const sections: string[] = [];
@@ -378,6 +384,18 @@ ${processedTemplate}
       }
     }
 
+    // Build a (placeholder_name → resolved_value) map for downstream auditing.
+    // Only includes keys that had a real value substituted — this is the
+    // "ground truth" the audit uses to distinguish legitimate personalization
+    // from invention. Key names are the original casing from the template.
+    const placeholderValues: Record<string, string> = {};
+    for (const key of resolvedPlaceholders) {
+      const v = placeholderMap[key.toLowerCase()];
+      if (v != null && String(v).trim() !== '') {
+        placeholderValues[key] = String(v);
+      }
+    }
+
     return new Response(JSON.stringify({
       success: true,
       generated_reply: generatedReply,
@@ -387,6 +405,7 @@ ${processedTemplate}
       thread_replies_included: priorReplies.length,
       placeholders_resolved: resolvedPlaceholders,
       placeholders_missing: missingPlaceholders,
+      placeholder_values: placeholderValues,
       custom_variables_count: customVariables?.length ?? 0,
     }), { status: 200, headers: corsHeaders });
 

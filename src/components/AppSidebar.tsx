@@ -14,6 +14,7 @@ import {
   UserCog,
   MessageCircle,
   CheckSquare,
+  Bot,
 } from "lucide-react";
 import {
   Sidebar,
@@ -56,6 +57,11 @@ const navigationItems = {
       title: "Live Replies",
       icon: MessageCircle,
       url: "/live-replies",
+    },
+    {
+      title: "Auto-Reply Settings",
+      icon: Bot,
+      url: "/auto-reply-settings",
     },
     {
       title: "Tasks",

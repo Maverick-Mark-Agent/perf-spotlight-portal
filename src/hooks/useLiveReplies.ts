@@ -87,6 +87,10 @@ export function useLiveReplies(): UseLiveRepliesReturn {
       }
       setError(null);
 
+      // Load replies from the last 14 days (index on reply_date makes this fast)
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 14);
+
       const { data, error: fetchError } = await supabase
         .from('lead_replies')
         .select(`
@@ -116,8 +120,9 @@ export function useLiveReplies(): UseLiveRepliesReturn {
             last_retry_at
           )
         `)
+        .gte('reply_date', cutoff.toISOString())
         .order('reply_date', { ascending: false })
-        .limit(1500);
+        .limit(5000);
 
       if (fetchError) throw fetchError;
 

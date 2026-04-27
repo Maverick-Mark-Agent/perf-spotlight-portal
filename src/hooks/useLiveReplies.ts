@@ -87,10 +87,6 @@ export function useLiveReplies(): UseLiveRepliesReturn {
       }
       setError(null);
 
-      // Fetch all replies from the last 90 days so every workspace is represented
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 90);
-
       const { data, error: fetchError } = await supabase
         .from('lead_replies')
         .select(`
@@ -120,9 +116,8 @@ export function useLiveReplies(): UseLiveRepliesReturn {
             last_retry_at
           )
         `)
-        .gte('reply_date', cutoff.toISOString())
         .order('reply_date', { ascending: false })
-        .limit(10000);
+        .limit(1500);
 
       if (fetchError) throw fetchError;
 

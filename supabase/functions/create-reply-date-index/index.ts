@@ -1,22 +1,37 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
 
 serve(async () => {
-  const dbUrl = Deno.env.get('SUPABASE_DB_URL');
-  
-  if (!dbUrl) {
-    return new Response(JSON.stringify({ error: 'No SUPABASE_DB_URL' }), { status: 500 });
-  }
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
 
-  // Use postgres directly via pg driver
-  const { Client } = await import('https://deno.land/x/postgres@v0.17.0/mod.ts');
-  const client = new Client(dbUrl);
-  
-  try {
-    await client.connect();
-    await client.queryObject('CREATE INDEX IF NOT EXISTS lead_replies_reply_date_idx ON lead_replies (reply_date DESC)');
-    await client.end();
-    return new Response(JSON.stringify({ success: true, message: 'Index created' }), { status: 200 });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
-  }
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+
+  // Test 1: is_interested = true only
+  const start1 = Date.now();
+  const { data: d1, error: e1 } = await supabase
+    .from('lead_replies')
+    .select('id')
+    .eq('is_interested', true)
+    .gte('reply_date', cutoff.toISOString())
+    .order('reply_date', { ascending: false })
+    .limit(5000);
+  const t1 = Date.now() - start1;
+
+  // Test 2: all rows, 7 days, minimal fields
+  const start2 = Date.now();
+  const { data: d2 } = await supabase
+    .from('lead_replies')
+    .select('id')
+    .gte('reply_date', cutoff.toISOString())
+    .limit(5000);
+  const t2 = Date.now() - start2;
+
+  return new Response(JSON.stringify({ 
+    interested_count: d1?.length, interested_ms: t1, interested_error: e1,
+    all_count: d2?.length, all_ms: t2,
+  }), { status: 200 });
 });

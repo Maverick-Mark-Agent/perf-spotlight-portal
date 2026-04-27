@@ -87,65 +87,61 @@ export function useLiveReplies(): UseLiveRepliesReturn {
       }
       setError(null);
 
-      // Load replies from the last 14 days (index on reply_date makes this fast)
+      // Load replies from the last 7 days — two separate fast queries then merged in JS
       const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 14);
+      cutoff.setDate(cutoff.getDate() - 7);
 
-      const { data, error: fetchError } = await supabase
-        .from('lead_replies')
-        .select(`
-          id,
-          workspace_name,
-          lead_email,
-          first_name,
-          last_name,
-          company,
-          title,
-          phone,
-          reply_text,
-          reply_date,
-          sentiment,
-          is_interested,
-          bison_conversation_url,
-          bison_reply_numeric_id,
-          created_at,
-          sent_replies (
+      const [{ data, error: fetchError }, { data: sentRepliesRaw }, { data: conversationStats }] = await Promise.all([
+        supabase
+          .from('lead_replies')
+          .select(`
             id,
-            sent_at,
-            status,
-            sent_by,
-            verified_at,
-            error_message,
-            retry_count,
-            last_retry_at
-          )
-        `)
-        .gte('reply_date', cutoff.toISOString())
-        .order('reply_date', { ascending: false })
-        .limit(5000);
+            workspace_name,
+            lead_email,
+            first_name,
+            last_name,
+            company,
+            title,
+            phone,
+            reply_text,
+            reply_date,
+            sentiment,
+            is_interested,
+            bison_conversation_url,
+            bison_reply_numeric_id,
+            created_at
+          `)
+          .eq('is_interested', true)
+          .gte('reply_date', cutoff.toISOString())
+          .order('reply_date', { ascending: false })
+          .limit(5000),
+        supabase
+          .from('sent_replies')
+          .select('id, reply_uuid, sent_at, status, sent_by') as any,
+        supabase
+          .from('lead_conversation_stats')
+          .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status') as any,
+      ]);
 
       if (fetchError) throw fetchError;
 
-      // Fetch conversation stats separately from the view
-      const { data: conversationStats } = await supabase
-        .from('lead_conversation_stats')
-        .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status');
+      // Build lookup maps
+      const sentRepliesMap = new Map<string, SentReplyRow>();
+      ((sentRepliesRaw as any[]) || []).forEach((sr: any) => {
+        if (sr.reply_uuid) sentRepliesMap.set(sr.reply_uuid, sr as SentReplyRow);
+      });
 
-      // Create a lookup map for conversation stats
       const statsMap = new Map<string, any>();
-      if (conversationStats) {
-        conversationStats.forEach(stat => {
-          const key = `${stat.lead_email}|${stat.workspace_name}`;
-          statsMap.set(key, stat);
-        });
-      }
+      ((conversationStats as any[]) || []).forEach((stat: any) => {
+        statsMap.set(`${stat.lead_email}|${stat.workspace_name}`, stat);
+      });
 
-      // Merge conversation stats into replies
-      const repliesWithConversation = (data || []).map(reply => {
-        const key = `${reply.lead_email}|${reply.workspace_name}`;
-        const stats = statsMap.get(key);
+      // Merge everything together
+      const repliesWithConversation: LiveReply[] = (data || []).map(reply => {
+        const stats = statsMap.get(`${reply.lead_email}|${reply.workspace_name}`);
         return {
-          ...reply,
+          ...(reply as any),
+          sent_replies: sentRepliesMap.get(reply.id) || undefined,
           conversation_reply_count: stats?.reply_count || 1,
           conversation_first_reply_date: stats?.first_reply_date || null,
           conversation_latest_reply_date: stats?.latest_reply_date || null,
@@ -154,22 +150,7 @@ export function useLiveReplies(): UseLiveRepliesReturn {
         };
       });
 
-      // Debug logging for reply tracking
       console.log('🔍 useLiveReplies - Fetched', repliesWithConversation.length, 'leads');
-      const repliedLeads = repliesWithConversation.filter(lead => lead.sent_replies);
-      console.log('🔍 useLiveReplies - Leads with sent_replies:', repliedLeads.length);
-      if (repliedLeads.length > 0) {
-        console.log('🔍 First replied lead:', {
-          email: repliedLeads[0].lead_email,
-          sent_replies: repliedLeads[0].sent_replies,
-          isArray: Array.isArray(repliedLeads[0].sent_replies),
-          type: typeof repliedLeads[0].sent_replies
-        });
-      }
-
-      // Log conversation data
-      const conversationLeads = repliesWithConversation.filter(lead => (lead.conversation_reply_count || 0) > 1);
-      console.log('🔍 useLiveReplies - Leads in conversation:', conversationLeads.length);
 
       setReplies(repliesWithConversation);
       hasLoadedOnceRef.current = true;

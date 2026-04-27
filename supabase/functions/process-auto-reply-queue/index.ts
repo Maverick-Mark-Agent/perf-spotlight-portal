@@ -268,18 +268,18 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
 
   const audit = auditRes.data.audit;
 
-  // Apply per-workspace threshold override on top of the LLM's recommendation.
-  // The LLM uses a default of 90, but the workspace may have a different bar.
-  let finalVerdict: 'auto_send' | 'review' | 'reject' = audit.verdict;
+  // Verdict mapping — only two outcomes from audit:
+  //   - auto_send  : audit cleared the draft (score >= threshold AND no high-severity issues)
+  //   - review     : ANY audit concern lands in the human review queue, regardless of score.
+  //                  Hallucinations, template deviations, low scores — all go to review.
+  //                  A human looking at the dashboard chooses to approve, edit, or reject.
+  //
+  // 'failed' status is reserved exclusively for OPERATIONAL failures (Bison send error,
+  // generation error, audit service unavailable). Draft-quality concerns are NEVER 'failed'.
+  let finalVerdict: 'auto_send' | 'review' = 'review';
   const hasHighSeverity = (audit.issues || []).some((i) => i.severity === 'high');
-  if (hasHighSeverity && finalVerdict === 'auto_send') {
-    finalVerdict = 'review';
-  } else if (audit.score >= auditThreshold && !hasHighSeverity) {
+  if (audit.score >= auditThreshold && !hasHighSeverity) {
     finalVerdict = 'auto_send';
-  } else if (audit.score >= 65) {
-    finalVerdict = finalVerdict === 'reject' ? 'reject' : 'review';
-  } else {
-    finalVerdict = 'reject';
   }
 
   // Persist the audit result regardless of branch.
@@ -337,37 +337,26 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
     return;
   }
 
-  if (finalVerdict === 'review') {
-    await supabase.from('auto_reply_queue').update({
-      ...baseUpdate,
-      status: 'review_required',
-    }).eq('id', queueId);
-
-    await sendAutoReplyEscalation({
-      workspace: workspaceName,
-      leadName,
-      leadEmail: reply.lead_email,
-      auditScore: audit.score,
-      auditThreshold,
-      auditReasoning: audit.reasoning,
-      auditIssues: audit.issues,
-      queueRowId: queueId,
-      dashboardUrl: DASHBOARD_BASE_URL ? `${DASHBOARD_BASE_URL}/live-replies?review=${queueId}` : undefined,
-    });
-
-    stats.review_required++;
-    stats.details.push({ queueId, status: 'review_required', score: audit.score });
-    return;
-  }
-
-  // verdict === 'reject'
+  // finalVerdict === 'review' (only remaining branch)
   await supabase.from('auto_reply_queue').update({
     ...baseUpdate,
-    status: 'failed',
-    error_message: `audit rejected (score=${audit.score}): ${audit.reasoning}`,
+    status: 'review_required',
   }).eq('id', queueId);
-  stats.failed++;
-  stats.details.push({ queueId, status: 'failed', reason: 'audit_rejected', score: audit.score });
+
+  await sendAutoReplyEscalation({
+    workspace: workspaceName,
+    leadName,
+    leadEmail: reply.lead_email,
+    auditScore: audit.score,
+    auditThreshold,
+    auditReasoning: audit.reasoning,
+    auditIssues: audit.issues,
+    queueRowId: queueId,
+    dashboardUrl: DASHBOARD_BASE_URL ? `${DASHBOARD_BASE_URL}/live-replies?review=${queueId}` : undefined,
+  });
+
+  stats.review_required++;
+  stats.details.push({ queueId, status: 'review_required', score: audit.score });
 }
 
 serve(async (req) => {

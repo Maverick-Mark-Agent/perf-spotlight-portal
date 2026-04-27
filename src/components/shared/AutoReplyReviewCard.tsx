@@ -2,18 +2,22 @@
  * AutoReplyReviewCard
  *
  * Renders an auto_reply_queue row with status='review_required' so a human
- * can approve, edit, or reject the AI-drafted reply that the audit gate
+ * can approve, redraft, or reject the AI-drafted reply that the audit gate
  * sent for review.
  *
  * Approve & Send → calls send-reply-via-bison with the (possibly edited)
  *                  draft text. Same path as the manual composer; the queue
  *                  row gets stamped 'auto_sent' with the manual-approval
  *                  flag appended to audit_issues.
+ * Redraft        → reviewer types short feedback ("use the address Mike
+ *                  typed", "be less formal"); calls redraft-ai-reply which
+ *                  regenerates + re-audits + updates the row. Status stays
+ *                  review_required for human confirmation.
  * Reject         → marks the queue row 'cancelled'. No outbound send.
  *                  Lead remains in lead_replies for the manual triage path.
  */
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,6 +36,7 @@ import {
   ExternalLink,
   Clock,
   CheckCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { AutoReplyQueueRow } from '@/hooks/useAutoReplyQueue';
@@ -68,7 +73,28 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
   const [draft, setDraft] = useState(row.generated_reply_text || '');
   const [isSending, setIsSending] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
+  // Redraft state — shows the feedback textarea + tracks the in-flight redraft.
+  const [redraftMode, setRedraftMode] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const [isRedrafting, setIsRedrafting] = useState(false);
   const { toast } = useToast();
+
+  // When the row updates from realtime/server (e.g. after a redraft lands),
+  // sync the local draft state. Without this, the user's stale `draft` would
+  // mask the new generated_reply_text the redraft produced. Only resync if
+  // the user hasn't started editing on top of the current row text.
+  useEffect(() => {
+    setDraft(row.generated_reply_text || '');
+  }, [row.id, row.generated_reply_text]);
+
+  // Count how many times this draft has been redrafted by counting
+  // manual_redraft entries in audit_issues. Surfaces as a badge so the
+  // reviewer can see this isn't the original AI output.
+  const redraftCount = useMemo(() => {
+    return (row.audit_issues || []).filter(
+      (i) => i?.type === 'manual_redraft',
+    ).length;
+  }, [row.audit_issues]);
 
   const wasEdited = draft !== (row.generated_reply_text || '');
   const tone = scoreTone(row.audit_score);
@@ -165,6 +191,69 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
     }
   };
 
+  const handleRedraft = async () => {
+    const trimmed = feedback.trim();
+    if (!trimmed) {
+      toast({
+        title: 'Feedback required',
+        description: 'Type a short instruction telling the AI what to change.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsRedrafting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({ title: 'Not signed in', variant: 'destructive' });
+        return;
+      }
+
+      const resp = await fetch(
+        'https://gjqbbgrfhijescaouqkx.supabase.co/functions/v1/redraft-ai-reply',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ queue_id: row.id, feedback: trimmed }),
+        }
+      );
+
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok || !body?.success) {
+        throw new Error(body?.detail || body?.error || `Redraft failed (${resp.status})`);
+      }
+
+      // Server returned the updated row — patch local state immediately so
+      // the UI reflects the new draft + score before realtime catches up.
+      if (body.queue_row) {
+        patchRow(row.id, body.queue_row as Partial<AutoReplyQueueRow>);
+      }
+
+      const oldScore = body.previous_score ?? '?';
+      const newScore = body.new_score ?? '?';
+      toast({
+        title: 'Redraft ready',
+        description: `Audit score: ${oldScore} → ${newScore}. Review the new draft and approve when ready.`,
+      });
+
+      setFeedback('');
+      setRedraftMode(false);
+    } catch (e: any) {
+      console.error('Redraft failed:', e);
+      toast({
+        title: 'Redraft failed',
+        description: e?.message || 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRedrafting(false);
+    }
+  };
+
   const handleReject = async () => {
     setIsRejecting(true);
     try {
@@ -240,6 +329,16 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
                 <Badge variant="outline" className={tone.color}>
                   Audit {tone.label}
                 </Badge>
+                {redraftCount > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="bg-purple-100 text-purple-800 border-purple-200 text-xs"
+                    title="Number of times this draft has been redrafted with reviewer feedback."
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Redrafted {redraftCount}x
+                  </Badge>
+                )}
                 <span className="text-xs text-blue-500 font-medium">{row.workspace_name}</span>
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <Clock className="h-3 w-3" />
@@ -309,7 +408,7 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
         )}
 
         {/* AI-drafted reply (editable) */}
-        <div>
+        <div className="relative">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
               <Sparkles className="h-3 w-3 text-purple-500" />
@@ -324,13 +423,77 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
             onChange={(e) => setDraft(e.target.value)}
             className="min-h-[180px] font-sans text-sm"
             placeholder="AI-drafted reply…"
+            disabled={isRedrafting}
           />
+          {/* Spinner overlay while redraft is in flight */}
+          {isRedrafting && (
+            <div className="absolute inset-0 flex items-center justify-center bg-card/70 rounded-md mt-6">
+              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
+                <span className="text-xs font-medium">Regenerating with your feedback…</span>
+              </div>
+            </div>
+          )}
           {row.cc_emails && row.cc_emails.length > 0 && (
             <p className="text-xs text-muted-foreground mt-2">
               CC: {row.cc_emails.join(', ')}
             </p>
           )}
         </div>
+
+        {/* Redraft feedback panel — appears when reviewer clicks Redraft */}
+        {redraftMode && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-purple-800 uppercase tracking-wide flex items-center gap-1">
+                <RefreshCw className="h-3 w-3" />
+                Tell the AI what to change
+              </p>
+              <span className="text-xs text-muted-foreground">
+                {feedback.length}/2000
+              </span>
+            </div>
+            <Textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value.slice(0, 2000))}
+              className="min-h-[80px] font-sans text-sm bg-card"
+              placeholder='e.g. "use the address Mike actually typed in his email" or "shorten this to 2 sentences and drop the renewal date"'
+              disabled={isRedrafting}
+              autoFocus
+            />
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setRedraftMode(false);
+                  setFeedback('');
+                }}
+                disabled={isRedrafting}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleRedraft}
+                disabled={isRedrafting || !feedback.trim()}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                {isRedrafting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    Regenerating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-1" />
+                    Submit feedback
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Action buttons */}
         <div className="flex items-center justify-between pt-2 border-t border-border">
@@ -345,7 +508,7 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
               variant="ghost"
               size="sm"
               onClick={handleReject}
-              disabled={isSending || isRejecting}
+              disabled={isSending || isRejecting || isRedrafting}
             >
               {isRejecting ? (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
@@ -355,9 +518,19 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
               Reject
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRedraftMode((v) => !v)}
+              disabled={isSending || isRejecting || isRedrafting}
+              className="border-purple-300 text-purple-700 hover:bg-purple-50"
+            >
+              <RefreshCw className="h-4 w-4 mr-1" />
+              {redraftMode ? 'Hide feedback' : 'Redraft with feedback'}
+            </Button>
+            <Button
               size="sm"
               onClick={handleApproveAndSend}
-              disabled={isSending || isRejecting || !draft.trim()}
+              disabled={isSending || isRejecting || isRedrafting || !draft.trim()}
               className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
             >
               {isSending ? (

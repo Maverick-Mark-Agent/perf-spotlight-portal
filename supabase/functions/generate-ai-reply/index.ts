@@ -141,9 +141,22 @@ serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const requestData = await req.json();
-    const { reply_uuid, workspace_name, lead_name, lead_email, lead_phone, original_message, preview_mode = false } = requestData;
+    const {
+      reply_uuid,
+      workspace_name,
+      lead_name,
+      lead_email,
+      lead_phone,
+      original_message,
+      preview_mode = false,
+      // Optional redraft inputs — when both present, the prompt picks up a
+      // "Reviewer feedback" section and the model regenerates with feedback.
+      previous_draft,
+      feedback,
+    } = requestData;
+    const isRedraft = typeof feedback === 'string' && feedback.trim().length > 0;
 
-    console.log(`📧 Generating AI reply for ${workspace_name} - ${lead_name} (model=${REPLY_MODEL})`);
+    console.log(`📧 Generating AI reply for ${workspace_name} - ${lead_name} (model=${REPLY_MODEL}${isRedraft ? ', REDRAFT with feedback' : ''})`);
 
     if (!ANTHROPIC_API_KEY) {
       console.error('Missing ANTHROPIC_API_KEY');
@@ -327,6 +340,24 @@ ${historyLines}`);
 """
 ${processedTemplate}
 """`);
+
+    // Reviewer feedback (redraft path only) — appears AFTER all grounding
+    // context so the anti-hallucination rules above remain in effect.
+    if (isRedraft) {
+      const feedbackTrimmed = String(feedback).slice(0, 2000);
+      const previousTrimmed = String(previous_draft ?? '').slice(0, MAX_REPLY_CHARS);
+      sections.push(`## Reviewer feedback (this is a redraft)
+A previous draft was generated and reviewed by a human. They asked for it to be redone with this feedback:
+
+"${feedbackTrimmed}"
+
+Previous draft (for context — DO NOT just repeat it; address the feedback):
+"""
+${previousTrimmed}
+"""
+
+Generate a NEW reply that addresses the reviewer's feedback while still following all template, grounding, and anti-hallucination rules above. The reviewer's feedback supersedes the AI's prior choices on tone, phrasing, or content selection — but does NOT override the rule against fabricating facts. If the reviewer asks you to use information that isn't in the resolved facts, the original message, the conversation thread, or the lead's signature, refuse and stick to the grounded sources.`);
+    }
 
     sections.push(`Generate the reply email body now.`);
 

@@ -165,6 +165,7 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
     placeholders_resolved?: string[];
     placeholders_missing?: string[];
     placeholder_values?: Record<string, string>;
+    thread_history?: Array<{ reply_date?: string; reply_text?: string; sentiment?: string | null }>;
     error?: string;
   }>('generate-ai-reply', {
     reply_uuid: replyUuid,
@@ -215,6 +216,9 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
     // Authoritative ground truth — without this the auditor flags every
     // legitimately-substituted phone/address as a hallucination.
     placeholder_values: draft.placeholder_values ?? {},
+    // Prior turns so audit can verify facts (renewal dates, agent names) that
+    // surfaced earlier in the conversation rather than treating them as new claims.
+    thread_history: draft.thread_history ?? [],
     workspace_name: workspaceName,
   });
 

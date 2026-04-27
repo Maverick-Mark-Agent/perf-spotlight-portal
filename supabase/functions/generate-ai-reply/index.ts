@@ -396,6 +396,15 @@ ${processedTemplate}
       }
     }
 
+    // Compact thread snapshot — same data the drafter used, returned so the
+    // auditor can verify draft facts against earlier turns (e.g. renewal
+    // dates that came up in prior agent outreach which the lead's reply quoted).
+    const threadHistory = priorReplies.map((r: any) => ({
+      reply_date: r.reply_date,
+      reply_text: r.reply_text || '',
+      sentiment: r.sentiment ?? null,
+    }));
+
     return new Response(JSON.stringify({
       success: true,
       generated_reply: generatedReply,
@@ -403,6 +412,7 @@ ${processedTemplate}
       template_used: hasPhone ? 'with_phone' : 'no_phone',
       model_used: REPLY_MODEL,
       thread_replies_included: priorReplies.length,
+      thread_history: threadHistory,
       placeholders_resolved: resolvedPlaceholders,
       placeholders_missing: missingPlaceholders,
       placeholder_values: placeholderValues,

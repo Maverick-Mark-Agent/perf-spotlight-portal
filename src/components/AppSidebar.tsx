@@ -15,6 +15,7 @@ import {
   MessageCircle,
   CheckSquare,
   Bot,
+  TrendingUp,
 } from "lucide-react";
 import {
   Sidebar,
@@ -62,6 +63,11 @@ const navigationItems = {
       title: "Auto-Reply Settings",
       icon: Bot,
       url: "/auto-reply-settings",
+    },
+    {
+      title: "Auto-Reply Analytics",
+      icon: TrendingUp,
+      url: "/auto-reply-analytics",
     },
     {
       title: "Tasks",

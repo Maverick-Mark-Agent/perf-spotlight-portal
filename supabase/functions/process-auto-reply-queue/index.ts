@@ -34,7 +34,13 @@ const INTERNAL_FUNCTION_AUTH =
 // https://dashboard.maverick-ins.com once the link target is finalized.
 const DASHBOARD_BASE_URL = Deno.env.get('DASHBOARD_BASE_URL') || '';
 
-const MAX_ROWS_PER_RUN = 20;
+// Each row takes ~10-30s end-to-end (generate + audit + maybe send).
+// Supabase Edge Functions have a 150s idle timeout. Sequential processing
+// of 20 rows blew through that earlier; parallel processing with a
+// CONCURRENCY cap keeps everything in flight without overwhelming the
+// upstream APIs (Anthropic + Bison).
+const MAX_ROWS_PER_RUN = 16;
+const CONCURRENCY = 4;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -408,23 +414,35 @@ serve(async (req) => {
     });
   }
 
-  // Process sequentially to respect rate limits and to keep Bison API
-  // pressure reasonable. Concurrency is achieved by multiple cron
-  // invocations, not by parallel processing within a single run.
-  for (const row of dueRows) {
-    try {
-      await processRow(supabase, row, stats);
-    } catch (e: any) {
-      console.error(`Error processing queue row ${row.id}:`, e);
-      stats.errors++;
-      stats.details.push({ queueId: row.id, status: 'error', reason: e?.message || 'unknown' });
-      // Best-effort mark as failed so it doesn't get re-claimed forever.
-      await supabase.from('auto_reply_queue').update({
-        status: 'failed',
-        error_message: `worker exception: ${e?.message || 'unknown'}`,
-      }).eq('id', row.id);
+  // Process up to CONCURRENCY rows in parallel via a shared queue. Each
+  // "lane" pulls the next pending row, processes it, and loops until the
+  // queue is empty. Per-workspace rate limiting still works because
+  // processRow checks the limit at claim time. Bison API pressure stays
+  // bounded because CONCURRENCY caps simultaneous Bison calls.
+  const work = [...dueRows];
+  async function laneWorker(): Promise<void> {
+    while (work.length > 0) {
+      const row = work.shift();
+      if (!row) return;
+      try {
+        await processRow(supabase, row, stats);
+      } catch (e: any) {
+        console.error(`Error processing queue row ${row.id}:`, e);
+        stats.errors++;
+        stats.details.push({ queueId: row.id, status: 'error', reason: e?.message || 'unknown' });
+        // Best-effort mark as failed so it doesn't get re-claimed forever.
+        await supabase.from('auto_reply_queue').update({
+          status: 'failed',
+          error_message: `worker exception: ${e?.message || 'unknown'}`,
+        }).eq('id', row.id);
+      }
     }
   }
+  const lanes = Array.from(
+    { length: Math.min(CONCURRENCY, dueRows.length) },
+    () => laneWorker(),
+  );
+  await Promise.all(lanes);
 
   console.log(
     `✅ Auto-reply worker run: candidates=${stats.candidates} claimed=${stats.claimed} ` +

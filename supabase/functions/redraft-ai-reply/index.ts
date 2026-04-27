@@ -233,6 +233,9 @@ serve(async (req) => {
     const newIssues = [...(audit.issues ?? []), trailEntry];
 
     // 7. Persist. Status STAYS review_required so the human still confirms.
+    // Clear the cached suggested_feedback — this draft is new, so the old
+    // suggestion (which targeted the previous draft) is stale. A fresh
+    // suggestion will be generated lazily on the next card view.
     const { data: updatedRow, error: updErr } = await supabase
       .from('auto_reply_queue')
       .update({
@@ -245,10 +248,11 @@ serve(async (req) => {
         generation_model: draft.model_used,
         status: 'review_required',
         error_message: null,
+        suggested_feedback: null,
       })
       .eq('id', queueId)
       .select(
-        'id, reply_uuid, workspace_name, status, scheduled_for, attempts, last_attempt_at, generated_reply_text, cc_emails, audit_score, audit_verdict, audit_reasoning, audit_issues, audit_model, generation_model, sent_reply_id, error_message, created_at, updated_at',
+        'id, reply_uuid, workspace_name, status, scheduled_for, attempts, last_attempt_at, generated_reply_text, cc_emails, audit_score, audit_verdict, audit_reasoning, audit_issues, audit_model, generation_model, sent_reply_id, error_message, created_at, updated_at, suggested_feedback',
       )
       .maybeSingle();
 

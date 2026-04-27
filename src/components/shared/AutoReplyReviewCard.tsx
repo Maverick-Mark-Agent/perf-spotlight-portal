@@ -96,6 +96,59 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
     ).length;
   }, [row.audit_issues]);
 
+  // Lazy-fetch a redraft suggestion the FIRST time this card is mounted
+  // for a row that doesn't have one cached yet. Once fetched, the value
+  // is stored on the queue row (server-side) so subsequent views reuse it.
+  // The realtime subscription on auto_reply_queue will surface the cached
+  // value via patchRow (or natural row refresh) on next render.
+  useEffect(() => {
+    if (row.status !== 'review_required') return;
+    if (row.suggested_feedback && row.suggested_feedback.trim().length > 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const resp = await fetch(
+          'https://gjqbbgrfhijescaouqkx.supabase.co/functions/v1/suggest-redraft-feedback',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ queue_id: row.id }),
+          }
+        );
+        const body = await resp.json().catch(() => ({}));
+        if (cancelled) return;
+        if (resp.ok && body?.success && body?.suggestion) {
+          // Patch the row locally so the next "Redraft" click pre-fills
+          // the textarea without waiting for a realtime tick.
+          patchRow(row.id, { suggested_feedback: body.suggestion } as Partial<AutoReplyQueueRow>);
+        }
+      } catch (e) {
+        console.warn('Failed to fetch redraft suggestion:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  // Only fetch on first mount per row id; deliberately not depending on
+  // the suggested_feedback value to avoid loops if the persist races.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row.id, row.status]);
+
+  // When the reviewer opens the redraft panel, pre-fill the textarea with
+  // the AI's suggestion (if available and the textarea is empty). Reviewer
+  // can edit, submit as-is, or replace.
+  useEffect(() => {
+    if (redraftMode && !feedback && row.suggested_feedback) {
+      setFeedback(row.suggested_feedback);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [redraftMode, row.suggested_feedback]);
+
   const wasEdited = draft !== (row.generated_reply_text || '');
   const tone = scoreTone(row.audit_score);
 
@@ -447,12 +500,19 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-purple-800 uppercase tracking-wide flex items-center gap-1">
                 <RefreshCw className="h-3 w-3" />
-                Tell the AI what to change
+                {feedback === row.suggested_feedback && row.suggested_feedback
+                  ? 'AI-suggested fix (editable)'
+                  : 'Tell the AI what to change'}
               </p>
               <span className="text-xs text-muted-foreground">
                 {feedback.length}/2000
               </span>
             </div>
+            {feedback === row.suggested_feedback && row.suggested_feedback && (
+              <p className="text-xs text-purple-700 italic">
+                ✨ Pre-filled based on the audit's reasoning. Submit as-is, or edit / replace.
+              </p>
+            )}
             <Textarea
               value={feedback}
               onChange={(e) => setFeedback(e.target.value.slice(0, 2000))}

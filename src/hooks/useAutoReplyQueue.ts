@@ -56,6 +56,10 @@ export interface AutoReplyQueueRow {
 
   sent_reply_id: number | null;
   error_message: string | null;
+  // AI-generated actionable redraft suggestion. Pre-fills the redraft
+  // textarea so reviewers can one-click submit instead of typing feedback.
+  // null until first generated; cleared when a redraft replaces the draft.
+  suggested_feedback: string | null;
   created_at: string;
   updated_at: string;
 
@@ -119,6 +123,7 @@ export function useAutoReplyQueue(opts: UseAutoReplyQueueOptions = {}): UseAutoR
           generation_model,
           sent_reply_id,
           error_message,
+          suggested_feedback,
           created_at,
           updated_at,
           lead:lead_replies!auto_reply_queue_reply_uuid_fkey (

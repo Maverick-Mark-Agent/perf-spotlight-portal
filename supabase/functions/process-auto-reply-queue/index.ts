@@ -22,6 +22,14 @@ import { sendAutoReplyEscalation } from '../_shared/slackNotifications.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+// Inter-function auth — Supabase Edge Function gateway requires JWT-format
+// keys when verify_jwt=true. The auto-injected SUPABASE_SERVICE_ROLE_KEY can
+// be a non-JWT (sb_secret_*) format on projects migrated to the new key
+// system, which fails JWT verification when passed Bearer-style to another
+// function. We keep an explicit JWT-format key here under our own control so
+// inter-function calls don't depend on whatever Supabase auto-injects.
+const INTERNAL_FUNCTION_AUTH =
+  Deno.env.get('INTERNAL_FUNCTION_AUTH') || SUPABASE_SERVICE_ROLE_KEY;
 // Optional dashboard origin for the Slack deep-link. Set to e.g.
 // https://dashboard.maverick-ins.com once the link target is finalized.
 const DASHBOARD_BASE_URL = Deno.env.get('DASHBOARD_BASE_URL') || '';
@@ -51,7 +59,9 @@ async function callEdgeFunction<T = unknown>(name: string, body: unknown): Promi
     const r = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        // Use the JWT-format internal auth, NOT the auto-injected service role
+        // key (which can be sb_secret_* on this project and fails verify_jwt).
+        'Authorization': `Bearer ${INTERNAL_FUNCTION_AUTH}`,
         'Content-Type': 'application/json',
         'x-triggered-by': 'auto-reply-worker',
       },

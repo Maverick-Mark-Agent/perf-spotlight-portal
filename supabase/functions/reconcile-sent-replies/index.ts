@@ -36,7 +36,7 @@ const MIN_AGE_SECONDS = 30;
 // Don't try to reconcile rows older than this — leave very old rows alone
 // (they likely won't be findable anyway, and historical pre-deploy rows
 // were already legacy-stamped).
-const MAX_AGE_HOURS = 6;
+const MAX_AGE_HOURS = 24 * 7; // 7 days
 // Per-cron-run cap so a backlog doesn't blow up Bison's rate limit.
 const MAX_ROWS_PER_RUN = 50;
 

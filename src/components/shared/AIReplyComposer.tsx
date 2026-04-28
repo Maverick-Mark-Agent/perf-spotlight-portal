@@ -158,41 +158,30 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, p
         throw new Error(errData.error || `Send failed (${response.status})`);
       }
 
+      const responseData = await response.json();
+      const verifiedAt = responseData.verified_at || new Date().toISOString();
+
       toast({
         title: 'Reply Sent!',
-        description: `Reply sent to ${leadName} with ${ccEmails.length} CC(s)`,
+        description: `Reply sent to ${leadName}${ccEmails.length > 0 ? ` with ${ccEmails.length} CC(s)` : ''}`,
       });
 
-      // 1. Optimistic local patch — flip the card to PENDING (yellow) immediately.
-      //    Status is 'sent' but verified_at is null, so getReplyState returns 'pending'.
-      //    This avoids any dependency on realtime delivery for the immediate transition.
+      // Optimistic patch — flip the card to REPLIED (green) immediately.
+      // The server stamps verified_at on success, so we use that value here.
       patchReplyAfterSend?.(reply.id, {
-        id: 0, // sentinel — real id comes in on the next refetch
-        sent_at: new Date().toISOString(),
+        id: 0,
+        sent_at: verifiedAt,
         status: 'sent',
         sent_by: null,
-        verified_at: null,
+        verified_at: verifiedAt,
         error_message: null,
         retry_count: 0,
         last_retry_at: null,
       });
 
       onClose();
-
-      // 2. Refresh now to pick up the canonical sent_replies row from the DB.
+      // Single background refresh to sync the canonical DB row.
       onReplySent?.();
-
-      // 3. Schedule additional refreshes at 5s, 15s, 30s, 60s. Bison's
-      //    manual_email_sent webhook usually arrives within ~10–30s and
-      //    stamps verified_at — the next refetch in this window will see
-      //    it and the card will flip to green REPLIED. If realtime is
-      //    delivering events, these refreshes are harmless duplicates.
-      //    If it isn't, this is the deterministic path to green.
-      [5_000, 15_000, 30_000, 60_000].forEach((ms) => {
-        setTimeout(() => {
-          onReplySent?.();
-        }, ms);
-      });
     } catch (error: any) {
       console.error('Error sending reply:', error);
       toast({

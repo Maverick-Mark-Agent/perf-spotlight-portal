@@ -441,8 +441,11 @@ serve(async (req)=>{
     const outboundReplyId = bisonData?.data?.reply?.id ?? null;
     const outboundReplyUuid = bisonData?.data?.reply?.uuid ?? null;
     console.log(`✅ Reply sent successfully via Email Bison (outbound reply id=${outboundReplyId}, uuid=${outboundReplyUuid})`);
-    // Step 7: Upsert sent_replies table with success
-    // Use upsert to create record if it doesn't exist
+    // Step 7: Upsert sent_replies table with success.
+    // Bison's 200 response means the email was accepted for delivery — stamp
+    // verified_at immediately so the card flips to REPLIED right away without
+    // waiting for the reconciler cron or the manual_email_sent webhook.
+    const verifiedAt = new Date().toISOString();
     const { error: upsertError } = await supabase.from('sent_replies').upsert({
       reply_uuid: reply_uuid,
       workspace_name: workspace_name,
@@ -451,7 +454,8 @@ serve(async (req)=>{
       generated_reply_text: generated_reply_text,
       cc_emails: cc_emails || [],
       status: 'sent',
-      sent_at: new Date().toISOString(),
+      sent_at: verifiedAt,
+      verified_at: verifiedAt,
       sent_by: null,
       bison_reply_id: bisonReplyId,
       bison_outbound_reply_id: outboundReplyId,
@@ -479,7 +483,8 @@ serve(async (req)=>{
     // Step 8: Return success response
     const response = {
       success: true,
-      bison_reply_id: bisonReplyId
+      bison_reply_id: bisonReplyId,
+      verified_at: verifiedAt
     };
     return new Response(JSON.stringify(response), {
       status: 200,

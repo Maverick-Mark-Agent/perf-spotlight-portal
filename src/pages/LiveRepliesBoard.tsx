@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame, RefreshCw, AlertCircle, Clock, Inbox, Bot, Eye, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useEffect, useMemo, useState } from 'react';
-import { formatDistanceToNow, startOfDay } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 
 export default function LiveRepliesBoard() {
   const { replies, loading, error, newReplyCount, clearNewReplyCount, refreshReplies, patchReplyAfterSend } = useLiveReplies();
@@ -31,6 +31,7 @@ export default function LiveRepliesBoard() {
     rows: autoReplyRows,
     patchRow: patchAutoReplyRow,
     removeRow: removeAutoReplyRow,
+    autoSentTodayCount,
   } = useAutoReplyQueue({
     statuses: ['review_required', 'auto_sent'],
     workspaceName: selectedWorkspace,
@@ -40,14 +41,6 @@ export default function LiveRepliesBoard() {
     () => autoReplyRows.filter((r) => r.status === 'review_required'),
     [autoReplyRows]
   );
-
-  // Today's auto-sent count (workspace-filtered, day starts in viewer's local time).
-  const autoSentTodayCount = useMemo(() => {
-    const todayStart = startOfDay(new Date()).getTime();
-    return autoReplyRows.filter(
-      (r) => r.status === 'auto_sent' && new Date(r.updated_at).getTime() >= todayStart
-    ).length;
-  }, [autoReplyRows]);
 
   // Clear new reply count when user focuses the window
   useEffect(() => {

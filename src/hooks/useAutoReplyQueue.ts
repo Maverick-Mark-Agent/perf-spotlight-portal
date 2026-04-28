@@ -85,6 +85,9 @@ interface UseAutoReplyQueueReturn {
   // is clicked, without waiting for realtime.
   patchRow: (id: string, patch: Partial<AutoReplyQueueRow>) => void;
   removeRow: (id: string) => void;
+  // Count of auto_sent rows updated today (NOT filtered by verification — includes
+  // rows already removed from `rows` because the lead has a verified sent_replies row).
+  autoSentTodayCount: number;
 }
 
 const DEFAULT_STATUSES: AutoReplyQueueStatus[] = ['review_required', 'auto_sent'];
@@ -93,6 +96,7 @@ export function useAutoReplyQueue(opts: UseAutoReplyQueueOptions = {}): UseAutoR
   const { statuses = DEFAULT_STATUSES, workspaceName = null, limit = 200 } = opts;
 
   const [rows, setRows] = useState<AutoReplyQueueRow[]>([]);
+  const [autoSentTodayCount, setAutoSentTodayCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const fetchRef = useRef<() => void>(() => {});
@@ -178,6 +182,14 @@ export function useAutoReplyQueue(opts: UseAutoReplyQueueOptions = {}): UseAutoR
           lead: Array.isArray(r.lead) ? r.lead[0] ?? null : r.lead ?? null,
         }));
 
+      // Auto-sent today: count from raw (unfiltered) data using local midnight
+      // so the counter reflects the viewer's timezone, not UTC day boundary.
+      const todayStartMs = new Date().setHours(0, 0, 0, 0);
+      const rawAutoSentToday = (data || []).filter(
+        (r: any) => r.status === 'auto_sent' && new Date(r.updated_at).getTime() >= todayStartMs
+      ).length;
+      setAutoSentTodayCount(rawAutoSentToday);
+
       setRows(normalized);
       hasLoadedOnceRef.current = true;
     } catch (err) {
@@ -228,5 +240,5 @@ export function useAutoReplyQueue(opts: UseAutoReplyQueueOptions = {}): UseAutoR
     setRows((current) => current.filter((r) => r.id !== id));
   }, []);
 
-  return { rows, loading, error, refresh: fetch, patchRow, removeRow };
+  return { rows, loading, error, refresh: fetch, patchRow, removeRow, autoSentTodayCount };
 }

@@ -230,56 +230,92 @@ serve(async (req)=>{
     }
     console.log(`📨 Bison Reply ID (numeric): ${bisonReplyId}`);
     // Step 3.5: Get sender email account ID
-    // Priority: 1) explicit param, 2) original_sender_email_id from reply record, 3) Bison API lookup, 4) most recent from workspace
+    // Priority: 1) explicit param, 2) original_sender_email_id from reply record, 3) Bison API reply lookup, 4) live connected sender from workspace
     let senderEmailIdToUse = sender_email_id || replyData.original_sender_email_id || null;
     if (senderEmailIdToUse) {
-      console.log(`✅ Using original sender email ID from reply record: ${senderEmailIdToUse}`);
+      console.log(`✅ Candidate sender email ID: ${senderEmailIdToUse} — will validate below`);
     }
+
+    // Helper: fetch a live connected sender for this workspace from Bison
+    async function fetchLiveConnectedSender(): Promise<number | null> {
+      try {
+        const resp = await fetch(`${baseUrl}/sender-emails?per_page=50`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${apiKeyToUse}`, 'Accept': 'application/json' }
+        });
+        if (!resp.ok) return null;
+        const body = await resp.json();
+        const senders: any[] = body?.data || [];
+        const connected = senders.find((s: any) => s.status === 'Connected');
+        if (connected) {
+          console.log(`✅ Found live connected sender: id=${connected.id} email=${connected.email}`);
+          return connected.id;
+        }
+        return null;
+      } catch (e) {
+        console.warn(`⚠️ Failed to fetch live senders:`, e);
+        return null;
+      }
+    }
+
+    // If we have a candidate ID, validate it is still connected in Bison
+    if (senderEmailIdToUse) {
+      try {
+        const checkResp = await fetch(`${baseUrl}/sender-emails/${senderEmailIdToUse}`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${apiKeyToUse}`, 'Accept': 'application/json' }
+        });
+        if (checkResp.ok) {
+          const checkBody = await checkResp.json();
+          const status = checkBody?.data?.status;
+          if (status !== 'Connected') {
+            console.warn(`⚠️ Sender ${senderEmailIdToUse} is not Connected (status=${status}) — finding a live one`);
+            senderEmailIdToUse = await fetchLiveConnectedSender();
+          } else {
+            console.log(`✅ Sender ${senderEmailIdToUse} is Connected`);
+          }
+        } else {
+          console.warn(`⚠️ Sender ${senderEmailIdToUse} not found (${checkResp.status}) — finding a live one`);
+          senderEmailIdToUse = await fetchLiveConnectedSender();
+        }
+      } catch (e) {
+        console.warn(`⚠️ Could not validate sender ID, proceeding anyway:`, e);
+      }
+    }
+
+    // No candidate at all — look up from Bison reply record first, then live senders
     if (!senderEmailIdToUse) {
-      console.log(`⚠️ No original_sender_email_id on reply, fetching from Bison API for reply ${bisonReplyId}...`);
+      console.log(`⚠️ No sender ID — fetching from Bison reply ${bisonReplyId}...`);
       try {
         const replyDetailResponse = await fetch(`${baseUrl}/replies/${bisonReplyId}`, {
           method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${apiKeyToUse}`,
-            'Accept': 'application/json'
-          }
+          headers: { 'Authorization': `Bearer ${apiKeyToUse}`, 'Accept': 'application/json' }
         });
         if (replyDetailResponse.ok) {
           const replyDetail = await replyDetailResponse.json();
           const bisonSenderEmailId = replyDetail.data?.sender_email_id;
           if (bisonSenderEmailId) {
             senderEmailIdToUse = bisonSenderEmailId;
-            console.log(`✅ Got sender_email_id from Bison API: ${senderEmailIdToUse}`);
-            // Backfill original_sender_email_id so we don't need to look this up again
-            await supabase.from('lead_replies').update({
-              original_sender_email_id: senderEmailIdToUse
-            }).eq('id', reply_uuid);
-            console.log(`✅ Backfilled original_sender_email_id for reply ${reply_uuid}`);
+            console.log(`✅ Got sender_email_id from Bison reply: ${senderEmailIdToUse}`);
+            await supabase.from('lead_replies').update({ original_sender_email_id: senderEmailIdToUse }).eq('id', reply_uuid);
           }
-        } else {
-          console.warn(`⚠️ Bison API reply detail returned ${replyDetailResponse.status}`);
         }
       } catch (lookupError) {
         console.warn(`⚠️ Failed to fetch reply details from Bison:`, lookupError);
       }
     }
-    // Final fallback: find the most recent reply in this workspace that has a sender ID
+
+    // Last resort: pick any live connected sender from the workspace
     if (!senderEmailIdToUse) {
-      console.log(`🔍 No sender_email_id from Bison API — looking up most recent one for workspace: ${workspace_name}`);
-      const { data: recentReply } = await supabase.from('lead_replies').select('original_sender_email_id').eq('workspace_name', workspace_name).not('original_sender_email_id', 'is', null).order('reply_date', {
-        ascending: false
-      }).limit(1).maybeSingle();
-      if (recentReply?.original_sender_email_id) {
-        senderEmailIdToUse = recentReply.original_sender_email_id;
-        console.log(`✅ Using sender_email_id from recent reply in same workspace: ${senderEmailIdToUse}`);
-      }
+      console.log(`🔍 Still no sender — fetching live connected sender for workspace: ${workspace_name}`);
+      senderEmailIdToUse = await fetchLiveConnectedSender();
     }
+
     if (!senderEmailIdToUse) {
-      console.error('❌ No sender email available from any source');
+      console.error('❌ No connected sender email available for workspace:', workspace_name);
       return new Response(JSON.stringify({
         success: false,
-        error: `No sender email available for this reply. Could not determine the original sender email for workspace: ${workspace_name}.`
+        error: `No connected sender email found for workspace: ${workspace_name}. Please check that at least one email account is connected in Bison.`
       }), {
         status: 400,
         headers: corsHeaders

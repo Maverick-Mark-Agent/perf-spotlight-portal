@@ -358,9 +358,9 @@ serve(async (req) => {
       );
     }
 
-    // Build conversation URL
-    const conversationUrl = payload.event?.instance_url
-      ? `${payload.event.instance_url}/leads/${lead.id}`
+    // Build conversation URL using inbox format (same as universal-bison-webhook)
+    const conversationUrl = reply?.uuid
+      ? `https://send.maverickmarketingllc.com/inbox?reply_uuid=${reply.uuid}`
       : null;
 
     // Extract phone from custom variables if available
@@ -368,9 +368,49 @@ serve(async (req) => {
       v.name.toLowerCase().includes('phone')
     );
 
+    const workspaceName = (payload.event?.workspace_name || 'Unknown').trim();
+
+    // Upsert into lead_replies so this lead appears on the Live Replies Board
+    if (reply) {
+      const replyId = reply.uuid || reply.id?.toString() || null;
+      const { error: replyUpsertError } = await supabase
+        .from('lead_replies')
+        .upsert({
+          workspace_name: workspaceName,
+          lead_email: lead.email,
+          first_name: lead.first_name || '',
+          last_name: lead.last_name || '',
+          company: lead.company || null,
+          title: lead.title || null,
+          phone: phoneVariable?.value || null,
+          reply_text: null,
+          reply_date: reply.date_received || new Date().toISOString(),
+          sentiment: 'positive',
+          is_interested: true,
+          confidence_score: 100,
+          ai_reasoning: 'Bison lead_interested event',
+          sentiment_source: 'bison',
+          bison_lead_id: lead.id?.toString() || null,
+          bison_reply_id: replyId,
+          bison_reply_numeric_id: reply.id || null,
+          bison_conversation_url: conversationUrl,
+          bison_workspace_id: payload.event?.workspace_id || null,
+          is_handled: false,
+        }, {
+          onConflict: 'bison_reply_id',
+          ignoreDuplicates: false,
+        });
+
+      if (replyUpsertError) {
+        console.error('❌ Error upserting to lead_replies:', replyUpsertError);
+      } else {
+        console.log(`⭐ lead_replies upserted for ${workspaceName}: ${lead.email}`);
+      }
+    }
+
     // Extract lead data
     const leadData = {
-      workspace_name: payload.event?.workspace_name || 'Unknown',
+      workspace_name: workspaceName,
       first_name: lead.first_name,
       last_name: lead.last_name,
       lead_email: lead.email,
@@ -379,18 +419,17 @@ serve(async (req) => {
       company: lead.company,
       custom_variables: lead.custom_variables,
       bison_conversation_url: conversationUrl,
-      pipeline_stage: 'interested', // LEAD_INTERESTED events go to Interested stage
-      date_received: reply?.date_received ?? new Date().toISOString(), // Fixed: use ?? instead of ||
-      lead_value: 0, // Default value
-      tags: null, // Will be populated if we add tag fetching later
-      interested: true, // Mark as interested
+      pipeline_stage: 'interested',
+      date_received: reply?.date_received ?? new Date().toISOString(),
+      lead_value: 0,
+      tags: null,
+      interested: true,
     };
 
     // Upsert lead to client_leads table
-    // Use email + workspace as unique identifier
     console.log('Checking for existing lead:', {
       email: leadData.lead_email,
-      workspace: leadData.workspace_name
+      workspace: workspaceName,
     });
 
     const { data: existingLead, error: checkError } = await supabase

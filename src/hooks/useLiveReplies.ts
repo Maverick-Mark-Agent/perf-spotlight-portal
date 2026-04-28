@@ -15,11 +15,22 @@ export interface SentReplyRow {
 
 export type ReplyState = 'none' | 'pending' | 'replied' | 'failed';
 
-export function getReplyState(reply: { sent_replies?: SentReplyRow | Array<SentReplyRow> }): ReplyState {
+export function getReplyState(reply: {
+  sent_replies?: SentReplyRow | Array<SentReplyRow>;
+  queue_status?: string | null;
+}): ReplyState {
   const sr = Array.isArray(reply.sent_replies)
     ? reply.sent_replies[0]
     : reply.sent_replies;
-  if (!sr) return 'none';
+  if (!sr) {
+    // No sent_replies row yet — but if an auto-reply queue row is active
+    // (pending/processing/review_required), treat as pending so the card
+    // doesn't show as NEW/uncontacted.
+    if (reply.queue_status && ['pending', 'processing', 'review_required'].includes(reply.queue_status)) {
+      return 'pending';
+    }
+    return 'none';
+  }
   if (sr.status === 'failed') return 'failed';
   if (sr.verified_at) return 'replied';
   return 'pending';
@@ -48,6 +59,9 @@ export interface LiveReply {
   created_at: string;
   // PostgREST returns object for one-to-one (UNIQUE constraint), array for one-to-many
   sent_replies?: SentReplyRow | Array<SentReplyRow>;
+  // Most recent auto_reply_queue status for this lead (if any), used to
+  // prevent showing a lead as NEW/uncontacted when a draft is in-flight.
+  queue_status?: string | null;
   // Conversation tracking fields (from view, optional for backward compatibility)
   conversation_reply_count?: number;
   conversation_first_reply_date?: string;
@@ -91,7 +105,7 @@ export function useLiveReplies(): UseLiveRepliesReturn {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 7);
 
-      const [{ data, error: fetchError }, { data: sentRepliesRaw }, { data: conversationStats }] = await Promise.all([
+      const [{ data, error: fetchError }, { data: sentRepliesRaw }, { data: conversationStats }, { data: queueRaw }] = await Promise.all([
         supabase
           .from('lead_replies')
           .select(`
@@ -121,6 +135,12 @@ export function useLiveReplies(): UseLiveRepliesReturn {
         supabase
           .from('lead_conversation_stats')
           .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status') as any,
+        // Fetch the most recent auto_reply_queue row per reply_uuid so we can
+        // suppress the NEW badge and treat in-flight drafts as "pending".
+        supabase
+          .from('auto_reply_queue')
+          .select('reply_uuid, status')
+          .in('status', ['pending', 'processing', 'review_required']) as any,
       ]);
 
       if (fetchError) throw fetchError;
@@ -136,12 +156,20 @@ export function useLiveReplies(): UseLiveRepliesReturn {
         statsMap.set(`${stat.lead_email}|${stat.workspace_name}`, stat);
       });
 
+      // Map reply_uuid → most urgent active queue status
+      // (pending > processing > review_required — all treated as in-flight)
+      const queueStatusMap = new Map<string, string>();
+      ((queueRaw as any[]) || []).forEach((q: any) => {
+        if (q.reply_uuid) queueStatusMap.set(q.reply_uuid, q.status);
+      });
+
       // Merge everything together
       const repliesWithConversation: LiveReply[] = (data || []).map(reply => {
         const stats = statsMap.get(`${reply.lead_email}|${reply.workspace_name}`);
         return {
           ...(reply as any),
           sent_replies: sentRepliesMap.get(reply.id) || undefined,
+          queue_status: queueStatusMap.get(reply.id) || null,
           conversation_reply_count: stats?.reply_count || 1,
           conversation_first_reply_date: stats?.first_reply_date || null,
           conversation_latest_reply_date: stats?.latest_reply_date || null,

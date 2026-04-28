@@ -8,6 +8,7 @@ import { AggregateMetricsCard } from "@/components/dashboard/AggregateMetricsCar
 import { UnifiedTopCards } from "@/components/dashboard/UnifiedTopCards";
 import { UnifiedClientCard } from "@/components/dashboard/UnifiedClientCard";
 import { DailyVolumeBanner } from "@/components/dashboard/DailyVolumeBanner";
+import { DailyRecapTable } from "@/components/dashboard/DailyRecapTable";
 import { KPIMonthPicker } from "@/components/dashboard/KPIMonthPicker";
 import { DailyReplyTrendChart } from "@/components/dashboard/DailyReplyTrendChart";
 import { ClientReplyBreakdownTable } from "@/components/dashboard/ClientReplyBreakdownTable";
@@ -413,6 +414,9 @@ const MonthlyKPIProgress = () => {
                   loading={volumeDashboard.loading}
                 />
               )}
+
+              {/* Daily Recap Table - Per-workspace performance for the previous day (yesterday by default) */}
+              {isCurrentMonth && <DailyRecapTable />}
 
               {/* Unified Top Cards - Combining KPI and Volume metrics */}
               <UnifiedTopCards

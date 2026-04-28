@@ -117,7 +117,7 @@ export function useLiveReplies(): UseLiveRepliesReturn {
           .limit(5000),
         supabase
           .from('sent_replies')
-          .select('id, reply_uuid, sent_at, status, sent_by') as any,
+          .select('id, reply_uuid, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at') as any,
         supabase
           .from('lead_conversation_stats')
           .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status') as any,
@@ -201,6 +201,11 @@ export function useLiveReplies(): UseLiveRepliesReturn {
             console.log('New reply received:', payload);
             const newReply = payload.new as LiveReply;
 
+            // Only show interested leads on this board.
+            // If the webhook hasn't flipped is_interested yet, skip — the
+            // subsequent UPDATE event (or a refetch) will add it then.
+            if (!newReply.is_interested) return;
+
             // Add to top of list
             setReplies((current) => [newReply, ...current]);
 
@@ -217,6 +222,30 @@ export function useLiveReplies(): UseLiveRepliesReturn {
                 body: `${leadName} from ${newReply.workspace_name}`,
                 icon: '/favicon.ico',
                 tag: newReply.id,
+              });
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'lead_replies',
+          },
+          (payload) => {
+            const updated = payload.new as LiveReply;
+            // When is_interested flips to true, add this lead to the board
+            // (the INSERT event may have been skipped since it wasn't interested yet).
+            if (updated.is_interested) {
+              setReplies((current) => {
+                const exists = current.some((r) => r.id === updated.id);
+                if (exists) {
+                  // Merge in updated fields (e.g. is_interested just flipped)
+                  return current.map((r) => r.id === updated.id ? { ...r, ...updated } : r);
+                }
+                // New to the board — insert at top
+                return [updated, ...current];
               });
             }
           }

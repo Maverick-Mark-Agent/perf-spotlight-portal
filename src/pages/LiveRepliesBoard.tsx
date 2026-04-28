@@ -408,6 +408,14 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
           </Badge>
         </div>
       )}
+      {replyState === 'none' && (
+        <div className="absolute top-3 right-3 z-10">
+          <Badge className="bg-blue-600 text-white border-blue-700 shadow-md px-3 py-1.5 text-xs font-semibold">
+            <Inbox className="h-3.5 w-3.5 mr-1.5" />
+            NEW
+          </Badge>
+        </div>
+      )}
       <div className="p-4">
         {/* Compact Header Row */}
         <div className="flex items-center gap-3">

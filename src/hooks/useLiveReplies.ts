@@ -80,7 +80,9 @@ interface UseLiveRepliesReturn {
   patchReplyAfterSend: (replyUuid: string, sentReply: SentReplyRow) => void;
 }
 
-export function useLiveReplies(): UseLiveRepliesReturn {
+// When a specific workspace is selected, load ALL their leads (no date cutoff)
+// so the full history is visible. Default view uses 7-day window for performance.
+export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesReturn {
   const [replies, setReplies] = useState<LiveReply[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,34 +103,44 @@ export function useLiveReplies(): UseLiveRepliesReturn {
       }
       setError(null);
 
-      // Load replies from the last 7 days — two separate fast queries then merged in JS
+      // When a specific workspace is selected, load ALL their leads (no date cutoff).
+      // Otherwise restrict to the last 7 days for performance across all workspaces.
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 7);
 
+      let leadQuery = supabase
+        .from('lead_replies')
+        .select(`
+          id,
+          workspace_name,
+          lead_email,
+          first_name,
+          last_name,
+          company,
+          title,
+          phone,
+          reply_text,
+          reply_date,
+          sentiment,
+          is_interested,
+          bison_conversation_url,
+          bison_reply_numeric_id,
+          created_at
+        `)
+        .eq('is_interested', true)
+        .order('reply_date', { ascending: false })
+        .limit(5000);
+
+      if (workspaceName) {
+        // Workspace selected — all-time leads for that workspace, no date filter
+        leadQuery = leadQuery.eq('workspace_name', workspaceName);
+      } else {
+        // Default — last 7 days across all workspaces
+        leadQuery = leadQuery.gte('reply_date', cutoff.toISOString());
+      }
+
       const [{ data, error: fetchError }, { data: sentRepliesRaw }, { data: conversationStats }, { data: queueRaw }] = await Promise.all([
-        supabase
-          .from('lead_replies')
-          .select(`
-            id,
-            workspace_name,
-            lead_email,
-            first_name,
-            last_name,
-            company,
-            title,
-            phone,
-            reply_text,
-            reply_date,
-            sentiment,
-            is_interested,
-            bison_conversation_url,
-            bison_reply_numeric_id,
-            created_at
-          `)
-          .eq('is_interested', true)
-          .gte('reply_date', cutoff.toISOString())
-          .order('reply_date', { ascending: false })
-          .limit(5000),
+        leadQuery,
         supabase
           .from('sent_replies')
           .select('id, reply_uuid, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at')
@@ -192,7 +204,10 @@ export function useLiveReplies(): UseLiveRepliesReturn {
     } finally {
       setLoading(false);
     }
-  }, []);
+  // Re-run when workspace changes — workspace switch needs a fresh full fetch
+  // (different date scope: all-time for a specific workspace, 7-day default).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceName]);
 
   // Optimistic patch: applied locally when the user clicks Send so the card
   // flips to PENDING immediately, without waiting for realtime or refetch.
@@ -210,8 +225,9 @@ export function useLiveReplies(): UseLiveRepliesReturn {
     fetchRepliesRef.current = fetchReplies;
   }, [fetchReplies]);
 
-  // Initial fetch
+  // Reset loaded flag and refetch when workspace changes (different date scope)
   useEffect(() => {
+    hasLoadedOnceRef.current = false;
     fetchReplies();
   }, [fetchReplies]);
 

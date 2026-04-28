@@ -20,10 +20,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function LiveRepliesBoard() {
-  const { replies, loading, error, newReplyCount, clearNewReplyCount, refreshReplies, patchReplyAfterSend } = useLiveReplies();
   const { workspaces } = useReplyWorkspaces();
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Pass selectedWorkspace so the hook loads all-time leads when a workspace
+  // is selected, instead of the default 7-day window.
+  const { replies, loading, error, newReplyCount, clearNewReplyCount, refreshReplies, patchReplyAfterSend } = useLiveReplies(selectedWorkspace);
 
   // Auto-reply queue: shows items the audit gate flagged for human review,
   // plus today's auto-sent items (for visibility into what fired automatically).
@@ -51,21 +54,18 @@ export default function LiveRepliesBoard() {
     return () => window.removeEventListener('focus', handleFocus);
   }, [newReplyCount, clearNewReplyCount]);
 
-  // Filter by workspace and/or search query.
+  // Filter by search query only — workspace filtering is done in the hook
+  // (when a workspace is selected, the hook fetches all-time leads for it).
   const filteredReplies = useMemo(() => {
-    let result = replies;
-    if (selectedWorkspace) result = result.filter((r) => r.workspace_name === selectedWorkspace);
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      result = result.filter((r) =>
-        r.lead_email.toLowerCase().includes(q) ||
-        (r.first_name || '').toLowerCase().includes(q) ||
-        (r.last_name || '').toLowerCase().includes(q) ||
-        (r.company || '').toLowerCase().includes(q)
-      );
-    }
-    return result;
-  }, [replies, selectedWorkspace, searchQuery]);
+    if (!searchQuery.trim()) return replies;
+    const q = searchQuery.trim().toLowerCase();
+    return replies.filter((r) =>
+      r.lead_email.toLowerCase().includes(q) ||
+      (r.first_name || '').toLowerCase().includes(q) ||
+      (r.last_name || '').toLowerCase().includes(q) ||
+      (r.company || '').toLowerCase().includes(q)
+    );
+  }, [replies, searchQuery]);
 
   // Triage-state counts driven off the same state machine as the cards.
   // - "needResponse": positive-sentiment replies with no send attempted yet,

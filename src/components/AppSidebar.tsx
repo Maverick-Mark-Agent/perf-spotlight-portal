@@ -15,7 +15,6 @@ import {
   MessageCircle,
   CheckSquare,
   Bot,
-  TrendingUp,
 } from "lucide-react";
 import {
   Sidebar,

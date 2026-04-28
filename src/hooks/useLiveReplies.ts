@@ -80,8 +80,10 @@ interface UseLiveRepliesReturn {
   patchReplyAfterSend: (replyUuid: string, sentReply: SentReplyRow) => void;
 }
 
-// When a specific workspace is selected, load ALL their leads (no date cutoff)
-// so the full history is visible. Default view uses 7-day window for performance.
+// "The Capteam Commercial" is small (6 leads total) so we always load their
+// full history regardless of date. All other workspaces use the 7-day window.
+const LIFETIME_WORKSPACES = new Set(['The Capteam Commercial']);
+
 export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesReturn {
   const [replies, setReplies] = useState<LiveReply[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,11 +133,11 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
         .order('reply_date', { ascending: false })
         .limit(5000);
 
-      if (workspaceName) {
-        // Workspace selected — all-time leads for that workspace, no date filter
+      if (workspaceName && LIFETIME_WORKSPACES.has(workspaceName)) {
+        // Lifetime workspace — load all-time leads, no date filter
         leadQuery = leadQuery.eq('workspace_name', workspaceName);
       } else {
-        // Default — last 7 days across all workspaces
+        // Default — last 7 days (workspace filter applied client-side in the board)
         leadQuery = leadQuery.gte('reply_date', cutoff.toISOString());
       }
 

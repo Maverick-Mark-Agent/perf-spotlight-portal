@@ -54,18 +54,24 @@ export default function LiveRepliesBoard() {
     return () => window.removeEventListener('focus', handleFocus);
   }, [newReplyCount, clearNewReplyCount]);
 
-  // Filter by search query only — workspace filtering is done in the hook
-  // (when a workspace is selected, the hook fetches all-time leads for it).
+  // Filter by workspace and/or search query.
+  // For lifetime workspaces the hook already fetched only their leads,
+  // so the workspace filter here is a no-op for those. For all others it
+  // filters the 7-day cross-workspace result down to the selected workspace.
   const filteredReplies = useMemo(() => {
-    if (!searchQuery.trim()) return replies;
-    const q = searchQuery.trim().toLowerCase();
-    return replies.filter((r) =>
-      r.lead_email.toLowerCase().includes(q) ||
-      (r.first_name || '').toLowerCase().includes(q) ||
-      (r.last_name || '').toLowerCase().includes(q) ||
-      (r.company || '').toLowerCase().includes(q)
-    );
-  }, [replies, searchQuery]);
+    let result = replies;
+    if (selectedWorkspace) result = result.filter((r) => r.workspace_name === selectedWorkspace);
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter((r) =>
+        r.lead_email.toLowerCase().includes(q) ||
+        (r.first_name || '').toLowerCase().includes(q) ||
+        (r.last_name || '').toLowerCase().includes(q) ||
+        (r.company || '').toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [replies, selectedWorkspace, searchQuery]);
 
   // Triage-state counts driven off the same state machine as the cards.
   // - "needResponse": positive-sentiment replies with no send attempted yet,

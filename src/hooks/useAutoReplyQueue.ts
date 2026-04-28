@@ -140,11 +140,6 @@ export function useAutoReplyQueue(opts: UseAutoReplyQueueOptions = {}): UseAutoR
             sentiment,
             bison_conversation_url,
             bison_reply_numeric_id
-          ),
-          sent_reply:sent_replies!sent_replies_reply_uuid_fkey (
-            id,
-            verified_at,
-            status
           )
         `)
         .in('status', statuses)
@@ -158,26 +153,30 @@ export function useAutoReplyQueue(opts: UseAutoReplyQueueOptions = {}): UseAutoR
       const { data, error: fetchError } = await query;
       if (fetchError) throw fetchError;
 
-      // PostgREST returns the joined row as an object for one-to-one (UNIQUE FK)
-      // or as an array. Normalize to a single object since reply_uuid is UNIQUE.
-      // Also filter out any review_required rows where a reply was already sent
-      // and verified in Bison — those should not appear as "Awaiting Review".
-      const normalized: AutoReplyQueueRow[] = (data || [])
-        .filter((r: any) => {
-          const sr = Array.isArray(r.sent_reply) ? r.sent_reply[0] : r.sent_reply;
-          if (!sr) return true;
-          // If a verified reply exists, this lead is already handled — drop it
-          // from the review queue regardless of the queue row's status.
-          return !sr.verified_at;
-        })
-        .map((r: any) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { sent_reply, ...rest } = r;
-          return {
-            ...rest,
-            lead: Array.isArray(r.lead) ? r.lead[0] ?? null : r.lead ?? null,
-          };
+      // For each queue row, check if the reply_uuid already has a verified
+      // sent_replies row — if so, filter it out (already handled).
+      // Fetch only the reply_uuids we actually need rather than all verified rows.
+      const replyUuids = (data || []).map((r: any) => r.reply_uuid).filter(Boolean);
+
+      let verifiedUuids = new Set<string>();
+      if (replyUuids.length > 0) {
+        const { data: sentRepliesRaw } = await supabase
+          .from('sent_replies')
+          .select('reply_uuid')
+          .in('reply_uuid', replyUuids)
+          .not('verified_at', 'is', null) as any;
+        ((sentRepliesRaw as any[]) || []).forEach((sr: any) => {
+          if (sr.reply_uuid) verifiedUuids.add(sr.reply_uuid);
         });
+      }
+
+      // Normalize lead join and filter out already-replied leads
+      const normalized: AutoReplyQueueRow[] = (data || [])
+        .filter((r: any) => !verifiedUuids.has(r.reply_uuid))
+        .map((r: any) => ({
+          ...r,
+          lead: Array.isArray(r.lead) ? r.lead[0] ?? null : r.lead ?? null,
+        }));
 
       setRows(normalized);
       hasLoadedOnceRef.current = true;

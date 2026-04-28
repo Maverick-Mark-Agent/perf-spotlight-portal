@@ -182,8 +182,10 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, p
       });
 
       onClose();
-      // Single background refresh to sync the canonical DB row.
-      onReplySent?.();
+      // Don't trigger an immediate refetch — it races the DB write and can
+      // overwrite the optimistic patch, causing a PENDING flash.
+      // The realtime subscription on sent_replies will sync the canonical
+      // row when it lands (usually within 1-2 seconds).
     } catch (error: any) {
       console.error('Error sending reply:', error);
       const isNetworkError = !error.message || error.message === 'Failed to fetch' || error.message.includes('NetworkError');

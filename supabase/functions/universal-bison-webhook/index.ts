@@ -479,32 +479,68 @@ async function handleManualEmailSent(supabase, payload) {
     if (data) target = data;
   }
 
-  // 3. Legacy fallback: workspace + lead_email + recent unverified sent
-  // (handles rows sent before Phase 3 was deployed when we didn't save the outbound id)
+  // 3. Broad fallback: workspace + lead_email + any unverified row (any status, any age).
+  // Covers: failed dashboard attempts, sending-state rows, old rows — anything for this lead
+  // that hasn't been confirmed yet. Most-recent row wins if multiple exist.
   if (!target && workspaceName && leadEmail) {
-    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const { data } = await supabase
       .from('sent_replies')
       .select('id, status, verified_at')
       .eq('workspace_name', workspaceName)
       .eq('lead_email', leadEmail)
-      .eq('status', 'sent')
       .is('verified_at', null)
-      .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     if (data) {
       target = data;
-      console.log(`🔎 manual_email_sent matched via fallback (workspace+lead_email+recent) — sent_replies.id=${data.id}`);
+      console.log(`🔎 manual_email_sent matched via broad fallback (workspace+lead_email, status=${data.status}) — sent_replies.id=${data.id}`);
     }
   }
 
   if (!target) {
-    // Either this manual_email_sent was for an email NOT sent by us (unlikely but possible
-    // if someone sends from Bison UI directly), or our matching logic missed it.
-    // Log for observability but don't error.
-    console.log(`ℹ️  manual_email_sent unmatched (no sent_replies row found for outbound_id=${outboundReplyId}, lead=${leadEmail})`);
+    // No sent_replies row at all — reply was sent directly from Bison UI without going
+    // through the dashboard. Look up the lead_replies UUID and create a verified row so
+    // the card flips to REPLIED on the dashboard.
+    if (workspaceName && leadEmail) {
+      const { data: leadReply } = await supabase
+        .from('lead_replies')
+        .select('id')
+        .eq('workspace_name', workspaceName)
+        .eq('lead_email', leadEmail)
+        .order('reply_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (leadReply?.id) {
+        const now = new Date().toISOString();
+        const insertPayload: any = {
+          reply_uuid: leadReply.id,
+          workspace_name: workspaceName,
+          lead_email: leadEmail,
+          generated_reply_text: '(sent directly via Bison)',
+          status: 'sent',
+          sent_at: now,
+          verified_at: now,
+          sent_by: 'bison_direct',
+        };
+        if (outboundReplyId) insertPayload.bison_outbound_reply_id = outboundReplyId;
+        if (outboundReplyUuid) insertPayload.bison_outbound_reply_uuid = outboundReplyUuid;
+
+        const { error: insertError } = await supabase
+          .from('sent_replies')
+          .insert(insertPayload);
+
+        if (insertError) {
+          console.error('manual_email_sent: failed to create direct-Bison sent_replies row:', insertError.message);
+          return { message: 'manual_email_sent: insert failed', error: insertError.message };
+        }
+        console.log(`✅ Created verified sent_replies for direct-Bison send (reply_uuid=${leadReply.id})`);
+        return { message: 'manual_email_sent: created verified row for direct Bison send', reply_uuid: leadReply.id };
+      }
+    }
+
+    console.log(`ℹ️  manual_email_sent unmatched (no sent_replies or lead_replies row found for workspace=${workspaceName}, lead=${leadEmail})`);
     return { message: 'manual_email_sent: no matching sent_replies row' };
   }
 

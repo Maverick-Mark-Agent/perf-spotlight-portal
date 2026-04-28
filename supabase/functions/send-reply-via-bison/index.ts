@@ -236,20 +236,29 @@ serve(async (req)=>{
       console.log(`✅ Candidate sender email ID: ${senderEmailIdToUse} — will validate below`);
     }
 
-    // Helper: fetch a live connected sender for this workspace from Bison
+    // Helper: fetch a live connected sender for this workspace from Bison.
+    // Paginates through all pages until a Connected sender is found.
     async function fetchLiveConnectedSender(): Promise<number | null> {
       try {
-        const resp = await fetch(`${baseUrl}/sender-emails?per_page=50`, {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${apiKeyToUse}`, 'Accept': 'application/json' }
-        });
-        if (!resp.ok) return null;
-        const body = await resp.json();
-        const senders: any[] = body?.data || [];
-        const connected = senders.find((s: any) => s.status === 'Connected');
-        if (connected) {
-          console.log(`✅ Found live connected sender: id=${connected.id} email=${connected.email}`);
-          return connected.id;
+        let page = 1;
+        while (true) {
+          const resp = await fetch(`${baseUrl}/sender-emails?per_page=50&page=${page}`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${apiKeyToUse}`, 'Accept': 'application/json' }
+          });
+          if (!resp.ok) return null;
+          const body = await resp.json();
+          const senders: any[] = body?.data || [];
+          if (senders.length === 0) break; // No more pages
+          const connected = senders.find((s: any) => s.status === 'Connected');
+          if (connected) {
+            console.log(`✅ Found live connected sender: id=${connected.id} email=${connected.email} (page ${page})`);
+            return connected.id;
+          }
+          // If we got fewer than 50 results, there are no more pages
+          if (senders.length < 50) break;
+          page++;
+          if (page > 10) break; // Safety cap: max 500 sender accounts
         }
         return null;
       } catch (e) {

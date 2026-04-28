@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame, RefreshCw, AlertCircle, Clock, Inbox, Bot, Eye, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow, startOfDay } from 'date-fns';
 
 export default function LiveRepliesBoard() {
@@ -49,10 +49,14 @@ export default function LiveRepliesBoard() {
     ).length;
   }, [autoReplyRows]);
 
-  // Clear new reply count when user focuses window
-  if (newReplyCount > 0 && document.hasFocus()) {
-    clearNewReplyCount();
-  }
+  // Clear new reply count when user focuses the window
+  useEffect(() => {
+    if (newReplyCount === 0) return;
+    const handleFocus = () => clearNewReplyCount();
+    if (document.hasFocus()) clearNewReplyCount();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [newReplyCount, clearNewReplyCount]);
 
   // Filter by workspace and/or search query.
   const filteredReplies = useMemo(() => {
@@ -71,11 +75,11 @@ export default function LiveRepliesBoard() {
   }, [replies, selectedWorkspace, searchQuery]);
 
   // Triage-state counts driven off the same state machine as the cards.
-  // - "needResponse": positive-sentiment replies with no send attempted yet.
+  // - "needResponse": positive-sentiment replies with no send attempted yet,
+  //   plus leads with a queued auto-reply (still actionable — can override).
   //   Negatives ("not interested"), neutrals (OOO/auto-replies), and bounces
-  //   are excluded — they don't need a reply, so counting them as a queue
-  //   creates noise. This is the actionable inbox.
-  // - "pending": we sent a reply, waiting for Bison delivery confirmation.
+  //   are excluded — they don't need a reply.
+  // - "pending": actual sent_replies row exists, awaiting Bison delivery confirmation.
   // - "replied": delivery verified.
   // - "failed": both send attempts errored — needs human intervention.
   const stateCounts = useMemo(() => {
@@ -85,7 +89,7 @@ export default function LiveRepliesBoard() {
       if (state === 'pending') counts.pending++;
       else if (state === 'replied') counts.replied++;
       else if (state === 'failed') counts.failed++;
-      else if (state === 'none' && r.sentiment === 'positive') counts.needResponse++;
+      else if ((state === 'none' || state === 'queued') && r.sentiment === 'positive') counts.needResponse++;
     }
     return counts;
   }, [filteredReplies]);
@@ -336,11 +340,12 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
 
   const timeAgo = formatDistanceToNow(new Date(reply.reply_date), { addSuffix: true });
 
-  // Reply state is one of: 'none' | 'pending' | 'replied' | 'failed'
-  // - none = no send attempted yet → show AI Reply button
-  // - pending = sent_replies exists but verified_at is NULL (sending or awaiting webhook confirmation)
-  // - replied = verified_at IS NOT NULL (Bison fired manual_email_sent webhook confirming delivery)
-  // - failed = status='failed' (Bison rejected, network error, or auto-failed by stuck-sending cron)
+  // Reply state: 'none' | 'queued' | 'pending' | 'replied' | 'failed'
+  // - none    = no send attempted → show AI Reply button
+  // - queued  = auto_reply_queue row in-flight but NO sent_replies yet → still actionable
+  // - pending = sent_replies row exists, verified_at NULL (awaiting Bison confirmation)
+  // - replied = verified_at IS NOT NULL (Bison confirmed delivery)
+  // - failed  = status='failed'
   const replyState = getReplyState(reply);
   const replyStatus = getSentReply(reply);
 
@@ -404,6 +409,7 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
 
   const cardBorderClass = {
     none: 'border-l-blue-500',
+    queued: 'border-l-orange-400',
     pending: 'border-l-yellow-500',
     replied: 'border-l-green-500 opacity-70',
     failed: 'border-l-red-500',
@@ -447,6 +453,14 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
           </Badge>
         </div>
       )}
+      {replyState === 'queued' && (
+        <div className="absolute top-3 right-3 z-10">
+          <Badge className="bg-orange-400 text-white border-orange-500 shadow-md px-3 py-1.5 text-xs font-semibold">
+            <Bot className="h-3.5 w-3.5 mr-1.5" />
+            SCHEDULED
+          </Badge>
+        </div>
+      )}
       <div className="p-4">
         {/* Compact Header Row */}
         <div className="flex items-center gap-3">
@@ -464,11 +478,13 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
             replyState === 'replied' ? 'bg-green-100' :
             replyState === 'pending' ? 'bg-yellow-100' :
             replyState === 'failed' ? 'bg-red-100' :
+            replyState === 'queued' ? 'bg-orange-100' :
             'bg-blue-100'
           }`}>
             {replyState === 'replied' ? <Check className="h-4 w-4 text-green-600" /> :
              replyState === 'pending' ? <Clock className="h-4 w-4 text-yellow-600 animate-pulse" /> :
              replyState === 'failed' ? <AlertCircle className="h-4 w-4 text-red-600" /> :
+             replyState === 'queued' ? <Bot className="h-4 w-4 text-orange-500" /> :
              <User className="h-4 w-4 text-blue-600" />}
           </div>
 
@@ -482,11 +498,15 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
               <span className="text-xs text-blue-500 font-medium">{reply.workspace_name}</span>
             </div>
             {/* Preview text when collapsed */}
-            {!isExpanded && previewText && (
+            {!isExpanded && replyState === 'failed' && replyStatus?.error_message ? (
+              <p className="text-xs text-red-500 truncate mt-0.5 font-medium">
+                Send failed: {replyStatus.error_message.replace(/Email Bison API error.*?body=/, '').replace(/attempt \d+: status=\d+ body=/g, '').slice(0, 120)}
+              </p>
+            ) : !isExpanded && previewText ? (
               <p className="text-sm text-muted-foreground truncate mt-0.5">
                 {previewText}
               </p>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -504,6 +524,12 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
                   <Building2 className="h-3.5 w-3.5" />
                   {reply.company}
                 </span>
+              )}
+              {replyState === 'queued' && (
+                <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-200">
+                  <Bot className="h-3 w-3 mr-1" />
+                  Auto-reply scheduled — not sent yet
+                </Badge>
               )}
               {replyState === 'replied' && replyStatus?.verified_at && (
                 <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
@@ -543,7 +569,7 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
             )}
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {replyState === 'none' ? (
                 !reply.bison_reply_numeric_id ? (
                   <Button
@@ -570,6 +596,27 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
                     AI Reply
                   </Button>
                 )
+              ) : replyState === 'queued' ? (
+                <>
+                  <Badge variant="secondary" className="bg-orange-100 text-orange-700">
+                    <Bot className="h-3 w-3 mr-1" />
+                    Auto-reply scheduled
+                  </Badge>
+                  {reply.bison_reply_numeric_id && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-7 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowComposer(true);
+                      }}
+                    >
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      Override & Reply Now
+                    </Button>
+                  )}
+                </>
               ) : replyState === 'replied' ? (
                 <>
                   <Badge variant="secondary" className="bg-muted text-muted-foreground">
@@ -597,11 +644,31 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
                   Sent — awaiting delivery confirmation
                 </Badge>
               ) : (
-                /* failed */
-                <Badge variant="secondary" className="bg-red-100 text-red-700">
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  Send failed — team has been alerted
-                </Badge>
+                /* failed — show error + retry button */
+                <>
+                  <Badge variant="secondary" className="bg-red-100 text-red-700 max-w-xs truncate">
+                    <AlertCircle className="h-3 w-3 mr-1 flex-shrink-0" />
+                    <span className="truncate">
+                      {replyStatus?.error_message
+                        ? replyStatus.error_message.replace(/Email Bison API error.*?body=/, '').replace(/attempt \d+: status=\d+ body=/g, '').slice(0, 80)
+                        : 'Send failed'}
+                    </span>
+                  </Badge>
+                  {reply.bison_reply_numeric_id && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-7 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowComposer(true);
+                      }}
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Retry Send
+                    </Button>
+                  )}
+                </>
               )}
               {reply.bison_conversation_url && (
                 <Button

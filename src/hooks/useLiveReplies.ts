@@ -13,7 +13,7 @@ export interface SentReplyRow {
   last_retry_at: string | null;
 }
 
-export type ReplyState = 'none' | 'pending' | 'replied' | 'failed';
+export type ReplyState = 'none' | 'queued' | 'pending' | 'replied' | 'failed';
 
 export function getReplyState(reply: {
   sent_replies?: SentReplyRow | Array<SentReplyRow>;
@@ -23,11 +23,11 @@ export function getReplyState(reply: {
     ? reply.sent_replies[0]
     : reply.sent_replies;
   if (!sr) {
-    // No sent_replies row yet — but if an auto-reply queue row is active
-    // (pending/processing/review_required), treat as pending so the card
-    // doesn't show as NEW/uncontacted.
+    // No sent_replies row yet — check if an auto-reply is scheduled/in-flight.
+    // 'queued' = auto-reply scheduled but not sent yet (card still actionable).
+    // 'pending' is reserved for actual in-flight sends (sent_replies exists).
     if (reply.queue_status && ['pending', 'processing', 'review_required'].includes(reply.queue_status)) {
-      return 'pending';
+      return 'queued';
     }
     return 'none';
   }
@@ -131,7 +131,8 @@ export function useLiveReplies(): UseLiveRepliesReturn {
           .limit(5000),
         supabase
           .from('sent_replies')
-          .select('id, reply_uuid, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at') as any,
+          .select('id, reply_uuid, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at')
+          .order('created_at', { ascending: false }) as any,
         supabase
           .from('lead_conversation_stats')
           .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status') as any,
@@ -145,10 +146,13 @@ export function useLiveReplies(): UseLiveRepliesReturn {
 
       if (fetchError) throw fetchError;
 
-      // Build lookup maps
+      // Build lookup maps — rows are ordered by created_at DESC so the first
+      // entry per reply_uuid is always the most recent one.
       const sentRepliesMap = new Map<string, SentReplyRow>();
       ((sentRepliesRaw as any[]) || []).forEach((sr: any) => {
-        if (sr.reply_uuid) sentRepliesMap.set(sr.reply_uuid, sr as SentReplyRow);
+        if (sr.reply_uuid && !sentRepliesMap.has(sr.reply_uuid)) {
+          sentRepliesMap.set(sr.reply_uuid, sr as SentReplyRow);
+        }
       });
 
       const statsMap = new Map<string, any>();
@@ -286,9 +290,14 @@ export function useLiveReplies(): UseLiveRepliesReturn {
             table: 'sent_replies',
           },
           (payload) => {
-            // When we send a reply, refresh the full list so the card flips to "REPLIED"
-            console.log('sent_replies INSERT — refreshing list:', payload);
-            fetchRepliesRef.current();
+            const row = payload.new as any;
+            // Only refetch once the row is verified (verified_at set) or failed.
+            // Ignore status='sending' inserts — they cause a PENDING flash while
+            // Bison is mid-call. The optimistic patch already handles the UI.
+            if (row.verified_at || row.status === 'failed') {
+              console.log('sent_replies INSERT verified/failed — refreshing list');
+              fetchRepliesRef.current();
+            }
           }
         )
         .on(
@@ -299,8 +308,13 @@ export function useLiveReplies(): UseLiveRepliesReturn {
             table: 'sent_replies',
           },
           (payload) => {
-            console.log('sent_replies UPDATE — refreshing list:', payload);
-            fetchRepliesRef.current();
+            const row = payload.new as any;
+            // Only refetch when verified_at is stamped or status flips to failed.
+            // Skip intermediate status transitions (sending → sent) to avoid flicker.
+            if (row.verified_at || row.status === 'failed') {
+              console.log('sent_replies UPDATE verified/failed — refreshing list');
+              fetchRepliesRef.current();
+            }
           }
         )
         .subscribe((status) => {

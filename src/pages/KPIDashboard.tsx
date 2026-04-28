@@ -415,9 +415,6 @@ const MonthlyKPIProgress = () => {
                 />
               )}
 
-              {/* Daily Recap Table - Per-workspace performance for the previous day (yesterday by default) */}
-              {isCurrentMonth && <DailyRecapTable />}
-
               {/* Unified Top Cards - Combining KPI and Volume metrics */}
               <UnifiedTopCards
                 kpiClients={activeClients}
@@ -426,6 +423,9 @@ const MonthlyKPIProgress = () => {
                 isRefreshing={loading}
                 isCurrentMonth={isCurrentMonth}
               />
+
+              {/* Daily Recap Table - Per-workspace performance for the previous day (yesterday by default) */}
+              {isCurrentMonth && <DailyRecapTable />}
 
               {/* Historical data error */}
               {!isCurrentMonth && historical.error && (

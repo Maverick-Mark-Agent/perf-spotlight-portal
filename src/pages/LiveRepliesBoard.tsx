@@ -14,7 +14,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame, RefreshCw, AlertCircle, Clock, Inbox, Bot, Eye } from 'lucide-react';
+import { Loader2, ExternalLink, Mail, Building2, User, Sparkles, Check, CheckCircle, ChevronDown, ChevronRight, MessageSquare, Flame, RefreshCw, AlertCircle, Clock, Inbox, Bot, Eye, Search, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { useMemo, useState } from 'react';
 import { formatDistanceToNow, startOfDay } from 'date-fns';
 
@@ -22,6 +23,7 @@ export default function LiveRepliesBoard() {
   const { replies, loading, error, newReplyCount, clearNewReplyCount, refreshReplies, patchReplyAfterSend } = useLiveReplies();
   const { workspaces } = useReplyWorkspaces();
   const [selectedWorkspace, setSelectedWorkspace] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Auto-reply queue: shows items the audit gate flagged for human review,
   // plus today's auto-sent items (for visibility into what fired automatically).
@@ -52,11 +54,21 @@ export default function LiveRepliesBoard() {
     clearNewReplyCount();
   }
 
-  // Filter by workspace if one is selected; otherwise show all.
+  // Filter by workspace and/or search query.
   const filteredReplies = useMemo(() => {
-    if (!selectedWorkspace) return replies;
-    return replies.filter((r) => r.workspace_name === selectedWorkspace);
-  }, [replies, selectedWorkspace]);
+    let result = replies;
+    if (selectedWorkspace) result = result.filter((r) => r.workspace_name === selectedWorkspace);
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter((r) =>
+        r.lead_email.toLowerCase().includes(q) ||
+        (r.first_name || '').toLowerCase().includes(q) ||
+        (r.last_name || '').toLowerCase().includes(q) ||
+        (r.company || '').toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [replies, selectedWorkspace, searchQuery]);
 
   // Triage-state counts driven off the same state machine as the cards.
   // - "needResponse": positive-sentiment replies with no send attempted yet.
@@ -163,14 +175,33 @@ export default function LiveRepliesBoard() {
           />
         </div>
 
-        {/* Workspace filter */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Workspace:</span>
+        {/* Search + Workspace filter */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          {/* Search by email / name / company */}
+          <div className="relative flex-1 sm:max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by email, name, or company…"
+              className="pl-9 pr-9"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          <span className="text-sm text-muted-foreground hidden sm:block">Workspace:</span>
           <Select
             value={selectedWorkspace || 'all'}
             onValueChange={(value) => setSelectedWorkspace(value === 'all' ? null : value)}
           >
-            <SelectTrigger className="w-full md:w-72">
+            <SelectTrigger className="w-full sm:w-64">
               <SelectValue placeholder="All workspaces" />
             </SelectTrigger>
             <SelectContent>

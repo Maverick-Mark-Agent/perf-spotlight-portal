@@ -186,9 +186,12 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, p
       onReplySent?.();
     } catch (error: any) {
       console.error('Error sending reply:', error);
+      const isNetworkError = !error.message || error.message === 'Failed to fetch' || error.message.includes('NetworkError');
       toast({
         title: 'Send Failed',
-        description: error.message || 'Failed to send reply',
+        description: isNetworkError
+          ? 'Network error — reply was not sent. Please try again.'
+          : error.message,
         variant: 'destructive',
       });
     } finally {

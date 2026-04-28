@@ -236,9 +236,12 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
       });
     } catch (e: any) {
       console.error('Approve & Send failed:', e);
+      const isNetworkError = !e?.message || e.message === 'Failed to fetch' || e.message.includes('NetworkError');
       toast({
         title: 'Send failed',
-        description: e?.message || 'Unknown error',
+        description: isNetworkError
+          ? 'Network error — reply was not sent. Please try again.'
+          : e?.message || 'Unknown error',
         variant: 'destructive',
       });
     } finally {

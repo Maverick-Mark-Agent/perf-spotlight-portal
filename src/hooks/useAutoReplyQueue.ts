@@ -210,9 +210,9 @@ export function useAutoReplyQueue(opts: UseAutoReplyQueueOptions = {}): UseAutoR
     fetch();
   }, [fetch]);
 
-  // Realtime: any INSERT/UPDATE on auto_reply_queue refetches.
-  // Listening narrowly to the table is simpler and safer than maintaining
-  // a delta-merge that has to know our filter logic.
+  // Realtime: refetch on auto_reply_queue changes AND when a sent_replies row
+  // gets verified — that's the signal a review_required lead was replied to
+  // and should disappear from the Awaiting Review section.
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
@@ -223,6 +223,22 @@ export function useAutoReplyQueue(opts: UseAutoReplyQueueOptions = {}): UseAutoR
         { event: '*', schema: 'public', table: 'auto_reply_queue' },
         (_payload) => {
           fetchRef.current();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'sent_replies' },
+        (payload) => {
+          const row = payload.new as any;
+          if (row.verified_at) fetchRef.current();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'sent_replies' },
+        (payload) => {
+          const row = payload.new as any;
+          if (row.verified_at) fetchRef.current();
         }
       )
       .subscribe();

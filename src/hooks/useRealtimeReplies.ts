@@ -53,10 +53,12 @@ interface UseRealtimeRepliesOptions {
 }
 
 export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
-  const { workspaceName = null, sentiment = 'all', limit = 100 } = options;
+  const { workspaceName = null, sentiment = 'all', limit = 200 } = options;
 
   const [data, setData] = useState<LeadReply[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newReplyCount, setNewReplyCount] = useState(0);
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -360,9 +362,72 @@ export function useRealtimeReplies(options: UseRealtimeRepliesOptions = {}) {
     }
   };
 
+  // Load older replies on demand. Fetches the next `limit` rows older than
+  // the oldest currently-loaded reply. Lets clients paginate back through
+  // their full history without paying that cost on first paint.
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || data.length === 0) return;
+    setLoadingMore(true);
+    try {
+      const oldestDate = data[data.length - 1].reply_date;
+      let query = supabase
+        .from('lead_replies')
+        .select(`
+          *,
+          sent_replies (
+            id, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at
+          )
+        `)
+        .lt('reply_date', oldestDate)
+        .order('reply_date', { ascending: false })
+        .limit(limit);
+      if (workspaceName) query = query.eq('workspace_name', workspaceName);
+      if (sentiment !== 'all') query = query.eq('sentiment', sentiment);
+
+      const { data: olderReplies, error: fetchError } = await query;
+      if (fetchError) throw fetchError;
+      const newRows = olderReplies || [];
+
+      // Backfill conversation stats for the newly loaded rows.
+      let statsQuery = supabase
+        .from('lead_conversation_stats')
+        .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status');
+      if (workspaceName) statsQuery = statsQuery.eq('workspace_name', workspaceName);
+      const { data: conversationStats } = await statsQuery;
+      const statsMap = new Map<string, any>();
+      (conversationStats || []).forEach((stat: any) => {
+        statsMap.set(`${stat.lead_email}|${stat.workspace_name}`, stat);
+      });
+
+      const enriched = newRows.map((reply: any) => {
+        const stats = statsMap.get(`${reply.lead_email}|${reply.workspace_name}`);
+        return {
+          ...reply,
+          conversation_reply_count: stats?.reply_count || 1,
+          conversation_first_reply_date: stats?.first_reply_date || null,
+          conversation_latest_reply_date: stats?.latest_reply_date || null,
+          conversation_replies_last_7_days: stats?.replies_last_7_days || 1,
+          conversation_status: stats?.conversation_status || 'single_reply',
+        };
+      });
+
+      // If the server returned fewer rows than the limit, we've reached the end.
+      if (enriched.length < limit) setHasMore(false);
+      setData((prev) => [...prev, ...enriched]);
+    } catch (err: any) {
+      console.error('[Realtime Replies] loadMore error:', err);
+      setError(err.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   return {
     data,
     loading,
+    loadingMore,
+    hasMore,
+    loadMore,
     error,
     newReplyCount,
     clearNewReplyCount,

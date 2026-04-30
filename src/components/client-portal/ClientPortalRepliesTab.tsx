@@ -5,12 +5,13 @@
  * Strictly filtered by workspace to ensure clients only see their own data.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRealtimeReplies, LeadReply } from '@/hooks/useRealtimeReplies';
 import { AIReplyComposer } from '@/components/shared/AIReplyComposer';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Loader2,
   ExternalLink,
@@ -28,6 +29,8 @@ import {
   Flame,
   AlertCircle,
   Clock,
+  Search,
+  X,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { LiveReply } from '@/hooks/useLiveReplies';
@@ -42,6 +45,9 @@ export function ClientPortalRepliesTab({ workspaceName, onSwitchToTemplates }: C
   const {
     data: replies,
     loading,
+    loadingMore,
+    hasMore,
+    loadMore,
     error,
     newReplyCount,
     clearNewReplyCount,
@@ -49,10 +55,28 @@ export function ClientPortalRepliesTab({ workspaceName, onSwitchToTemplates }: C
     patchReplyAfterSend,
   } = useRealtimeReplies({ workspaceName });
 
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Clear new reply count when user focuses window
   if (newReplyCount > 0 && document.hasFocus()) {
     clearNewReplyCount();
   }
+
+  // Client-side search across name / email / company. Runs over whatever's
+  // currently loaded — instant, no DB hit. Users can click "Load older
+  // replies" to expand the search pool.
+  const filteredReplies = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return replies;
+    return replies.filter((r) => {
+      const fullName = `${r.first_name || ''} ${r.last_name || ''}`.toLowerCase();
+      return (
+        fullName.includes(q) ||
+        (r.lead_email || '').toLowerCase().includes(q) ||
+        (r.company || '').toLowerCase().includes(q)
+      );
+    });
+  }, [replies, searchQuery]);
 
   if (loading) {
     return (
@@ -89,7 +113,9 @@ export function ClientPortalRepliesTab({ workspaceName, onSwitchToTemplates }: C
           <div>
             <h2 className="text-lg font-semibold">Live Replies</h2>
             <p className="text-sm text-muted-foreground">
-              {replies.length} {replies.length === 1 ? 'reply' : 'replies'} for {workspaceName}
+              {searchQuery
+                ? `${filteredReplies.length} of ${replies.length} ${replies.length === 1 ? 'reply' : 'replies'} match "${searchQuery}"`
+                : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'} for ${workspaceName}`}
             </p>
           </div>
           <div className="flex items-center gap-2 ml-4">
@@ -102,6 +128,28 @@ export function ClientPortalRepliesTab({ workspaceName, onSwitchToTemplates }: C
           Refresh
         </Button>
       </div>
+
+      {/* Search bar — filters loaded replies by name / email / company */}
+      {replies.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Search by name, email, or company..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 pr-9"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Replies List */}
       {replies.length === 0 ? (
@@ -120,18 +168,57 @@ export function ClientPortalRepliesTab({ workspaceName, onSwitchToTemplates }: C
             )}
           </div>
         </Card>
+      ) : filteredReplies.length === 0 ? (
+        <Card className="p-8">
+          <div className="text-center">
+            <Search className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <h3 className="text-base font-medium mb-1">No matches</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              No replies match "{searchQuery}" in the loaded results.
+              {hasMore && ' Try loading older replies.'}
+            </p>
+            <div className="flex items-center justify-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setSearchQuery('')}>
+                Clear search
+              </Button>
+              {hasMore && (
+                <Button variant="default" size="sm" onClick={loadMore} disabled={loadingMore}>
+                  {loadingMore ? <Loader2 className="h-3 w-3 mr-2 animate-spin" /> : null}
+                  Load older replies
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
       ) : (
-        <div className="space-y-3">
-          {replies.map((reply) => (
-            <ReplyCard
-              key={reply.id}
-              reply={reply as unknown as LiveReply}
-              onSwitchToTemplates={onSwitchToTemplates}
-              onReplySent={refreshData}
-              patchReplyAfterSend={patchReplyAfterSend}
-            />
-          ))}
-        </div>
+        <>
+          <div className="space-y-3">
+            {filteredReplies.map((reply) => (
+              <ReplyCard
+                key={reply.id}
+                reply={reply as unknown as LiveReply}
+                onSwitchToTemplates={onSwitchToTemplates}
+                onReplySent={refreshData}
+                patchReplyAfterSend={patchReplyAfterSend}
+              />
+            ))}
+          </div>
+          {/* Load older — paginates back through history without slowing first paint */}
+          {hasMore && !searchQuery && (
+            <div className="flex justify-center pt-2 pb-4">
+              <Button variant="outline" size="sm" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Loading…
+                  </>
+                ) : (
+                  'Load older replies'
+                )}
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

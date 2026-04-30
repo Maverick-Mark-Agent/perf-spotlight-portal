@@ -18,8 +18,11 @@ import { Calendar, Mail, Phone, MapPin, Building, ExternalLink, DollarSign, Edit
 import { SMAPoliciesList } from "@/components/sma/SMAPoliciesList";
 import { useWorkspaceProducers, Producer } from "@/hooks/useWorkspaceProducers";
 
+// Must match the pipeline columns in ClientPortalPage. If a key here doesn't
+// have a matching column, the lead disappears from the kanban view when the
+// disposition is changed to it.
 const PIPELINE_STAGES = [
-  { key: 'new', label: 'New Lead', color: 'bg-blue-500/20 border-blue-500/40' },
+  { key: 'interested', label: 'Interested', color: 'bg-pink-500/20 border-pink-500/40' },
   { key: 'quoting', label: 'Quoting', color: 'bg-purple-500/20 border-purple-500/40' },
   { key: 'follow-up', label: 'Follow Up', color: 'bg-yellow-500/20 border-yellow-500/40' },
   { key: 'won', label: 'Won', color: 'bg-green-500/20 border-green-500/40' },
@@ -118,7 +121,7 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
       setNotes(lead.notes || "");
       setPremiumAmount(lead.premium_amount?.toString() || "");
       setPolicyType(lead.policy_type || "");
-      setPipelineStage(lead.pipeline_stage || "new");
+      setPipelineStage(lead.pipeline_stage || "interested");
       // Filter out null/empty custom variables on load to prevent null.trim() errors
       const validCustomVariables = (lead.custom_variables || [])
         .filter(cv => cv && cv.name && cv.value)
@@ -353,7 +356,7 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
         renewalDate !== (lead.renewal_date || "") ||
         birthday !== (lead.birthday || "") ||
         notes !== (lead.notes || "") ||
-        pipelineStage !== (lead.pipeline_stage || "new") ||
+        pipelineStage !== (lead.pipeline_stage || "interested") ||
         premiumAmount !== (lead.premium_amount?.toString() || "") ||
         policyType !== (lead.policy_type || "");
 
@@ -937,7 +940,7 @@ export const LeadDetailModal = ({ lead, isOpen, onClose, onUpdate, onOptimisticU
                       setNotes(lead.notes || "");
                       setPremiumAmount(lead.premium_amount?.toString() || "");
                       setPolicyType(lead.policy_type || "");
-                      setPipelineStage(lead.pipeline_stage || "new");
+                      setPipelineStage(lead.pipeline_stage || "interested");
                       setCustomVariables(lead.custom_variables || []);
                     }
                     setEditMode(false);

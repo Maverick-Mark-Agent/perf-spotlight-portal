@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useDashboardContext } from "@/contexts/DashboardContext";
 import { DailyVolumeBanner } from "@/components/dashboard/DailyVolumeBanner";
 import { useReplyMetrics } from "@/hooks/useReplyMetrics";
+import { getMonthRange } from "@/lib/monthRange";
 
 const VolumeDashboard = () => {
   const [isWebhookLoading, setIsWebhookLoading] = useState(false);
@@ -23,12 +24,7 @@ const VolumeDashboard = () => {
   // Fetch reply metrics for current month on mount
   useEffect(() => {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    
+    const { startDate, endDate } = getMonthRange(now.getFullYear(), now.getMonth() + 1);
     replyMetrics.fetchData(startDate, endDate);
   }, []);
 
@@ -37,7 +33,13 @@ const VolumeDashboard = () => {
       setIsRefreshingClients(true);
     }
     try {
-      await refreshVolumeDashboard(isRefresh);
+      const now = new Date();
+      const { startDate, endDate } = getMonthRange(now.getFullYear(), now.getMonth() + 1);
+
+      await Promise.all([
+        refreshVolumeDashboard(isRefresh),
+        replyMetrics.fetchData(startDate, endDate),
+      ]);
       if (isRefresh) {
         toast({
           title: "Success",

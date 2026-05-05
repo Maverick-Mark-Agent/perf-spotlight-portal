@@ -113,6 +113,14 @@ export type VolumeClient = z.infer<typeof VolumeClientSchema>;
 export type RevenueClient = z.infer<typeof RevenueClientSchema>;
 export type EmailAccount = z.infer<typeof EmailAccountSchema>;
 
+// ============= Email Helpers =============
+
+const EmailSchema = z.string().trim().email();
+
+export function isValidEmail(value: string): boolean {
+  return EmailSchema.safeParse(value).success;
+}
+
 // ============= Validation Results =============
 
 export interface ValidationResult<T> {

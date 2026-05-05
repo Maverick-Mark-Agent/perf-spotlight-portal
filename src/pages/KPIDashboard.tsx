@@ -21,6 +21,7 @@ import { useDashboardContext } from "@/contexts/DashboardContext";
 import { DataFreshnessIndicator } from "@/components/DataFreshnessIndicator";
 import { useHistoricalKPI } from "@/hooks/useHistoricalKPI";
 import { useReplyMetrics } from "@/hooks/useReplyMetrics";
+import { getMonthRange } from "@/lib/monthRange";
 import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState, useEffect } from "react";
 
@@ -63,10 +64,7 @@ const MonthlyKPIProgress = () => {
 
   // Fetch reply metrics when month changes
   useEffect(() => {
-    const startDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`;
-    const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
-    const endDate = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    
+    const { startDate, endDate } = getMonthRange(selectedYear, selectedMonth);
     replyMetrics.fetchData(startDate, endDate);
   }, [selectedYear, selectedMonth]);
 
@@ -136,9 +134,12 @@ const MonthlyKPIProgress = () => {
       return;
     }
 
+    const { startDate, endDate } = getMonthRange(selectedYear, selectedMonth);
+
     await Promise.all([
       refreshKPIDashboard(true),
-      refreshVolumeDashboard(true)
+      refreshVolumeDashboard(true),
+      replyMetrics.fetchData(startDate, endDate),
     ]);
     toast({
       title: "Success",

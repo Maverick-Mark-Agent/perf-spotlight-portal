@@ -15,11 +15,23 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Sparkles, Send, RefreshCw, X, Mail, Loader2 } from 'lucide-react';
+import { Sparkles, Send, RefreshCw, X, Loader2, CheckCircle2, UserPlus } from 'lucide-react';
 import type { LiveReply } from '@/hooks/useLiveReplies';
+import { CcEmailEditor } from '@/components/shared/CcEmailEditor';
+import { useWorkspaceCcSuggestions } from '@/hooks/useWorkspaceCcSuggestions';
+import { useWorkspaceProducers } from '@/hooks/useWorkspaceProducers';
+
+type ComposerStep = 'compose' | 'assigning';
+const UNASSIGNED = 'unassigned';
 
 export interface AIReplyComposerProps {
   open: boolean;
@@ -37,9 +49,19 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, p
   const [ccEmails, setCcEmails] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [step, setStep] = useState<ComposerStep>('compose');
+  const [selectedProducerId, setSelectedProducerId] = useState<string>(UNASSIGNED);
+  const [isAssigning, setIsAssigning] = useState(false);
   const { toast } = useToast();
   // Track whether we've already kicked off generation for this open session
   const hasGeneratedRef = useRef(false);
+
+  const { suggestions: ccSuggestions } = useWorkspaceCcSuggestions(
+    open ? reply.workspace_name : null,
+  );
+  const { producers } = useWorkspaceProducers(
+    open ? reply.workspace_name : null,
+  );
 
   // Auto-generate reply when dialog opens — only once per open session
   useEffect(() => {
@@ -52,6 +74,8 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, p
       hasGeneratedRef.current = false;
       setGeneratedReply('');
       setCcEmails([]);
+      setStep('compose');
+      setSelectedProducerId(UNASSIGNED);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -181,11 +205,12 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, p
         last_retry_at: null,
       });
 
-      onClose();
+      // Advance to producer-assignment step instead of closing.
       // Don't trigger an immediate refetch — it races the DB write and can
       // overwrite the optimistic patch, causing a PENDING flash.
       // The realtime subscription on sent_replies will sync the canonical
       // row when it lands (usually within 1-2 seconds).
+      setStep('assigning');
     } catch (error: any) {
       console.error('Error sending reply:', error);
       const isNetworkError = !error.message || error.message === 'Failed to fetch' || error.message.includes('NetworkError');
@@ -201,6 +226,57 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, p
     }
   };
 
+  const handleAssignProducer = async () => {
+    if (selectedProducerId === UNASSIGNED) {
+      onClose();
+      return;
+    }
+
+    setIsAssigning(true);
+    try {
+      const producer = producers.find((p) => p.user_id === selectedProducerId);
+      const producerName = producer?.full_name || null;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUserId = session?.user?.id || null;
+
+      const { error } = await supabase
+        .from('client_leads')
+        .update({
+          assigned_to_user_id: selectedProducerId,
+          assigned_to_name: producerName,
+          assigned_at: new Date().toISOString(),
+          assigned_by_user_id: currentUserId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('workspace_name', reply.workspace_name)
+        .eq('lead_email', reply.lead_email);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Producer assigned',
+        description: producerName
+          ? `${leadName} assigned to ${producerName}`
+          : 'Lead assigned',
+      });
+
+      onClose();
+    } catch (error: unknown) {
+      console.error('Error assigning producer:', error);
+      toast({
+        title: 'Assignment failed',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Failed to assign producer. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -210,107 +286,167 @@ export function AIReplyComposer({ open, onClose, reply, leadName, onReplySent, p
             AI Reply to {leadName}
           </DialogTitle>
           <DialogDescription>
-            Review and edit the AI-generated reply before sending. CC emails are automatically included.
+            {step === 'compose'
+              ? 'Review the AI-generated reply and CC list before sending. You can add or remove CC recipients.'
+              : 'Reply sent. Optionally assign this lead to a producer in your workspace.'}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 mt-4">
-          {/* Original Message */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">
-              Original Message from {leadName}
-            </label>
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                {reply.reply_text || '(No message text)'}
-              </p>
-            </div>
-          </div>
-
-          {/* Generated Reply */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-2 block">
-              AI-Generated Reply
-            </label>
-            {isGenerating ? (
-              <div className="bg-gray-50 rounded-lg p-8 border border-gray-200 flex flex-col items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-purple-600 mb-2" />
-                <p className="text-sm text-gray-600">Generating personalized reply...</p>
-              </div>
-            ) : (
-              <Textarea
-                value={generatedReply}
-                onChange={(e) => setGeneratedReply(e.target.value)}
-                className="min-h-[200px] font-sans text-sm"
-                placeholder="AI-generated reply will appear here..."
-              />
-            )}
-          </div>
-
-          {/* CC Emails */}
-          {ccEmails.length > 0 && (
+        {step === 'compose' ? (
+          <div className="space-y-4 mt-4">
+            {/* Original Message */}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-2 block">
-                CC Recipients ({ccEmails.length})
+                Original Message from {leadName}
               </label>
-              <div className="flex flex-wrap gap-2">
-                {ccEmails.map((email, index) => (
-                  <Badge
-                    key={index}
-                    variant="secondary"
-                    className="bg-blue-100 text-blue-800 text-xs"
-                  >
-                    <Mail className="h-3 w-3 mr-1" />
-                    {email}
-                  </Badge>
-                ))}
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                  {reply.reply_text || '(No message text)'}
+                </p>
               </div>
             </div>
-          )}
 
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={generateReply}
+            {/* Generated Reply */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">
+                AI-Generated Reply
+              </label>
+              {isGenerating ? (
+                <div className="bg-gray-50 rounded-lg p-8 border border-gray-200 flex flex-col items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-purple-600 mb-2" />
+                  <p className="text-sm text-gray-600">Generating personalized reply...</p>
+                </div>
+              ) : (
+                <Textarea
+                  value={generatedReply}
+                  onChange={(e) => setGeneratedReply(e.target.value)}
+                  className="min-h-[200px] font-sans text-sm"
+                  placeholder="AI-generated reply will appear here..."
+                />
+              )}
+            </div>
+
+            {/* CC Emails — editable */}
+            <CcEmailEditor
+              value={ccEmails}
+              onChange={setCcEmails}
+              suggestions={ccSuggestions}
               disabled={isGenerating || isSending}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
-              Regenerate
-            </Button>
+            />
 
-            <div className="flex items-center gap-2">
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between pt-4 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={generateReply}
+                disabled={isGenerating || isSending}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
+                Regenerate
+              </Button>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClose}
+                  disabled={isSending}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSend}
+                  disabled={isGenerating || isSending || !generatedReply}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                >
+                  {isSending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Send Reply
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 mt-4">
+            <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-4">
+              <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-green-900">Reply sent to {leadName}</p>
+                {ccEmails.length > 0 && (
+                  <p className="text-xs text-green-700 mt-0.5">
+                    CC: {ccEmails.join(', ')}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {producers.length > 0 ? (
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block flex items-center gap-2">
+                  <UserPlus className="h-4 w-4" />
+                  Assign this lead to a producer
+                </label>
+                <Select
+                  value={selectedProducerId}
+                  onValueChange={setSelectedProducerId}
+                  disabled={isAssigning}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a producer..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNASSIGNED}>Don't assign</SelectItem>
+                    {producers.map((producer) => (
+                      <SelectItem key={producer.user_id} value={producer.user_id}>
+                        {producer.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No producers available in this workspace.
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-4 border-t">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onClose}
-                disabled={isSending}
+                disabled={isAssigning}
               >
-                <X className="h-4 w-4 mr-2" />
-                Cancel
+                Skip
               </Button>
               <Button
                 size="sm"
-                onClick={handleSend}
-                disabled={isGenerating || isSending || !generatedReply}
-                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                onClick={handleAssignProducer}
+                disabled={isAssigning || producers.length === 0 || selectedProducerId === UNASSIGNED}
               >
-                {isSending ? (
+                {isAssigning ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Sending...
+                    Assigning...
                   </>
                 ) : (
-                  <>
-                    <Send className="h-4 w-4 mr-2" />
-                    Send Reply
-                  </>
+                  'Assign & Done'
                 )}
               </Button>
             </div>
           </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );

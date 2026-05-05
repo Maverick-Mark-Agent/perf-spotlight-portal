@@ -22,6 +22,13 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -36,10 +43,18 @@ import {
   ExternalLink,
   Clock,
   CheckCircle,
+  CheckCircle2,
   RefreshCw,
+  UserPlus,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { AutoReplyQueueRow } from '@/hooks/useAutoReplyQueue';
+import { CcEmailEditor } from '@/components/shared/CcEmailEditor';
+import { useWorkspaceCcSuggestions } from '@/hooks/useWorkspaceCcSuggestions';
+import { useWorkspaceProducers } from '@/hooks/useWorkspaceProducers';
+
+type ReviewStep = 'review' | 'assigning';
+const REVIEW_UNASSIGNED = 'unassigned';
 
 interface AutoReplyReviewCardProps {
   row: AutoReplyQueueRow;
@@ -71,13 +86,25 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
 
   // Local editable state for the draft. Defaults to the AI draft.
   const [draft, setDraft] = useState(row.generated_reply_text || '');
+  const [ccEmails, setCcEmails] = useState<string[]>(row.cc_emails || []);
   const [isSending, setIsSending] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
   // Redraft state — shows the feedback textarea + tracks the in-flight redraft.
   const [redraftMode, setRedraftMode] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [isRedrafting, setIsRedrafting] = useState(false);
+  // Post-send producer assignment step.
+  const [step, setStep] = useState<ReviewStep>('review');
+  const [selectedProducerId, setSelectedProducerId] = useState<string>(REVIEW_UNASSIGNED);
+  const [isAssigning, setIsAssigning] = useState(false);
   const { toast } = useToast();
+
+  const { suggestions: ccSuggestions } = useWorkspaceCcSuggestions(
+    lead?.workspace_name ?? null,
+  );
+  const { producers } = useWorkspaceProducers(
+    lead?.workspace_name ?? null,
+  );
 
   // When the row updates from realtime/server (e.g. after a redraft lands),
   // sync the local draft state. Without this, the user's stale `draft` would
@@ -86,6 +113,14 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
   useEffect(() => {
     setDraft(row.generated_reply_text || '');
   }, [row.id, row.generated_reply_text]);
+
+  // Mirror cc_emails from the row when the underlying row changes (e.g. a
+  // redraft regenerates the template-default CCs). The reviewer's edits in
+  // the current row session are preserved between renders because state
+  // resets only on row id / cc_emails identity change.
+  useEffect(() => {
+    setCcEmails(row.cc_emails || []);
+  }, [row.id, row.cc_emails]);
 
   // Count how many times this draft has been redrafted by counting
   // manual_redraft entries in audit_issues. Surfaces as a badge so the
@@ -186,7 +221,7 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
             reply_uuid: row.reply_uuid,
             workspace_name: row.workspace_name,
             generated_reply_text: draft,
-            cc_emails: row.cc_emails || [],
+            cc_emails: ccEmails,
           }),
         }
       );
@@ -223,10 +258,13 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
         console.warn('Failed to stamp queue row after manual approval:', updErr.message);
       }
 
-      // Optimistic local patch so the UI reflects the new state instantly.
+      // Optimistic local patch so downstream consumers see the new state.
+      // The `step` state machine below keeps THIS card rendered through the
+      // assigning step regardless of the patched status.
       patchRow(row.id, {
         status: 'auto_sent',
         generated_reply_text: draft,
+        cc_emails: ccEmails,
         audit_issues: newIssues,
       });
 
@@ -234,6 +272,14 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
         title: 'Reply sent',
         description: `Sent to ${leadName}${wasEdited ? ' (with edits)' : ''}.`,
       });
+
+      // If we have a lead with a workspace + email, surface the producer
+      // assignment step. Otherwise fall straight back to the queue list.
+      if (lead?.lead_email && lead?.workspace_name) {
+        setStep('assigning');
+      } else {
+        removeRow?.(row.id);
+      }
     } catch (e: any) {
       console.error('Approve & Send failed:', e);
       const isNetworkError = !e?.message || e.message === 'Failed to fetch' || e.message.includes('NetworkError');
@@ -246,6 +292,61 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
       });
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleAssignProducer = async () => {
+    if (!lead?.lead_email || !lead?.workspace_name) {
+      removeRow?.(row.id);
+      return;
+    }
+    if (selectedProducerId === REVIEW_UNASSIGNED) {
+      removeRow?.(row.id);
+      return;
+    }
+
+    setIsAssigning(true);
+    try {
+      const producer = producers.find((p) => p.user_id === selectedProducerId);
+      const producerName = producer?.full_name || null;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUserId = session?.user?.id || null;
+
+      const { error } = await supabase
+        .from('client_leads')
+        .update({
+          assigned_to_user_id: selectedProducerId,
+          assigned_to_name: producerName,
+          assigned_at: new Date().toISOString(),
+          assigned_by_user_id: currentUserId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('workspace_name', lead.workspace_name)
+        .eq('lead_email', lead.lead_email);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Producer assigned',
+        description: producerName
+          ? `${leadName} assigned to ${producerName}`
+          : 'Lead assigned',
+      });
+
+      removeRow?.(row.id);
+    } catch (e: unknown) {
+      console.error('Error assigning producer:', e);
+      toast({
+        title: 'Assignment failed',
+        description:
+          e instanceof Error
+            ? e.message
+            : 'Failed to assign producer. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAssigning(false);
     }
   };
 
@@ -340,7 +441,11 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
   };
 
   // Auto_sent rows render in a compact, success-styled variant — no actions.
-  if (row.status === 'auto_sent') {
+  // EXCEPT: when we just sent and are showing the post-send producer
+  // assignment step on this card. The optimistic patchRow above flips
+  // status to 'auto_sent' immediately, but we want to keep this card
+  // rendered through the assign step until the user resolves it.
+  if (row.status === 'auto_sent' && step !== 'assigning') {
     return (
       <Card className="border-l-4 border-l-green-500 opacity-80">
         <div className="p-4 flex items-center gap-3">
@@ -373,9 +478,12 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
   }
 
   // review_required: full editable card with approve / reject.
+  // After a successful send, the same card swaps to a producer-assignment step.
   return (
-    <Card className="border-l-4 border-l-orange-500">
+    <Card className={`border-l-4 ${step === 'review' ? 'border-l-orange-500' : 'border-l-green-500'}`}>
       <div className="p-5 space-y-4">
+        {step === 'review' ? (
+        <>
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -493,12 +601,15 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
               </div>
             </div>
           )}
-          {row.cc_emails && row.cc_emails.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-2">
-              CC: {row.cc_emails.join(', ')}
-            </p>
-          )}
         </div>
+
+        {/* CC Emails — editable */}
+        <CcEmailEditor
+          value={ccEmails}
+          onChange={setCcEmails}
+          suggestions={ccSuggestions}
+          disabled={isSending || isRedrafting || isRejecting}
+        />
 
         {/* Redraft feedback panel — appears when reviewer clicks Redraft */}
         {redraftMode && (
@@ -613,6 +724,78 @@ export function AutoReplyReviewCard({ row, patchRow, removeRow }: AutoReplyRevie
             </Button>
           </div>
         </div>
+        </>
+        ) : (
+        <>
+          {/* Assigning step — shown after a successful Approve & Send. */}
+          <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-4">
+            <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-green-900">Reply sent to {leadName}</p>
+              {ccEmails.length > 0 && (
+                <p className="text-xs text-green-700 mt-0.5">
+                  CC: {ccEmails.join(', ')}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {producers.length > 0 ? (
+            <div>
+              <label className="text-sm font-medium text-foreground mb-2 block flex items-center gap-2">
+                <UserPlus className="h-4 w-4" />
+                Assign this lead to a producer
+              </label>
+              <Select
+                value={selectedProducerId}
+                onValueChange={setSelectedProducerId}
+                disabled={isAssigning}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a producer..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={REVIEW_UNASSIGNED}>Don't assign</SelectItem>
+                  {producers.map((producer) => (
+                    <SelectItem key={producer.user_id} value={producer.user_id}>
+                      {producer.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No producers available in this workspace.
+            </p>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => removeRow?.(row.id)}
+              disabled={isAssigning}
+            >
+              Skip
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleAssignProducer}
+              disabled={isAssigning || producers.length === 0 || selectedProducerId === REVIEW_UNASSIGNED}
+            >
+              {isAssigning ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Assigning…
+                </>
+              ) : (
+                'Assign & Done'
+              )}
+            </Button>
+          </div>
+        </>
+        )}
       </div>
     </Card>
   );

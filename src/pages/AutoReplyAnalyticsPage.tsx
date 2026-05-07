@@ -17,6 +17,7 @@
 import { useMemo } from 'react';
 import {
   useAutoReplyAnalytics,
+  type DeflectionOutcome,
   type IssuePattern,
   type OverallStat,
   type TerminalState,
@@ -109,7 +110,7 @@ const TONE_CLASSES: Record<'green' | 'blue' | 'orange' | 'red' | 'muted', string
 };
 
 export default function AutoReplyAnalyticsPage() {
-  const { overall, patterns, loading, error, window, setWindow, refresh } = useAutoReplyAnalytics('30d');
+  const { overall, patterns, deflections, loading, error, window, setWindow, refresh } = useAutoReplyAnalytics('30d');
 
   // Build a complete map of states (zero-fill missing ones for stable layout).
   const overallMap = useMemo(() => {
@@ -263,8 +264,68 @@ export default function AutoReplyAnalyticsPage() {
           </p>
           <PatternsTable patterns={patterns} loading={loading} />
         </div>
+
+        {/* Scheduling deflections */}
+        {deflections.length > 0 && (
+          <div>
+            <h2 className="text-lg font-semibold text-foreground mb-1">Scheduling deflections</h2>
+            <p className="text-sm text-muted-foreground mb-3">
+              Drafts where the worker rendered a deterministic deflection instead of calling
+              the LLM, broken out by workspace and intent bucket. Use this to spot false-positive
+              hotspots — e.g. a workspace where the <code>confirmation</code> bucket is firing
+              on plain "thanks!" replies.
+            </p>
+            <DeflectionsTable rows={deflections} loading={loading} />
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function DeflectionsTable({ rows, loading }: { rows: DeflectionOutcome[]; loading: boolean }) {
+  if (loading && rows.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-sm text-muted-foreground">Loading…</CardContent>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <CardContent className="p-0 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40">
+            <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <th className="px-3 py-2 font-medium">Workspace</th>
+              <th className="px-3 py-2 font-medium">Intent</th>
+              <th className="px-3 py-2 font-medium text-right">Deflected</th>
+              <th className="px-3 py-2 font-medium text-right">Auto-sent</th>
+              <th className="px-3 py-2 font-medium text-right">Review</th>
+              <th className="px-3 py-2 font-medium text-right">Approved</th>
+              <th className="px-3 py-2 font-medium text-right">Rejected</th>
+              <th className="px-3 py-2 font-medium text-right">Human approval rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={`${r.workspace_name}::${r.deflection_intent}`} className="border-t">
+                <td className="px-3 py-2 font-medium">{r.workspace_name}</td>
+                <td className="px-3 py-2 font-mono text-xs">{r.deflection_intent}</td>
+                <td className="px-3 py-2 text-right">{r.times_deflected}</td>
+                <td className="px-3 py-2 text-right text-green-700">{r.auto_sent}</td>
+                <td className="px-3 py-2 text-right text-orange-700">{r.review_required}</td>
+                <td className="px-3 py-2 text-right">{r.human_approved}</td>
+                <td className="px-3 py-2 text-right text-red-700">{r.human_rejected}</td>
+                <td className="px-3 py-2 text-right">
+                  {r.human_approval_rate == null ? '—' : `${r.human_approval_rate}%`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -19,6 +19,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
 import { sendAutoReplyEscalation } from '../_shared/slackNotifications.ts';
+import {
+  DEFLECTION_GENERATION_MODEL,
+  DeflectionTemplateMap,
+  getAssistantFirstName,
+  isSchedulingIntent,
+  renderDeflection,
+  SchedulingIntent,
+} from '../_shared/schedulingIntent.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -114,17 +122,17 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
   const [replyResult, workspaceResult, templateResult] = await Promise.all([
     supabase
       .from('lead_replies')
-      .select('id, workspace_name, lead_email, first_name, last_name, phone, reply_text')
+      .select('id, workspace_name, lead_email, first_name, last_name, phone, reply_text, scheduling_intent, scheduling_phrase, scheduling_intent_confidence')
       .eq('id', replyUuid)
       .maybeSingle(),
     supabase
       .from('client_registry')
-      .select('auto_reply_min_audit_score, auto_reply_max_per_hour')
+      .select('auto_reply_min_audit_score, auto_reply_max_per_hour, auto_reply_deflect_scheduling, auto_reply_min_scheduling_confidence, auto_reply_deflection_templates')
       .eq('workspace_name', workspaceName)
       .maybeSingle(),
     supabase
       .from('reply_templates')
-      .select('template_text_no_phone, template_text_with_phone')
+      .select('template_text_no_phone, template_text_with_phone, cc_emails')
       .eq('workspace_name', workspaceName)
       .maybeSingle(),
   ]);
@@ -171,44 +179,111 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
     return;
   }
 
-  // ── 4. Generate draft (preview_mode — no DB writes) ───────────────────
-  const draftRes = await callEdgeFunction<{
-    success?: boolean;
-    generated_reply?: string;
-    cc_emails?: string[];
-    template_used?: 'with_phone' | 'no_phone';
-    model_used?: string;
-    placeholders_resolved?: string[];
-    placeholders_missing?: string[];
-    placeholder_values?: Record<string, string>;
-    thread_history?: Array<{ reply_date?: string; reply_text?: string; sentiment?: string | null }>;
-    error?: string;
-  }>('generate-ai-reply', {
-    reply_uuid: replyUuid,
-    workspace_name: workspaceName,
-    lead_name: leadName,
-    lead_email: reply.lead_email,
-    lead_phone: reply.phone || undefined,
-    original_message: reply.reply_text || '',
-    preview_mode: true,
-  });
+  // ── 4. Decide path: deflection vs. LLM draft ──────────────────────────
+  // If the inbound reply was classified with scheduling intent AND the
+  // workspace has deflection enabled AND classifier confidence cleared the
+  // workspace's floor, we render a deterministic deflection draft locally
+  // (no generate-ai-reply call). Audit still runs on the result.
+  const intentRaw = reply.scheduling_intent ?? 'none';
+  const intent: SchedulingIntent = isSchedulingIntent(intentRaw) ? intentRaw : 'none';
+  const intentConfidence: number = reply.scheduling_intent_confidence ?? 0;
+  const deflectFlag: boolean = workspace.auto_reply_deflect_scheduling === true;
+  const intentFloor: number = workspace.auto_reply_min_scheduling_confidence ?? 70;
+  const shouldDeflect = deflectFlag
+    && intent !== 'none'
+    && intentConfidence >= intentFloor;
 
-  if (!draftRes.ok || !draftRes.data?.generated_reply) {
-    await supabase.from('auto_reply_queue').update({
-      status: 'failed',
-      error_message: `generate-ai-reply failed: ${draftRes.data?.error || draftRes.error || `status ${draftRes.status}`}`,
-    }).eq('id', queueId);
-    stats.failed++;
-    stats.details.push({ queueId, status: 'failed', reason: 'generate_failed' });
-    return;
+  let generatedReplyText: string;
+  let ccEmails: string[];
+  let templateText: string;
+  let generationModel: string | undefined;
+  let placeholdersResolved: string[];
+  let placeholdersMissing: string[];
+  let placeholderValues: Record<string, string>;
+  let threadHistory: Array<{ reply_date?: string; reply_text?: string; sentiment?: string | null }>;
+  let deflectionIntentForRow: Exclude<SchedulingIntent, 'none'> | null = null;
+
+  if (shouldDeflect) {
+    // Deterministic deflection path. {Assistant} comes from cc_emails on the
+    // workspace's reply template (Andrew/Becky for the Schroders).
+    const ccFromTemplate = Array.isArray(template.cc_emails) ? template.cc_emails as string[] : [];
+    const assistant = getAssistantFirstName(ccFromTemplate);
+    const overrides = (workspace.auto_reply_deflection_templates as DeflectionTemplateMap | null) ?? null;
+    const intentForRender = intent as Exclude<SchedulingIntent, 'none'>;
+
+    const rendered = renderDeflection({
+      intent: intentForRender,
+      first: reply.first_name ?? '',
+      assistant,
+      timingPhrase: reply.scheduling_phrase ?? null,
+      overrides,
+    });
+
+    generatedReplyText = rendered.text;
+    ccEmails = ccFromTemplate;
+    // For audit's "faithfulness to template" axis, the deflection's source
+    // template IS the template — pass it through so audit grades against
+    // what we actually rendered from.
+    templateText = (overrides?.[intentForRender] && overrides[intentForRender]!.trim().length > 0)
+      ? overrides[intentForRender]!
+      : (template.template_text_no_phone || '');  // existing fallback for hard-rule shape
+    generationModel = DEFLECTION_GENERATION_MODEL;
+    placeholdersResolved = ['first', 'Assistant', 'timing_phrase'];
+    placeholdersMissing = [];
+    placeholderValues = {
+      first: reply.first_name ?? '',
+      Assistant: assistant ?? 'our team',
+      timing_phrase: reply.scheduling_phrase ?? 'shortly',
+    };
+    threadHistory = [];
+    deflectionIntentForRow = intentForRender;
+
+    console.log(`📨 Deflection drafted for ${queueId} (${workspaceName}, intent=${intent}@${intentConfidence}%, source=${rendered.templateUsed})`);
+  } else {
+    // ── LLM path (existing behavior) ────────────────────────────────────
+    const draftRes = await callEdgeFunction<{
+      success?: boolean;
+      generated_reply?: string;
+      cc_emails?: string[];
+      template_used?: 'with_phone' | 'no_phone';
+      model_used?: string;
+      placeholders_resolved?: string[];
+      placeholders_missing?: string[];
+      placeholder_values?: Record<string, string>;
+      thread_history?: Array<{ reply_date?: string; reply_text?: string; sentiment?: string | null }>;
+      error?: string;
+    }>('generate-ai-reply', {
+      reply_uuid: replyUuid,
+      workspace_name: workspaceName,
+      lead_name: leadName,
+      lead_email: reply.lead_email,
+      lead_phone: reply.phone || undefined,
+      original_message: reply.reply_text || '',
+      preview_mode: true,
+    });
+
+    if (!draftRes.ok || !draftRes.data?.generated_reply) {
+      await supabase.from('auto_reply_queue').update({
+        status: 'failed',
+        error_message: `generate-ai-reply failed: ${draftRes.data?.error || draftRes.error || `status ${draftRes.status}`}`,
+      }).eq('id', queueId);
+      stats.failed++;
+      stats.details.push({ queueId, status: 'failed', reason: 'generate_failed' });
+      return;
+    }
+
+    const draft = draftRes.data;
+    generatedReplyText = draft.generated_reply!;
+    ccEmails = draft.cc_emails || [];
+    templateText = (draft.template_used === 'with_phone'
+      ? template.template_text_with_phone
+      : template.template_text_no_phone) || '';
+    generationModel = draft.model_used;
+    placeholdersResolved = draft.placeholders_resolved ?? [];
+    placeholdersMissing = draft.placeholders_missing ?? [];
+    placeholderValues = draft.placeholder_values ?? {};
+    threadHistory = draft.thread_history ?? [];
   }
-
-  const draft = draftRes.data;
-  const generatedReplyText = draft.generated_reply!;
-  const ccEmails = draft.cc_emails || [];
-  const templateText = draft.template_used === 'with_phone'
-    ? template.template_text_with_phone
-    : template.template_text_no_phone;
 
   // ── 5. Audit ──────────────────────────────────────────────────────────
   const auditRes = await callEdgeFunction<{
@@ -226,16 +301,20 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
     generated_reply_text: generatedReplyText,
     cc_emails: ccEmails,
     original_message: reply.reply_text || '',
-    template_text: templateText || '',
-    placeholders_resolved: draft.placeholders_resolved ?? [],
-    placeholders_missing: draft.placeholders_missing ?? [],
+    template_text: templateText,
+    placeholders_resolved: placeholdersResolved,
+    placeholders_missing: placeholdersMissing,
     // Authoritative ground truth — without this the auditor flags every
     // legitimately-substituted phone/address as a hallucination.
-    placeholder_values: draft.placeholder_values ?? {},
+    placeholder_values: placeholderValues,
     // Prior turns so audit can verify facts (renewal dates, agent names) that
     // surfaced earlier in the conversation rather than treating them as new claims.
-    thread_history: draft.thread_history ?? [],
+    thread_history: threadHistory,
     workspace_name: workspaceName,
+    // Lets audit's confirmed_specific_time rule know whether the inbound
+    // reply named a specific time — only then is "draft confirms a specific
+    // time" a problem.
+    inbound_scheduling_intent: intent,
   });
 
   if (!auditRes.ok || !auditRes.data?.audit) {
@@ -245,7 +324,8 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
       status: 'review_required',
       generated_reply_text: generatedReplyText,
       cc_emails: ccEmails,
-      generation_model: draft.model_used,
+      generation_model: generationModel,
+      deflection_intent: deflectionIntentForRow,
       audit_verdict: 'review',
       audit_reasoning: `audit service unavailable: ${auditRes.error || `status ${auditRes.status}`}`,
     }).eq('id', queueId);
@@ -291,7 +371,8 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
     audit_reasoning: audit.reasoning,
     audit_issues: audit.issues,
     audit_model: audit.model,
-    generation_model: draft.model_used,
+    generation_model: generationModel,
+    deflection_intent: deflectionIntentForRow,
   };
 
   // ── 6. Branch on verdict ──────────────────────────────────────────────

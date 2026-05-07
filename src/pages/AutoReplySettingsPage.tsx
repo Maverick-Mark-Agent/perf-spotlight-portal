@@ -20,10 +20,22 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
-import { Bot, Clock, Globe, RefreshCw, Loader2, ShieldCheck, Save, AlertTriangle } from 'lucide-react';
+import { Bot, Clock, Globe, RefreshCw, Loader2, ShieldCheck, Save, AlertTriangle, CalendarClock, ChevronDown, RotateCcw, User2 } from 'lucide-react';
+import {
+  BUCKET_HINTS,
+  BUCKET_LABELS,
+  DEFAULT_HIR_TEMPLATES,
+  DEFLECTION_BUCKETS,
+  DeflectionBucket,
+  DeflectionTemplateMap,
+  getAssistantFirstName,
+  renderDeflection,
+} from '@/lib/schedulingIntent';
 
 interface WorkspaceSettings {
   workspace_name: string;
@@ -33,6 +45,9 @@ interface WorkspaceSettings {
   auto_reply_min_audit_score: number;
   auto_reply_max_per_hour: number;
   auto_reply_min_delay_minutes: number;
+  auto_reply_deflect_scheduling: boolean;
+  auto_reply_min_scheduling_confidence: number;
+  auto_reply_deflection_templates: DeflectionTemplateMap | null;
 }
 
 export default function AutoReplySettingsPage() {
@@ -47,12 +62,16 @@ export default function AutoReplySettingsPage() {
   const [draft, setDraft] = useState<WorkspaceSettings | null>(null);
   const { toast } = useToast();
 
+  // Per-workspace assistant name, derived from reply_templates.cc_emails. Loaded
+  // lazily when a workspace is selected — only this view needs it.
+  const [assistantCcEmails, setAssistantCcEmails] = useState<string[]>([]);
+
   const loadWorkspaces = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('client_registry')
       .select(
-        'workspace_name, auto_reply_enabled, timezone, auto_reply_min_sentiment_confidence, auto_reply_min_audit_score, auto_reply_max_per_hour, auto_reply_min_delay_minutes'
+        'workspace_name, auto_reply_enabled, timezone, auto_reply_min_sentiment_confidence, auto_reply_min_audit_score, auto_reply_max_per_hour, auto_reply_min_delay_minutes, auto_reply_deflect_scheduling, auto_reply_min_scheduling_confidence, auto_reply_deflection_templates'
       )
       .order('workspace_name', { ascending: true });
 
@@ -73,11 +92,35 @@ export default function AutoReplySettingsPage() {
   useEffect(() => {
     if (!selectedWorkspace) {
       setDraft(null);
+      setAssistantCcEmails([]);
       return;
     }
     const ws = workspaces.find((w) => w.workspace_name === selectedWorkspace);
     setDraft(ws ? { ...ws } : null);
+
+    // Pull cc_emails from the workspace's reply template so we can detect
+    // the assistant's first name (Andrew/Becky/...) for the deflection card.
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('reply_templates')
+        .select('cc_emails')
+        .eq('workspace_name', selectedWorkspace)
+        .maybeSingle();
+      if (!cancelled) {
+        const cc = Array.isArray(data?.cc_emails) ? (data!.cc_emails as string[]) : [];
+        setAssistantCcEmails(cc);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedWorkspace, workspaces]);
+
+  const detectedAssistant = useMemo(
+    () => getAssistantFirstName(assistantCcEmails),
+    [assistantCcEmails],
+  );
 
   const dirty = useMemo(() => {
     if (!draft || !selectedWorkspace) return false;
@@ -88,7 +131,11 @@ export default function AutoReplySettingsPage() {
       draft.auto_reply_min_sentiment_confidence !== original.auto_reply_min_sentiment_confidence ||
       draft.auto_reply_min_audit_score !== original.auto_reply_min_audit_score ||
       draft.auto_reply_max_per_hour !== original.auto_reply_max_per_hour ||
-      draft.auto_reply_min_delay_minutes !== original.auto_reply_min_delay_minutes
+      draft.auto_reply_min_delay_minutes !== original.auto_reply_min_delay_minutes ||
+      draft.auto_reply_deflect_scheduling !== original.auto_reply_deflect_scheduling ||
+      draft.auto_reply_min_scheduling_confidence !== original.auto_reply_min_scheduling_confidence ||
+      JSON.stringify(draft.auto_reply_deflection_templates ?? null)
+        !== JSON.stringify(original.auto_reply_deflection_templates ?? null)
     );
   }, [draft, workspaces, selectedWorkspace]);
 
@@ -108,6 +155,19 @@ export default function AutoReplySettingsPage() {
     }
 
     setSaving(true);
+    // Strip empty-string template overrides so a cleared textarea falls
+    // through to the default rather than persisting an empty override.
+    const cleanedTemplates: DeflectionTemplateMap | null = (() => {
+      const t = draft.auto_reply_deflection_templates;
+      if (!t) return null;
+      const out: DeflectionTemplateMap = {};
+      for (const bucket of DEFLECTION_BUCKETS) {
+        const v = t[bucket];
+        if (typeof v === 'string' && v.trim().length > 0) out[bucket] = v;
+      }
+      return Object.keys(out).length > 0 ? out : null;
+    })();
+
     const { error } = await supabase
       .from('client_registry')
       .update({
@@ -116,6 +176,9 @@ export default function AutoReplySettingsPage() {
         auto_reply_min_audit_score: draft.auto_reply_min_audit_score,
         auto_reply_max_per_hour: draft.auto_reply_max_per_hour,
         auto_reply_min_delay_minutes: draft.auto_reply_min_delay_minutes,
+        auto_reply_deflect_scheduling: draft.auto_reply_deflect_scheduling,
+        auto_reply_min_scheduling_confidence: draft.auto_reply_min_scheduling_confidence,
+        auto_reply_deflection_templates: cleanedTemplates,
       })
       .eq('workspace_name', draft.workspace_name);
 
@@ -399,6 +462,13 @@ export default function AutoReplySettingsPage() {
               </CardContent>
             </Card>
 
+            {/* Scheduling deflection */}
+            <DeflectionCard
+              draft={draft}
+              detectedAssistant={detectedAssistant}
+              onChange={(patch) => setDraft({ ...draft, ...patch })}
+            />
+
             {/* Save bar */}
             <div className="sticky bottom-4 flex justify-end">
               <Button
@@ -451,5 +521,164 @@ function ThresholdSlider({ label, hint, value, min, max, onChange }: ThresholdSl
         <span>{max}</span>
       </div>
     </div>
+  );
+}
+
+interface DeflectionCardProps {
+  draft: WorkspaceSettings;
+  detectedAssistant: string | null;
+  onChange: (patch: Partial<WorkspaceSettings>) => void;
+}
+
+function DeflectionCard({ draft, detectedAssistant, onChange }: DeflectionCardProps) {
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const overrides = draft.auto_reply_deflection_templates ?? {};
+
+  const updateTemplate = (bucket: DeflectionBucket, value: string) => {
+    const next: DeflectionTemplateMap = { ...overrides };
+    if (value.trim().length === 0) {
+      delete next[bucket];
+    } else {
+      next[bucket] = value;
+    }
+    onChange({
+      auto_reply_deflection_templates: Object.keys(next).length > 0 ? next : null,
+    });
+  };
+
+  const resetTemplate = (bucket: DeflectionBucket) => {
+    const next: DeflectionTemplateMap = { ...overrides };
+    delete next[bucket];
+    onChange({
+      auto_reply_deflection_templates: Object.keys(next).length > 0 ? next : null,
+    });
+  };
+
+  return (
+    <Card className={draft.auto_reply_deflect_scheduling ? 'border-l-4 border-l-purple-500' : ''}>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-purple-600" />
+              Scheduling deflection
+            </CardTitle>
+            <CardDescription>
+              When the lead proposes or asks about a time, defer scheduling to your assistant
+              instead of letting AI confirm a time on your behalf.
+            </CardDescription>
+          </div>
+          <Switch
+            checked={draft.auto_reply_deflect_scheduling}
+            onCheckedChange={(checked) => onChange({ auto_reply_deflect_scheduling: checked })}
+            aria-label="Enable scheduling deflection"
+          />
+        </div>
+      </CardHeader>
+      {draft.auto_reply_deflect_scheduling && (
+        <CardContent className="space-y-6">
+          <ThresholdSlider
+            label="Minimum scheduling-intent confidence"
+            hint="How sure the classifier must be that the reply is about scheduling. Default 70."
+            value={draft.auto_reply_min_scheduling_confidence}
+            min={0}
+            max={100}
+            onChange={(v) => onChange({ auto_reply_min_scheduling_confidence: v })}
+          />
+
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <div className="flex items-center gap-2 text-sm">
+              <User2 className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">Assistant name (auto-detected from CC):</span>
+              <span className="font-mono">
+                {detectedAssistant ?? <span className="text-muted-foreground">our team</span>}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Pulled from the first CC address on this workspace's reply template. Change by
+              editing <code>cc_emails</code> on the reply template.
+            </p>
+          </div>
+
+          <Collapsible open={templatesOpen} onOpenChange={setTemplatesOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-between">
+                <span>Customize templates ({DEFLECTION_BUCKETS.length})</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${templatesOpen ? 'rotate-180' : ''}`} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 mt-3">
+              {DEFLECTION_BUCKETS.map((bucket) => {
+                const value = overrides[bucket] ?? '';
+                const usingDefault = value.trim().length === 0;
+                return (
+                  <div key={bucket}>
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="text-sm font-medium">{BUCKET_LABELS[bucket]}</Label>
+                      <div className="flex items-center gap-2">
+                        {usingDefault && (
+                          <Badge variant="outline" className="text-xs">default</Badge>
+                        )}
+                        {!usingDefault && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => resetTemplate(bucket)}
+                          >
+                            <RotateCcw className="h-3 w-3 mr-1" />
+                            Reset to default
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-2">{BUCKET_HINTS[bucket]}</p>
+                    <Textarea
+                      value={value}
+                      placeholder={DEFAULT_HIR_TEMPLATES[bucket]}
+                      onChange={(e) => updateTemplate(bucket, e.target.value)}
+                      rows={3}
+                      className="font-mono text-xs"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Placeholders: <code>{'{first}'}</code> <code>{'{Assistant}'}</code> <code>{'{timing_phrase}'}</code>
+                    </p>
+                  </div>
+                );
+              })}
+            </CollapsibleContent>
+          </Collapsible>
+
+          <div>
+            <Label className="text-sm font-medium">Live preview</Label>
+            <p className="text-xs text-muted-foreground mb-2">
+              Sample lead "Sarah" proposing "Monday at 2pm". Each bucket renders against this
+              workspace's templates + detected assistant.
+            </p>
+            <div className="space-y-2">
+              {DEFLECTION_BUCKETS.map((bucket) => (
+                <div key={bucket} className="rounded-md border bg-background p-2">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                    {BUCKET_LABELS[bucket]}
+                  </div>
+                  <div className="text-sm">
+                    {renderDeflection({
+                      intent: bucket,
+                      first: 'Sarah',
+                      assistant: detectedAssistant,
+                      timingPhrase: bucket === 'specific_time' ? 'Monday at 2pm'
+                        : bucket === 'soft_schedule' ? 'tomorrow'
+                        : bucket === 'vague_availability' ? 'this week'
+                        : null,
+                      overrides,
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      )}
+    </Card>
   );
 }

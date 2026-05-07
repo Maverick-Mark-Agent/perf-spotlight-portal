@@ -31,6 +31,23 @@ export interface IssuePattern {
   human_approval_rate: number | null;
 }
 
+export interface DeflectionOutcome {
+  workspace_name: string;
+  deflection_intent:
+    | 'specific_time'
+    | 'soft_schedule'
+    | 'vague_availability'
+    | 'calendar_request'
+    | 'confirmation';
+  times_deflected: number;
+  auto_sent: number;
+  review_required: number;
+  human_approved: number;
+  human_rejected: number;
+  audit_rejected: number;
+  human_approval_rate: number | null;
+}
+
 export type TimeWindow = '7d' | '30d' | 'all';
 
 function sinceFor(window: TimeWindow): string | null {
@@ -42,6 +59,7 @@ function sinceFor(window: TimeWindow): string | null {
 interface UseAutoReplyAnalyticsReturn {
   overall: OverallStat[];
   patterns: IssuePattern[];
+  deflections: DeflectionOutcome[];
   loading: boolean;
   error: string | null;
   window: TimeWindow;
@@ -52,6 +70,7 @@ interface UseAutoReplyAnalyticsReturn {
 export function useAutoReplyAnalytics(initialWindow: TimeWindow = '30d'): UseAutoReplyAnalyticsReturn {
   const [overall, setOverall] = useState<OverallStat[]>([]);
   const [patterns, setPatterns] = useState<IssuePattern[]>([]);
+  const [deflections, setDeflections] = useState<DeflectionOutcome[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [window, setWindow] = useState<TimeWindow>(initialWindow);
@@ -62,16 +81,19 @@ export function useAutoReplyAnalytics(initialWindow: TimeWindow = '30d'): UseAut
     try {
       const since = sinceFor(window);
 
-      const [overallRes, patternRes] = await Promise.all([
+      const [overallRes, patternRes, deflectionRes] = await Promise.all([
         supabase.rpc('auto_reply_overall_stats', { p_since: since }),
         supabase.rpc('auto_reply_issue_patterns', { p_since: since }),
+        supabase.rpc('auto_reply_deflection_outcomes', { p_since: since, p_workspace: null }),
       ]);
 
       if (overallRes.error) throw overallRes.error;
       if (patternRes.error) throw patternRes.error;
+      if (deflectionRes.error) throw deflectionRes.error;
 
       setOverall((overallRes.data ?? []) as OverallStat[]);
       setPatterns((patternRes.data ?? []) as IssuePattern[]);
+      setDeflections((deflectionRes.data ?? []) as DeflectionOutcome[]);
     } catch (err) {
       console.error('useAutoReplyAnalytics fetch failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to load analytics');
@@ -84,5 +106,5 @@ export function useAutoReplyAnalytics(initialWindow: TimeWindow = '30d'): UseAut
     fetch();
   }, [fetch]);
 
-  return { overall, patterns, loading, error, window, setWindow, refresh: fetch };
+  return { overall, patterns, deflections, loading, error, window, setWindow, refresh: fetch };
 }

@@ -118,6 +118,18 @@ ONLY flag a fact as a hallucination if it appears nowhere in (a)–(e). Plausibl
 
 4. **No hallucinated facts (0–25)**: Every specific fact must be grounded in (a)–(e) above. Anything not grounded = high-severity hallucination. Deduct heavily.
 
+# Scheduling commitment rule (separate from grading axes — flag-only)
+
+If the user-prompt section "Inbound scheduling intent" is one of \`specific_time\`, \`soft_schedule\`, \`vague_availability\`, \`calendar_request\`, or \`confirmation\`, the lead is asking about scheduling. The agent does NOT have a real calendar — only the agent's named human assistant does. The draft must NOT confirm a specific time, accept a proposed time as scheduled, or imply the meeting is on the books. Acceptable: "{Assistant} will reach out to confirm", "we'll get an invite over shortly", "{Assistant} will be in touch to find a time". Unacceptable: "Yes, 2pm Monday works for me", "I'll see you Monday at 2", "consider it scheduled".
+
+If the draft confirms a specific time on the agent's behalf when the inbound intent indicated scheduling, ADD a high-severity issue:
+
+\`\`\`
+{"type": "confirmed_specific_time", "severity": "high", "detail": "<one sentence: which time was confirmed and why this is wrong>"}
+\`\`\`
+
+This applies regardless of the four grading axes — a draft can be otherwise excellent but still contain this issue. Do not deduct points twice; flag the issue and let the caller route to review.
+
 # Scoring guide
 
 A draft that is correct but uninspired lands in the 70s. A draft with a true hallucinated fact lands below 65 (auto-reject). A draft that nails personalization and tone with zero issues lands 90+.
@@ -161,6 +173,15 @@ interface AuditPayload {
     sentiment?: string | null;
   }>;
   workspace_name: string;
+  // Optional: classifier's scheduling_intent for the inbound reply. Drives
+  // the confirmed_specific_time rule. Absent or 'none' → rule is a no-op.
+  inbound_scheduling_intent?:
+    | 'none'
+    | 'specific_time'
+    | 'soft_schedule'
+    | 'vague_availability'
+    | 'calendar_request'
+    | 'confirmation';
 }
 
 function buildUserPrompt(p: AuditPayload): string {
@@ -215,6 +236,9 @@ ${resolvedFactsSection}
 
 ## Prior conversation thread (oldest first — facts mentioned here are grounded context)
 ${threadSection}
+
+## Inbound scheduling intent (drives the confirmed_specific_time rule)
+${p.inbound_scheduling_intent ?? 'none'}
 
 ## Placeholders missing (drafter was instructed to drop sentences using these)
 [${(p.placeholders_missing ?? []).join(', ')}]

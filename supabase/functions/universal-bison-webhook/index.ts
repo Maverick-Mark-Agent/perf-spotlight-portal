@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { enqueueAutoReplyIfEligible } from '../_shared/autoReplyEligibility.ts';
+import { isSchedulingIntent } from '../_shared/schedulingIntent.ts';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
@@ -55,7 +56,10 @@ function detectAutoReply(replyText) {
       sentiment: 'neutral',
       is_interested: false,
       confidence: 100,
-      reasoning: `Auto-reply / OOO pattern matched: "${autoReplyMatch}"`
+      reasoning: `Auto-reply / OOO pattern matched: "${autoReplyMatch}"`,
+      scheduling_intent: 'none',
+      scheduling_phrase: null,
+      scheduling_intent_confidence: 100
     };
   }
   try {
@@ -68,6 +72,15 @@ Determine:
 2. Is Interested: Does the lead want a quote/call/meeting? (true/false)
 3. Confidence: 0-100 (how confident are you?)
 4. Reasoning: Brief explanation (1 sentence)
+5. Scheduling intent: one of:
+   - "specific_time"        : lead names a specific day AND time-of-day (e.g. "Monday at 2pm", "tomorrow at 10")
+   - "soft_schedule"        : lead suggests a relative timeframe to talk (e.g. "let's chat tomorrow", "talk next week")
+   - "vague_availability"   : lead expresses general availability (e.g. "I'm around this week", "free anytime")
+   - "calendar_request"     : lead asks for an invite or to put it on the calendar (e.g. "send me an invite", "drop something on my calendar")
+   - "confirmation"         : lead briefly confirms/agrees (e.g. "yes that works", "sounds good", "sure thing")
+   - "none"                 : none of the above
+6. Scheduling phrase: the verbatim phrase from the reply that indicated scheduling intent (e.g. "Monday at 2pm", "tomorrow", "this week"), or null if intent is "none" or no clean phrase exists.
+7. Scheduling intent confidence: 0-100 (how confident are you in the scheduling_intent label?)
 
 Guidelines:
 - "Yes", "Sure", "Sounds good", "Please do" = positive + interested
@@ -75,13 +88,17 @@ Guidelines:
 - "Maybe later", "Call me next month" = neutral + not interested
 - Out of office, automated replies = neutral + not interested
 - Questions about coverage/pricing = positive + interested
+- A reply that's just "Thanks!" with no prior scheduling context is "confirmation" with low confidence — leave the upstream gate to decide whether to act on it.
 
 Respond with ONLY a raw JSON object (no markdown code fences, no prose before or after):
 {
   "sentiment": "positive|negative|neutral",
   "is_interested": true|false,
   "confidence": 85,
-  "reasoning": "Lead said 'Yes, please do' indicating clear interest"
+  "reasoning": "Lead said 'Yes, please do' indicating clear interest",
+  "scheduling_intent": "specific_time|soft_schedule|vague_availability|calendar_request|confirmation|none",
+  "scheduling_phrase": "Monday at 2pm" | null,
+  "scheduling_intent_confidence": 90
 }`;
     const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!anthropicApiKey) {
@@ -91,7 +108,10 @@ Respond with ONLY a raw JSON object (no markdown code fences, no prose before or
         sentiment: 'neutral',
         is_interested: false,
         confidence: 0,
-        reasoning: 'AI API key not configured'
+        reasoning: 'AI API key not configured',
+        scheduling_intent: 'none',
+        scheduling_phrase: null,
+        scheduling_intent_confidence: 0
       };
     }
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -121,9 +141,29 @@ Respond with ONLY a raw JSON object (no markdown code fences, no prose before or
     const contentText = data.content[0].text;
     // Parse JSON response — strip markdown fences if the model added them.
     const analysis = JSON.parse(stripCodeFences(contentText));
-    console.log(`🤖 AI Analysis: sentiment=${analysis.sentiment}, interested=${analysis.is_interested}, confidence=${analysis.confidence}%`);
+
+    // Normalize scheduling fields. Anything missing or unrecognized falls
+    // back to 'none' so downstream code can rely on the column shape.
+    const rawIntent = analysis?.scheduling_intent;
+    const schedulingIntent = isSchedulingIntent(rawIntent) ? rawIntent : 'none';
+    const rawPhrase = typeof analysis?.scheduling_phrase === 'string'
+      ? analysis.scheduling_phrase.trim()
+      : '';
+    const schedulingPhrase = rawPhrase.length > 0 ? rawPhrase : null;
+    const rawIntentConf = typeof analysis?.scheduling_intent_confidence === 'number'
+      ? analysis.scheduling_intent_confidence
+      : 0;
+    const schedulingIntentConfidence = Math.max(0, Math.min(100, Math.round(rawIntentConf)));
+
+    console.log(`🤖 AI Analysis: sentiment=${analysis.sentiment}, interested=${analysis.is_interested}, confidence=${analysis.confidence}%, scheduling_intent=${schedulingIntent}@${schedulingIntentConfidence}%`);
     console.log(`   Reasoning: ${analysis.reasoning}`);
-    return analysis;
+
+    return {
+      ...analysis,
+      scheduling_intent: schedulingIntent,
+      scheduling_phrase: schedulingPhrase,
+      scheduling_intent_confidence: schedulingIntentConfidence,
+    };
   } catch (error) {
     console.error('❌ Error analyzing sentiment with AI:', error);
     // Return neutral classification as fallback
@@ -131,7 +171,10 @@ Respond with ONLY a raw JSON object (no markdown code fences, no prose before or
       sentiment: 'neutral',
       is_interested: false,
       confidence: 0,
-      reasoning: `AI analysis failed: ${error.message}`
+      reasoning: `AI analysis failed: ${error.message}`,
+      scheduling_intent: 'none',
+      scheduling_phrase: null,
+      scheduling_intent_confidence: 0
     };
   }
 }
@@ -629,6 +672,10 @@ async function handleLeadReplied(supabase, payload) {
       confidence_score: aiAnalysis.confidence,
       ai_reasoning: aiAnalysis.reasoning,
       sentiment_source: 'ai',
+      // Scheduling-intent classification — drives deflection in the worker.
+      scheduling_intent: aiAnalysis.scheduling_intent,
+      scheduling_phrase: aiAnalysis.scheduling_phrase,
+      scheduling_intent_confidence: aiAnalysis.scheduling_intent_confidence,
       // Email Bison data
       bison_lead_id: lead.id ? lead.id.toString() : null,
       bison_reply_id: reply.uuid || reply.id ? reply.uuid || reply.id.toString() : null,

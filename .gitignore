@@ -26,3 +26,6 @@ dist-ssr
 *.sw?
 docs/cole-xdates-credentials.md
 .env
+
+# Supabase CLI local cache (project-ref, version pins, etc.) — regenerated on every CLI run
+supabase/.temp/

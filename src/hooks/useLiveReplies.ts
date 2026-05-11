@@ -11,6 +11,8 @@ export interface SentReplyRow {
   error_message: string | null;
   retry_count: number;
   last_retry_at: string | null;
+  generated_reply_text: string | null;
+  cc_emails: string[] | null;
 }
 
 export type ReplyState = 'none' | 'queued' | 'pending' | 'replied' | 'failed';
@@ -62,6 +64,7 @@ export interface LiveReply {
   // Most recent auto_reply_queue status for this lead (if any), used to
   // prevent showing a lead as NEW/uncontacted when a draft is in-flight.
   queue_status?: string | null;
+  queue_scheduled_for?: string | null;
   // Conversation tracking fields (from view, optional for backward compatibility)
   conversation_reply_count?: number;
   conversation_first_reply_date?: string;
@@ -80,9 +83,6 @@ interface UseLiveRepliesReturn {
   patchReplyAfterSend: (replyUuid: string, sentReply: SentReplyRow) => void;
 }
 
-// "The Capteam Commercial" is small (6 leads total) so we always load their
-// full history regardless of date. All other workspaces use the 7-day window.
-const LIFETIME_WORKSPACES = new Set(['The Capteam Commercial']);
 
 export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesReturn {
   const [replies, setReplies] = useState<LiveReply[]>([]);
@@ -105,11 +105,10 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
       }
       setError(null);
 
-      // When a specific workspace is selected, load ALL their leads (no date cutoff).
-      // Otherwise restrict to the last 7 days for performance across all workspaces.
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 7);
-
+      // Load the most recent 5000 interested leads across all workspaces.
+      // No date filter — every fresh lead that comes in should always appear.
+      // The limit(5000) + order by reply_date DESC ensures the newest leads
+      // are always visible without any time-based cutoff excluding recent activity.
       let leadQuery = supabase
         .from('lead_replies')
         .select(`
@@ -133,39 +132,49 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
         .order('reply_date', { ascending: false })
         .limit(5000);
 
-      if (workspaceName && LIFETIME_WORKSPACES.has(workspaceName)) {
-        // Lifetime workspace — load all-time leads, no date filter
+      if (workspaceName) {
+        // Workspace selected — filter to just that workspace (no date restriction)
         leadQuery = leadQuery.eq('workspace_name', workspaceName);
-      } else {
-        // Default — last 7 days (workspace filter applied client-side in the board)
-        leadQuery = leadQuery.gte('reply_date', cutoff.toISOString());
       }
 
       const [{ data, error: fetchError }, { data: sentRepliesRaw }, { data: conversationStats }, { data: queueRaw }] = await Promise.all([
         leadQuery,
         supabase
           .from('sent_replies')
-          .select('id, reply_uuid, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at')
+          .select('id, reply_uuid, lead_email, workspace_name, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at, generated_reply_text, cc_emails')
           .order('created_at', { ascending: false }) as any,
+        // Fetch only leads with reply_count > 1 (threads) — small result set, no URL-length issues.
         supabase
           .from('lead_conversation_stats')
-          .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status') as any,
+          .select('lead_email, workspace_name, reply_count, first_reply_date, latest_reply_date, replies_last_7_days, conversation_status')
+          .gt('reply_count', 1)
+          .limit(5000) as any,
         // Fetch the most recent auto_reply_queue row per reply_uuid so we can
         // suppress the NEW badge and treat in-flight drafts as "pending".
         supabase
           .from('auto_reply_queue')
-          .select('reply_uuid, status')
+          .select('reply_uuid, status, scheduled_for')
           .in('status', ['pending', 'processing', 'review_required']) as any,
       ]);
 
       if (fetchError) throw fetchError;
 
+
       // Build lookup maps — rows are ordered by created_at DESC so the first
       // entry per reply_uuid is always the most recent one.
       const sentRepliesMap = new Map<string, SentReplyRow>();
+      // Also key by "email|workspace" so a lead's second reply shows as Replied
+      // if we already replied to their first message in the same workspace.
+      const sentRepliesByEmailMap = new Map<string, SentReplyRow>();
       ((sentRepliesRaw as any[]) || []).forEach((sr: any) => {
         if (sr.reply_uuid && !sentRepliesMap.has(sr.reply_uuid)) {
           sentRepliesMap.set(sr.reply_uuid, sr as SentReplyRow);
+        }
+        if (sr.lead_email && sr.workspace_name && sr.verified_at) {
+          const emailKey = `${sr.lead_email.toLowerCase()}|${sr.workspace_name}`;
+          if (!sentRepliesByEmailMap.has(emailKey)) {
+            sentRepliesByEmailMap.set(emailKey, sr as SentReplyRow);
+          }
         }
       });
 
@@ -174,20 +183,30 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
         statsMap.set(`${stat.lead_email}|${stat.workspace_name}`, stat);
       });
 
-      // Map reply_uuid → most urgent active queue status
+      // Map reply_uuid → most urgent active queue status + scheduled_for
       // (pending > processing > review_required — all treated as in-flight)
       const queueStatusMap = new Map<string, string>();
+      const queueScheduledForMap = new Map<string, string>();
       ((queueRaw as any[]) || []).forEach((q: any) => {
-        if (q.reply_uuid) queueStatusMap.set(q.reply_uuid, q.status);
+        if (q.reply_uuid) {
+          queueStatusMap.set(q.reply_uuid, q.status);
+          if (q.scheduled_for) queueScheduledForMap.set(q.reply_uuid, q.scheduled_for);
+        }
       });
 
       // Merge everything together
       const repliesWithConversation: LiveReply[] = (data || []).map(reply => {
         const stats = statsMap.get(`${reply.lead_email}|${reply.workspace_name}`);
+        // Prefer exact reply_uuid match; fall back to email-level match so that
+        // a lead's second inbound reply shows as Replied (not NEW) if we already
+        // replied to their first message in this workspace.
+        const emailKey = `${reply.lead_email.toLowerCase()}|${reply.workspace_name}`;
+        const sentReply = sentRepliesMap.get(reply.id) || sentRepliesByEmailMap.get(emailKey);
         return {
           ...(reply as any),
-          sent_replies: sentRepliesMap.get(reply.id) || undefined,
+          sent_replies: sentReply || undefined,
           queue_status: queueStatusMap.get(reply.id) || null,
+          queue_scheduled_for: queueScheduledForMap.get(reply.id) || null,
           conversation_reply_count: stats?.reply_count || 1,
           conversation_first_reply_date: stats?.first_reply_date || null,
           conversation_latest_reply_date: stats?.latest_reply_date || null,

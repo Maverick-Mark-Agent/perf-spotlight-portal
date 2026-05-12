@@ -1,0 +1,133 @@
+{
+  "timestamp": "2025-12-26T13:47:36.337Z",
+  "totalCampaigns": 6,
+  "recentRenewalCampaigns": 2,
+  "allCampaigns": [
+    {
+      "id": 147,
+      "name": "Stopped Contacts: January Week 1 - 4",
+      "status": "active",
+      "type": "outbound",
+      "created_at": "2025-12-23T15:10:26.000000Z",
+      "updated_at": "2025-12-26T13:08:01.000000Z",
+      "emails_sent": 2,
+      "total_leads": 151,
+      "total_leads_contacted": 2,
+      "completion_percentage": 0.44,
+      "metrics": {
+        "opened": 0,
+        "unique_opens": "0",
+        "replied": 0,
+        "unique_replies": 0,
+        "bounced": 0,
+        "unsubscribed": 0,
+        "interested": 0
+      }
+    },
+    {
+      "id": 131,
+      "name": "Evergreen Campaign – Contact Upload January Week 1 - 4",
+      "status": "active",
+      "type": "outbound",
+      "created_at": "2025-12-04T22:09:37.000000Z",
+      "updated_at": "2025-12-26T13:07:30.000000Z",
+      "emails_sent": 17471,
+      "total_leads": 13145,
+      "total_leads_contacted": 9426,
+      "completion_percentage": 49.73,
+      "metrics": {
+        "opened": 0,
+        "unique_opens": "0",
+        "replied": 150,
+        "unique_replies": 84,
+        "bounced": 769,
+        "unsubscribed": 14,
+        "interested": 33
+      }
+    },
+    {
+      "id": 78,
+      "name": "Evergreen Campaign – Contact Upload December week 4]",
+      "status": "active",
+      "type": "outbound",
+      "created_at": "2025-09-09T14:32:48.000000Z",
+      "updated_at": "2025-12-26T01:05:26.000000Z",
+      "emails_sent": 143888,
+      "total_leads": 54905,
+      "total_leads_contacted": 51464,
+      "completion_percentage": 99.83,
+      "metrics": {
+        "opened": 0,
+        "unique_opens": "0",
+        "replied": 1312,
+        "unique_replies": 818,
+        "bounced": 3511,
+        "unsubscribed": 172,
+        "interested": 209
+      }
+    },
+    {
+      "id": 145,
+      "name": "Evergreen Campaign – Stopped Contacts",
+      "status": "archived",
+      "type": "outbound",
+      "created_at": "2025-12-15T15:42:56.000000Z",
+      "updated_at": "2025-12-19T23:03:51.000000Z",
+      "emails_sent": 0,
+      "total_leads": 0,
+      "total_leads_contacted": 0,
+      "completion_percentage": 0,
+      "metrics": {
+        "opened": 0,
+        "unique_opens": "0",
+        "replied": 0,
+        "unique_replies": 0,
+        "bounced": 0,
+        "unsubscribed": 0,
+        "interested": 0
+      }
+    },
+    {
+      "id": 82,
+      "name": "Copy of Evergreen Campaign Last upload: October 13-19th",
+      "status": "archived",
+      "type": "outbound",
+      "created_at": "2025-09-17T12:57:51.000000Z",
+      "updated_at": "2025-11-25T16:52:05.000000Z",
+      "emails_sent": 0,
+      "total_leads": 13610,
+      "total_leads_contacted": 0,
+      "completion_percentage": 0,
+      "metrics": {
+        "opened": 0,
+        "unique_opens": "0",
+        "replied": 0,
+        "unique_replies": 0,
+        "bounced": 0,
+        "unsubscribed": 0,
+        "interested": 0
+      }
+    },
+    {
+      "id": 79,
+      "name": "Custom Mail Servers",
+      "status": "archived",
+      "type": "outbound",
+      "created_at": "2025-09-10T10:39:57.000000Z",
+      "updated_at": "2025-11-25T16:52:05.000000Z",
+      "emails_sent": 0,
+      "total_leads": 1726,
+      "total_leads_contacted": 0,
+      "completion_percentage": 0,
+      "metrics": {
+        "opened": 0,
+        "unique_opens": "0",
+        "replied": 0,
+        "unique_replies": 0,
+        "bounced": 0,
+        "unsubscribed": 0,
+        "interested": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "summary": {
+    "period_start": "2025-10-03",
+    "period_end": "2026-01-03",
+    "excluded_workspaces": [
+      "SMA Insurance",
+      "StreetSmart Commercial",
+      "StreetSmart Trucking",
+      "Shane Miller",
+      "Jeff Schroder"
+    ],
+    "total_emails_sent": 1751019,
+    "total_replies": 2359,
+    "overall_reply_rate": "0.13%",
+    "workspaces_processed": 19
+  },
+  "workspace_stats": [
+    {
+      "workspace_name": "Jason Binyon",
+      "total_emails_sent": 231632,
+      "total_replies": 234,
+      "reply_rate": "0.10"
+    },
+    {
+      "workspace_name": "Kim Wallace",
+      "total_emails_sent": 214636,
+      "total_replies": 354,
+      "reply_rate": "0.16"
+    },
+    {
+      "workspace_name": "Nick Sakha",
+      "total_emails_sent": 166555,
+      "total_replies": 201,
+      "reply_rate": "0.12"
+    },
+    {
+      "workspace_name": "David Amiri",
+      "total_emails_sent": 164673,
+      "total_replies": 149,
+      "reply_rate": "0.09"
+    },
+    {
+      "workspace_name": "John Roberts",
+      "total_emails_sent": 151584,
+      "total_replies": 198,
+      "reply_rate": "0.13"
+    },
+    {
+      "workspace_name": "Danny Schwartz",
+      "total_emails_sent": 144758,
+      "total_replies": 217,
+      "reply_rate": "0.15"
+    },
+    {
+      "workspace_name": "Rob Russell",
+      "total_emails_sent": 130029,
+      "total_replies": 144,
+      "reply_rate": "0.11"
+    },
+    {
+      "workspace_name": "Devin Hodo",
+      "total_emails_sent": 113968,
+      "total_replies": 124,
+      "reply_rate": "0.11"
+    },
+    {
+      "workspace_name": "Tony Schmitz",
+      "total_emails_sent": 104832,
+      "total_replies": 179,
+      "reply_rate": "0.17"
+    },
+    {
+      "workspace_name": "Gregg Blanchard",
+      "total_emails_sent": 93442,
+      "total_replies": 195,
+      "reply_rate": "0.21"
+    },
+    {
+      "workspace_name": "StreetSmart P&C",
+      "total_emails_sent": 62394,
+      "total_replies": 74,
+      "reply_rate": "0.12"
+    },
+    {
+      "workspace_name": "LeBlanc Agency",
+      "total_emails_sent": 50975,
+      "total_replies": 87,
+      "reply_rate": "0.17"
+    },
+    {
+      "workspace_name": "Schrauf Agency",
+      "total_emails_sent": 45634,
+      "total_replies": 76,
+      "reply_rate": "0.17"
+    },
+    {
+      "workspace_name": "Castle Agency",
+      "total_emails_sent": 38831,
+      "total_replies": 70,
+      "reply_rate": "0.18"
+    },
+    {
+      "workspace_name": "Kirk Hodgson",
+      "total_emails_sent": 26388,
+      "total_replies": 54,
+      "reply_rate": "0.20"
+    },
+    {
+      "workspace_name": "Maverick In-house",
+      "total_emails_sent": 10688,
+      "total_replies": 3,
+      "reply_rate": "0.03"
+    },
+    {
+      "workspace_name": "Noah Sisson",
+      "total_emails_sent": 0,
+      "total_replies": 0,
+      "reply_rate": "0.00"
+    },
+    {
+      "workspace_name": "The Capteam",
+      "total_emails_sent": 0,
+      "total_replies": 0,
+      "reply_rate": "0.00"
+    },
+    {
+      "workspace_name": "Casanas Agency",
+      "total_emails_sent": 0,
+      "total_replies": 0,
+      "reply_rate": "0.00"
+    }
+  ]
+}

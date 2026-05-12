@@ -1,15 +1,9 @@
-// Auto-reply scheduling — Mon–Fri 7am–7pm in the workspace's local timezone,
-// with a "human delay" floor and small jitter on top.
-//
-// Two reasons not to send instantly even when in-window:
-//  1. Replies that land within seconds look robotic.
-//  2. Monday-morning queue flushes would otherwise hit Bison with a thundering
-//     herd of simultaneous sends.
+// Auto-reply scheduling — send 24/7, no business-hours window.
+// Apply a minimum human-like delay + small jitter so replies don't land
+// within seconds of the lead's message.
 //
 // All math goes through Intl.DateTimeFormat with `timeZone:`. No deps.
 
-const WINDOW_START_HOUR = 7;   // 7:00 local — first valid send minute
-const WINDOW_END_HOUR = 19;    // 19:00 local — first INVALID send minute (i.e. window is [7:00, 19:00))
 const JITTER_MAX_MS = 90_000;  // 0–90s random offset on the final scheduled_for
 
 interface LocalParts {
@@ -140,64 +134,14 @@ export function isWithinSendWindow(date: Date, timezone: string): boolean {
  * @param applyJitter Set false in tests for deterministic output.
  */
 export function computeNextSendTime(
-  timezone: string,
+  _timezone: string,
   minDelayMinutes: number = 10,
   now: Date = new Date(),
   applyJitter: boolean = true,
 ): Date {
-  const target = new Date(now.getTime() + minDelayMinutes * 60_000);
-
-  let scheduledUtc: Date;
-  if (isWithinSendWindow(target, timezone)) {
-    scheduledUtc = target;
-  } else {
-    // Snap to the next valid window opening.
-    const local = getLocalParts(target, timezone);
-
-    // Days to skip forward to land on a weekday.
-    let daysToAdd = 0;
-    let snapToTodayOpening = false;
-
-    if (local.dayOfWeek === 0) {
-      // Sun → Mon
-      daysToAdd = 1;
-    } else if (local.dayOfWeek === 6) {
-      // Sat → Mon
-      daysToAdd = 2;
-    } else {
-      // Mon–Fri
-      if (local.hour < WINDOW_START_HOUR) {
-        // Before 7am → snap to today 7am
-        daysToAdd = 0;
-        snapToTodayOpening = true;
-      } else if (local.hour >= WINDOW_END_HOUR) {
-        // After 7pm → next weekday 7am
-        if (local.dayOfWeek === 5) {
-          // Fri → Mon
-          daysToAdd = 3;
-        } else {
-          daysToAdd = 1;
-        }
-      }
-    }
-
-    const next = addDays(local.year, local.month, local.day, daysToAdd);
-    scheduledUtc = makeZonedDate(timezone, next.year, next.month, next.day, WINDOW_START_HOUR, 0);
-
-    // Defensive: if the snap somehow lands behind `target` (DST quirk),
-    // bump forward another day.
-    if (scheduledUtc.getTime() < target.getTime()) {
-      const safer = addDays(next.year, next.month, next.day, 1);
-      scheduledUtc = makeZonedDate(timezone, safer.year, safer.month, safer.day, WINDOW_START_HOUR, 0);
-    }
-
-    // Mark this branch unused-but-explicit so a reader can see we considered it.
-    void snapToTodayOpening;
-  }
-
+  let scheduledUtc = new Date(now.getTime() + minDelayMinutes * 60_000);
   if (applyJitter) {
-    const jitterMs = Math.floor(Math.random() * JITTER_MAX_MS);
-    scheduledUtc = new Date(scheduledUtc.getTime() + jitterMs);
+    scheduledUtc = new Date(scheduledUtc.getTime() + Math.floor(Math.random() * JITTER_MAX_MS));
   }
   return scheduledUtc;
 }

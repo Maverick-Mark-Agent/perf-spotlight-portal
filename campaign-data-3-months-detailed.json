@@ -1,0 +1,501 @@
+{
+  "summary": {
+    "period_start": "2025-10-03",
+    "period_end": "2026-01-03",
+    "excluded_workspaces": [
+      "SMA Insurance",
+      "StreetSmart Commercial",
+      "StreetSmart Trucking",
+      "Shane Miller",
+      "Jeff Schroder"
+    ],
+    "total_emails_sent": 1751019,
+    "total_replies": 2359,
+    "overall_reply_rate": "0.13%",
+    "workspaces_processed": 19
+  },
+  "workspace_stats": [
+    {
+      "workspace_name": "Jason Binyon",
+      "total_emails_sent": 231632,
+      "total_replies": 234,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 6883,
+          "replies": 7,
+          "reply_rate": "0.10"
+        },
+        "2025-12": {
+          "emails_sent": 51058,
+          "replies": 72,
+          "reply_rate": "0.14"
+        },
+        "2025-11": {
+          "emails_sent": 93436,
+          "replies": 81,
+          "reply_rate": "0.09"
+        },
+        "2025-10": {
+          "emails_sent": 80255,
+          "replies": 74,
+          "reply_rate": "0.09"
+        }
+      },
+      "reply_rate": "0.10"
+    },
+    {
+      "workspace_name": "Kim Wallace",
+      "total_emails_sent": 214636,
+      "total_replies": 354,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 4493,
+          "replies": 6,
+          "reply_rate": "0.13"
+        },
+        "2025-12": {
+          "emails_sent": 57190,
+          "replies": 120,
+          "reply_rate": "0.21"
+        },
+        "2025-11": {
+          "emails_sent": 82897,
+          "replies": 106,
+          "reply_rate": "0.13"
+        },
+        "2025-10": {
+          "emails_sent": 70056,
+          "replies": 122,
+          "reply_rate": "0.17"
+        }
+      },
+      "reply_rate": "0.16"
+    },
+    {
+      "workspace_name": "Nick Sakha",
+      "total_emails_sent": 166555,
+      "total_replies": 201,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        },
+        "2025-12": {
+          "emails_sent": 3382,
+          "replies": 10,
+          "reply_rate": "0.30"
+        },
+        "2025-11": {
+          "emails_sent": 121604,
+          "replies": 123,
+          "reply_rate": "0.10"
+        },
+        "2025-10": {
+          "emails_sent": 41569,
+          "replies": 68,
+          "reply_rate": "0.16"
+        }
+      },
+      "reply_rate": "0.12"
+    },
+    {
+      "workspace_name": "David Amiri",
+      "total_emails_sent": 164673,
+      "total_replies": 149,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 3514,
+          "replies": 3,
+          "reply_rate": "0.09"
+        },
+        "2025-12": {
+          "emails_sent": 59829,
+          "replies": 41,
+          "reply_rate": "0.07"
+        },
+        "2025-11": {
+          "emails_sent": 50144,
+          "replies": 33,
+          "reply_rate": "0.07"
+        },
+        "2025-10": {
+          "emails_sent": 51186,
+          "replies": 72,
+          "reply_rate": "0.14"
+        }
+      },
+      "reply_rate": "0.09"
+    },
+    {
+      "workspace_name": "John Roberts",
+      "total_emails_sent": 151584,
+      "total_replies": 198,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 4035,
+          "replies": 4,
+          "reply_rate": "0.10"
+        },
+        "2025-12": {
+          "emails_sent": 54849,
+          "replies": 66,
+          "reply_rate": "0.12"
+        },
+        "2025-11": {
+          "emails_sent": 51533,
+          "replies": 73,
+          "reply_rate": "0.14"
+        },
+        "2025-10": {
+          "emails_sent": 41167,
+          "replies": 55,
+          "reply_rate": "0.13"
+        }
+      },
+      "reply_rate": "0.13"
+    },
+    {
+      "workspace_name": "Danny Schwartz",
+      "total_emails_sent": 144758,
+      "total_replies": 217,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 2581,
+          "replies": 3,
+          "reply_rate": "0.12"
+        },
+        "2025-12": {
+          "emails_sent": 35278,
+          "replies": 54,
+          "reply_rate": "0.15"
+        },
+        "2025-11": {
+          "emails_sent": 56212,
+          "replies": 87,
+          "reply_rate": "0.15"
+        },
+        "2025-10": {
+          "emails_sent": 50687,
+          "replies": 73,
+          "reply_rate": "0.14"
+        }
+      },
+      "reply_rate": "0.15"
+    },
+    {
+      "workspace_name": "Rob Russell",
+      "total_emails_sent": 130029,
+      "total_replies": 144,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 3536,
+          "replies": 1,
+          "reply_rate": "0.03"
+        },
+        "2025-12": {
+          "emails_sent": 46058,
+          "replies": 41,
+          "reply_rate": "0.09"
+        },
+        "2025-11": {
+          "emails_sent": 47528,
+          "replies": 61,
+          "reply_rate": "0.13"
+        },
+        "2025-10": {
+          "emails_sent": 32907,
+          "replies": 41,
+          "reply_rate": "0.12"
+        }
+      },
+      "reply_rate": "0.11"
+    },
+    {
+      "workspace_name": "Devin Hodo",
+      "total_emails_sent": 113968,
+      "total_replies": 124,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 2597,
+          "replies": 1,
+          "reply_rate": "0.04"
+        },
+        "2025-12": {
+          "emails_sent": 28499,
+          "replies": 31,
+          "reply_rate": "0.11"
+        },
+        "2025-11": {
+          "emails_sent": 37339,
+          "replies": 30,
+          "reply_rate": "0.08"
+        },
+        "2025-10": {
+          "emails_sent": 45533,
+          "replies": 62,
+          "reply_rate": "0.14"
+        }
+      },
+      "reply_rate": "0.11"
+    },
+    {
+      "workspace_name": "Tony Schmitz",
+      "total_emails_sent": 104832,
+      "total_replies": 179,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 2638,
+          "replies": 4,
+          "reply_rate": "0.15"
+        },
+        "2025-12": {
+          "emails_sent": 22536,
+          "replies": 43,
+          "reply_rate": "0.19"
+        },
+        "2025-11": {
+          "emails_sent": 55787,
+          "replies": 94,
+          "reply_rate": "0.17"
+        },
+        "2025-10": {
+          "emails_sent": 23871,
+          "replies": 38,
+          "reply_rate": "0.16"
+        }
+      },
+      "reply_rate": "0.17"
+    },
+    {
+      "workspace_name": "Gregg Blanchard",
+      "total_emails_sent": 93442,
+      "total_replies": 195,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 3594,
+          "replies": 7,
+          "reply_rate": "0.19"
+        },
+        "2025-12": {
+          "emails_sent": 52128,
+          "replies": 111,
+          "reply_rate": "0.21"
+        },
+        "2025-11": {
+          "emails_sent": 37720,
+          "replies": 77,
+          "reply_rate": "0.20"
+        },
+        "2025-10": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        }
+      },
+      "reply_rate": "0.21"
+    },
+    {
+      "workspace_name": "StreetSmart P&C",
+      "total_emails_sent": 62394,
+      "total_replies": 74,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 3670,
+          "replies": 5,
+          "reply_rate": "0.14"
+        },
+        "2025-12": {
+          "emails_sent": 41458,
+          "replies": 42,
+          "reply_rate": "0.10"
+        },
+        "2025-11": {
+          "emails_sent": 17266,
+          "replies": 26,
+          "reply_rate": "0.15"
+        },
+        "2025-10": {
+          "emails_sent": 0,
+          "replies": 1,
+          "reply_rate": "0.00"
+        }
+      },
+      "reply_rate": "0.12"
+    },
+    {
+      "workspace_name": "LeBlanc Agency",
+      "total_emails_sent": 50975,
+      "total_replies": 87,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 994,
+          "replies": 1,
+          "reply_rate": "0.10"
+        },
+        "2025-12": {
+          "emails_sent": 11266,
+          "replies": 17,
+          "reply_rate": "0.15"
+        },
+        "2025-11": {
+          "emails_sent": 38715,
+          "replies": 69,
+          "reply_rate": "0.18"
+        }
+      },
+      "reply_rate": "0.17"
+    },
+    {
+      "workspace_name": "Schrauf Agency",
+      "total_emails_sent": 45634,
+      "total_replies": 76,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 408,
+          "replies": 1,
+          "reply_rate": "0.25"
+        },
+        "2025-12": {
+          "emails_sent": 6511,
+          "replies": 6,
+          "reply_rate": "0.09"
+        },
+        "2025-11": {
+          "emails_sent": 38715,
+          "replies": 69,
+          "reply_rate": "0.18"
+        }
+      },
+      "reply_rate": "0.17"
+    },
+    {
+      "workspace_name": "Castle Agency",
+      "total_emails_sent": 38831,
+      "total_replies": 70,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 116,
+          "replies": 1,
+          "reply_rate": "0.86"
+        },
+        "2025-12": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        },
+        "2025-11": {
+          "emails_sent": 38715,
+          "replies": 69,
+          "reply_rate": "0.18"
+        }
+      },
+      "reply_rate": "0.18"
+    },
+    {
+      "workspace_name": "Kirk Hodgson",
+      "total_emails_sent": 26388,
+      "total_replies": 54,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        },
+        "2025-12": {
+          "emails_sent": 2753,
+          "replies": 7,
+          "reply_rate": "0.25"
+        },
+        "2025-11": {
+          "emails_sent": 12485,
+          "replies": 27,
+          "reply_rate": "0.22"
+        },
+        "2025-10": {
+          "emails_sent": 11150,
+          "replies": 20,
+          "reply_rate": "0.18"
+        }
+      },
+      "reply_rate": "0.20"
+    },
+    {
+      "workspace_name": "Maverick In-house",
+      "total_emails_sent": 10688,
+      "total_replies": 3,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 1082,
+          "replies": 0,
+          "reply_rate": "0.00"
+        },
+        "2025-12": {
+          "emails_sent": 9606,
+          "replies": 3,
+          "reply_rate": "0.03"
+        },
+        "2025-11": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        },
+        "2025-10": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        }
+      },
+      "reply_rate": "0.03"
+    },
+    {
+      "workspace_name": "Noah Sisson",
+      "total_emails_sent": 0,
+      "total_replies": 0,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        },
+        "2025-12": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        }
+      },
+      "reply_rate": "0.00"
+    },
+    {
+      "workspace_name": "The Capteam",
+      "total_emails_sent": 0,
+      "total_replies": 0,
+      "monthly_breakdown": {
+        "2026-01": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        },
+        "2025-12": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        }
+      },
+      "reply_rate": "0.00"
+    },
+    {
+      "workspace_name": "Casanas Agency",
+      "total_emails_sent": 0,
+      "total_replies": 0,
+      "monthly_breakdown": {
+        "2025-12": {
+          "emails_sent": 0,
+          "replies": 0,
+          "reply_rate": "0.00"
+        }
+      },
+      "reply_rate": "0.00"
+    }
+  ]
+}

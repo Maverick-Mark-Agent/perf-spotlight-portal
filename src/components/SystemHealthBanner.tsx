@@ -148,10 +148,27 @@ export function SystemHealthBanner() {
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    const tick = () => runHealthChecks().then(setIssues).catch(() => {});
+    let cancelled = false;
+    const tick = () => {
+      // Skip if the tab isn't visible — no point polling when nobody's looking.
+      // This keeps DB load down when users have the dashboard open in background tabs.
+      if (document.visibilityState !== 'visible') return;
+      runHealthChecks()
+        .then(r => { if (!cancelled) setIssues(r); })
+        .catch(() => {}); // never crash the dashboard if a check fails
+    };
     tick();
-    const t = setInterval(tick, 60_000);
-    return () => clearInterval(t);
+    // Run every 5 min — the auto-reply pipeline can't go from healthy → broken
+    // faster than that, so polling more often just wastes DB queries.
+    const t = setInterval(tick, 5 * 60_000);
+    // Also re-check the moment the tab regains focus, so issues surface fast
+    // when you switch back to the dashboard.
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, []);
 
   if (issues.length === 0) return null;

@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { SystemHealthBanner } from '@/components/SystemHealthBanner';
 
 export default function LiveRepliesBoard() {
   const { workspaces } = useReplyWorkspaces();
@@ -118,6 +119,7 @@ export default function LiveRepliesBoard() {
 
   return (
     <div className="min-h-screen">
+      <SystemHealthBanner />
       {/* Header */}
       <div className="bg-card border-b sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4">

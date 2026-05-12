@@ -141,7 +141,7 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
         leadQuery,
         supabase
           .from('sent_replies')
-          .select('id, reply_uuid, lead_email, workspace_name, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at, generated_reply_text, cc_emails')
+          .select('id, reply_uuid, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at, generated_reply_text, cc_emails')
           .order('created_at', { ascending: false }) as any,
         // Fetch only leads with reply_count > 1 (threads) — small result set, no URL-length issues.
         supabase
@@ -160,21 +160,12 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
       if (fetchError) throw fetchError;
 
 
-      // Build lookup maps — rows are ordered by created_at DESC so the first
-      // entry per reply_uuid is always the most recent one.
+      // Build lookup map keyed by reply_uuid — rows are ordered by created_at DESC
+      // so the first entry per reply_uuid is always the most recent one.
       const sentRepliesMap = new Map<string, SentReplyRow>();
-      // Also key by "email|workspace" so a lead's second reply shows as Replied
-      // if we already replied to their first message in the same workspace.
-      const sentRepliesByEmailMap = new Map<string, SentReplyRow>();
       ((sentRepliesRaw as any[]) || []).forEach((sr: any) => {
         if (sr.reply_uuid && !sentRepliesMap.has(sr.reply_uuid)) {
           sentRepliesMap.set(sr.reply_uuid, sr as SentReplyRow);
-        }
-        if (sr.lead_email && sr.workspace_name && sr.verified_at) {
-          const emailKey = `${sr.lead_email.toLowerCase()}|${sr.workspace_name}`;
-          if (!sentRepliesByEmailMap.has(emailKey)) {
-            sentRepliesByEmailMap.set(emailKey, sr as SentReplyRow);
-          }
         }
       });
 
@@ -197,11 +188,7 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
       // Merge everything together
       const repliesWithConversation: LiveReply[] = (data || []).map(reply => {
         const stats = statsMap.get(`${reply.lead_email}|${reply.workspace_name}`);
-        // Prefer exact reply_uuid match; fall back to email-level match so that
-        // a lead's second inbound reply shows as Replied (not NEW) if we already
-        // replied to their first message in this workspace.
-        const emailKey = `${reply.lead_email.toLowerCase()}|${reply.workspace_name}`;
-        const sentReply = sentRepliesMap.get(reply.id) || sentRepliesByEmailMap.get(emailKey);
+        const sentReply = sentRepliesMap.get(reply.id);
         return {
           ...(reply as any),
           sent_replies: sentReply || undefined,

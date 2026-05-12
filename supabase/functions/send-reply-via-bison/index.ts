@@ -177,11 +177,12 @@ serve(async (req)=>{
     }
     const usingWorkspaceKey = !!workspace.bison_api_key;
     console.log(`✅ Using ${usingWorkspaceKey ? 'workspace-specific' : 'global'} API key for ${workspace_name}`);
-    // If using global key, we may need to switch workspace context
-    // However, for reply sending, the reply ID is already workspace-scoped, so switching may not be necessary
-    // But we'll do it to be safe
+    // Workspace-specific (api-user) keys are already scoped to their workspace —
+    // calling switch-workspace with them returns 400 "Only a super admin user can
+    // switch workspaces" and corrupts the session context. Only switch when using
+    // the global key, which IS a super-admin key.
     if (!usingWorkspaceKey && workspace.bison_workspace_id) {
-      console.log(`🔄 Switching to workspace ${workspace.bison_workspace_id} (using global key)...`);
+      console.log(`🔄 Switching to workspace ${workspace.bison_workspace_id} (global key)...`);
       try {
         const switchResponse = await fetch(`${baseUrl}/workspaces/v1.1/switch-workspace`, {
           method: 'POST',
@@ -195,14 +196,12 @@ serve(async (req)=>{
           })
         });
         if (!switchResponse.ok) {
-          console.warn(`⚠️  Failed to switch workspace (may not be necessary for replies): ${switchResponse.status}`);
-        // Don't fail - reply IDs are workspace-scoped, so this might not be needed
+          console.warn(`⚠️  Failed to switch workspace: ${switchResponse.status}`);
         } else {
           console.log(`✅ Switched to workspace ${workspace.bison_workspace_id}`);
         }
       } catch (switchError) {
         console.warn(`⚠️  Workspace switch error (continuing anyway):`, switchError);
-      // Continue - reply IDs are workspace-scoped
       }
     }
     // Step 3: Get the bison reply numeric ID (required for Email Bison API)
@@ -481,16 +480,41 @@ serve(async (req)=>{
     }
     bisonResponse = attemptResult.resp;
     const bisonData = await bisonResponse.json();
-    // Extract outbound reply identifiers — these are what manual_email_sent webhook
-    // will reference, so we save them for verification matching.
-    const outboundReplyId = bisonData?.data?.reply?.id ?? null;
-    const outboundReplyUuid = bisonData?.data?.reply?.uuid ?? null;
-    console.log(`✅ Reply sent successfully via Email Bison (outbound reply id=${outboundReplyId}, uuid=${outboundReplyUuid})`);
+    // Bison's POST /replies/{id}/reply returns:
+    //   { data: { success: true, message: "Message queued for sending", reply: "queued" } }
+    // The "reply" field is a status string, not an object — there is no outbound reply ID
+    // in this response. We mark verified_at immediately since a 200 + success:true means
+    // the message was accepted for delivery.
+    const sendSucceeded = bisonData?.data?.success === true;
+    if (!sendSucceeded) {
+      const errDetail = JSON.stringify(bisonData).slice(0, 500);
+      console.error(`❌ Bison returned 200 but success=false: ${errDetail}`);
+      const finalError = `Bison accepted request but returned success=false: ${errDetail}`;
+      await supabase.from('sent_replies').upsert({
+        reply_uuid: reply_uuid,
+        workspace_name: workspace_name,
+        lead_name: leadName,
+        lead_email: replyData.lead_email,
+        generated_reply_text: generated_reply_text,
+        cc_emails: cc_emails || [],
+        status: 'failed',
+        sent_by: null,
+        error_message: finalError,
+      }, { onConflict: 'reply_uuid' });
+      return new Response(JSON.stringify({ success: false, error: finalError }), { status: 500, headers: corsHeaders });
+    }
+    console.log(`✅ Reply accepted by Email Bison for delivery (verified_at stays null until reconcile confirms outbound in thread)`);
     // Step 7: Upsert sent_replies table with success.
-    // Bison's 200 response means the email was accepted for delivery — stamp
-    // verified_at immediately so the card flips to REPLIED right away without
-    // waiting for the reconciler cron or the manual_email_sent webhook.
-    const verifiedAt = new Date().toISOString();
+    // Bison's 200 response means the email was QUEUED for delivery — not yet
+    // delivered. We do NOT stamp verified_at here because "accepted for delivery"
+    // is not the same as "actually sent." Leaving verified_at null means:
+    //   - the dashboard shows PENDING until reconcile (every 2 min) confirms
+    //     an outbound message exists in the Bison conversation thread
+    //   - the human-reply guard does NOT see this as a confirmed reply and won't
+    //     mistakenly cancel new leads from the same email
+    // If delivery actually fails after Bison's accept, reconcile Pass 3 will flip
+    // status to 'failed' and surface the error on the dashboard.
+    const sentAt = new Date().toISOString();
     const { error: upsertError } = await supabase.from('sent_replies').upsert({
       reply_uuid: reply_uuid,
       workspace_name: workspace_name,
@@ -499,12 +523,12 @@ serve(async (req)=>{
       generated_reply_text: generated_reply_text,
       cc_emails: cc_emails || [],
       status: 'sent',
-      sent_at: verifiedAt,
-      verified_at: verifiedAt,
+      sent_at: sentAt,
+      verified_at: null,
       sent_by: null,
       bison_reply_id: bisonReplyId,
-      bison_outbound_reply_id: outboundReplyId,
-      bison_outbound_reply_uuid: outboundReplyUuid
+      bison_outbound_reply_id: null,
+      bison_outbound_reply_uuid: null
     }, {
       onConflict: 'reply_uuid' // Update if record already exists
     });
@@ -526,10 +550,13 @@ serve(async (req)=>{
       console.log(`Record created/updated for workspace: ${workspace_name}`);
     }
     // Step 8: Return success response
+    // verified_at is intentionally null — reconcile cron stamps it after
+    // confirming the outbound message in Bison's conversation thread.
     const response = {
       success: true,
       bison_reply_id: bisonReplyId,
-      verified_at: verifiedAt
+      sent_at: sentAt,
+      verified_at: null
     };
     return new Response(JSON.stringify(response), {
       status: 200,

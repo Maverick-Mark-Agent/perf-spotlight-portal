@@ -177,24 +177,27 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
   const auditThreshold: number = workspace.auto_reply_min_audit_score ?? 90;
   const maxPerHour: number = workspace.auto_reply_max_per_hour ?? 30;
 
-  // ── 2b. Broad lead-email guard — check if ANY reply to this lead in this
-  // workspace has already been sent (regardless of reply_uuid). This catches
-  // the case where a human already engaged the lead in a separate thread.
+  // ── 2b. Broad lead-email guard — only cancel if we have PROOF a reply
+  // already landed in Bison. Proof = sent_by='bison_direct' (human replied
+  // directly in Bison) OR bison_outbound_reply_id is set (reconcile confirmed
+  // an outbound message exists in the thread). A naked verified_at stamp is
+  // not enough — the previous logic mass-cancelled new leads against stale or
+  // wrongly-stamped sent_replies rows.
   if (reply.lead_email) {
     const { data: emailLevelSent } = await supabase
       .from('sent_replies')
-      .select('id, sent_by, verified_at')
+      .select('id, sent_by, verified_at, bison_outbound_reply_id')
       .eq('workspace_name', workspaceName)
       .eq('lead_email', reply.lead_email)
-      .not('verified_at', 'is', null)
       .neq('reply_uuid', replyUuid)
+      .or('sent_by.eq.bison_direct,bison_outbound_reply_id.not.is.null')
       .limit(1)
       .maybeSingle();
 
     if (emailLevelSent) {
       await supabase.from('auto_reply_queue').update({
         status: 'cancelled',
-        error_message: `Lead already has a replied thread (sent_replies.id=${emailLevelSent.id}, sent_by=${emailLevelSent.sent_by ?? 'unknown'}) — cancelling to protect active conversation`,
+        error_message: `Lead already has a confirmed reply in Bison (sent_replies.id=${emailLevelSent.id}, sent_by=${emailLevelSent.sent_by ?? 'reconciled'}, outbound_id=${emailLevelSent.bison_outbound_reply_id ?? 'n/a'}) — cancelling to protect active conversation`,
       }).eq('id', queueId);
       stats.skipped++;
       stats.details.push({ queueId, status: 'cancelled', reason: 'active_conversation_thread', sentBy: emailLevelSent.sent_by });

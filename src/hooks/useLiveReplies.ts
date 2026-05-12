@@ -137,11 +137,29 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
         leadQuery = leadQuery.eq('workspace_name', workspaceName);
       }
 
-      const [{ data, error: fetchError }, { data: sentRepliesRaw }, { data: conversationStats }, { data: queueRaw }] = await Promise.all([
-        leadQuery,
+      // Fetch leads first so we can scope sent_replies + queue to the time
+      // window the dashboard actually shows. This avoids pulling the entire
+      // sent_replies table (~4K rows and growing) on every page load.
+      const { data, error: fetchError } = await leadQuery;
+      if (fetchError) throw fetchError;
+
+      // Use the oldest visible lead's reply_date as the floor — sent_replies
+      // older than that aren't shown anywhere on this page. Falls back to a
+      // 30-day window if no leads were returned.
+      const oldestLead = (data || []).reduce((min: string | null, r: any) => {
+        const d = r.reply_date;
+        if (!d) return min;
+        return !min || d < min ? d : min;
+      }, null as string | null);
+      const sentRepliesCutoff = oldestLead
+        ? new Date(new Date(oldestLead).getTime() - 24 * 60 * 60 * 1000).toISOString()
+        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const [{ data: sentRepliesRaw }, { data: conversationStats }, { data: queueRaw }] = await Promise.all([
         supabase
           .from('sent_replies')
           .select('id, reply_uuid, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at, generated_reply_text, cc_emails')
+          .gte('created_at', sentRepliesCutoff)
           .order('created_at', { ascending: false }) as any,
         // Fetch only leads with reply_count > 1 (threads) — small result set, no URL-length issues.
         supabase
@@ -156,8 +174,6 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
           .select('reply_uuid, status, scheduled_for')
           .in('status', ['pending', 'processing', 'review_required']) as any,
       ]);
-
-      if (fetchError) throw fetchError;
 
 
       // Build lookup map keyed by reply_uuid — rows are ordered by created_at DESC

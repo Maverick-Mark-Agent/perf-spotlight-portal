@@ -43,15 +43,3 @@ verify_jwt = false
 verify_jwt = false
 [functions.reconcile-sent-replies]
 verify_jwt = false
-
-[functions.coo-volume-slash]
-verify_jwt = false
-
-[functions.coo-volume-diagnostic]
-verify_jwt = false
-
-[functions.warmup-slash]
-verify_jwt = false
-
-[functions.enable-warmup]
-verify_jwt = false

@@ -1,9 +1,0 @@
-{
-  "timestamp": "2025-12-26T13:57:27.871Z",
-  "totalCampaigns": 6,
-  "benchmarks": {
-    "replyRate": "≥1.25%",
-    "interestedRate": "≥0.30%",
-    "bounceRate": "<3% good, <5% acceptable"
-  }
-}

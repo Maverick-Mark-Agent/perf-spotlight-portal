@@ -25,11 +25,7 @@ const formatNumber = (num: number): string => {
   return num.toLocaleString();
 };
 
-// Generate Slack message blocks.
-// Slack has a hard 50-block limit per message, and ~3000 chars per text field.
-// We pack many clients into a single section's text body, splitting into
-// additional sections only when the char limit is approached. This keeps the
-// block count low (~5-6) regardless of how many clients we have.
+// Generate Slack message blocks
 const generateSlackMessage = (clients: any[]) => {
   const totalEmailsToday = clients.reduce((sum, c) => sum + c.dailyAverage, 0);
   const totalDailyGoal = clients.reduce((sum, c) => sum + c.dailyQuota, 0);
@@ -47,46 +43,17 @@ const generateSlackMessage = (clients: any[]) => {
     }
   ];
 
-  // Pack client lines into sections, each up to ~2800 chars to stay safely
-  // under Slack's ~3000-char-per-text-field limit.
-  const MAX_TEXT_CHARS = 2800;
-  let currentLines: string[] = [];
-  let currentLength = 0;
-
-  const flushSection = () => {
-    if (currentLines.length === 0) return;
+  // Add each client's status
+  clients.forEach((client) => {
+    const status = client.dailyAverage >= client.dailyQuota ? '✅' : '⚠️';
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: currentLines.join('\n'),
-      },
+        text: `${status} *${client.name}*: ${formatNumber(client.dailyAverage)} emails going out vs ${formatNumber(client.dailyQuota)} needed`
+      }
     });
-    currentLines = [];
-    currentLength = 0;
-  };
-
-  for (const client of clients) {
-    const status = client.dailyAverage >= client.dailyQuota ? '✅' : '⚠️';
-    const line = `${status} *${client.name}*: ${formatNumber(client.dailyAverage)} emails going out vs ${formatNumber(client.dailyQuota)} needed`;
-    // +1 for the joining newline
-    if (currentLength + line.length + 1 > MAX_TEXT_CHARS) {
-      flushSection();
-    }
-    currentLines.push(line);
-    currentLength += line.length + 1;
-  }
-  flushSection();
-
-  // Hard cap at 50 blocks (Slack limit). Should never trigger with the packing
-  // above, but defend against future field changes blowing out the budget.
-  if (blocks.length > 50) {
-    blocks.length = 49;
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: `_…and ${clients.length} clients total — message truncated to fit Slack's block limit._` },
-    });
-  }
+  });
 
   return { blocks };
 };

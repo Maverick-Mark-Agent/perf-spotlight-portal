@@ -6,11 +6,11 @@
 //   Bison's conversation thread for an outbound message and stamp verified_at.
 //
 // PASS 2 — Direct Bison replies (no sent_replies row at all):
-//   For interested lead_replies from the last 7 days with no sent_replies row,
+//   For leads that arrived in the last 24 hours with no sent_replies row,
 //   check the Bison thread for any outbound message. If found, create a
 //   verified sent_replies row so the card flips to REPLIED on the dashboard.
-//   This catches every case where the agent replied directly in Bison UI
-//   without going through the dashboard.
+//   Runs every 2 minutes — new leads get picked up within 2 minutes of the
+//   agent replying directly in Bison.
 //
 // PASS 3 — Failed rows where Bison actually replied:
 //   For sent_replies rows with status='failed', check if Bison has an
@@ -34,9 +34,10 @@ const LONGRUN_BASE = 'https://send.longrun.agency/api';
 
 const MIN_AGE_SECONDS = 30;
 const MAX_AGE_HOURS = 24 * 7;
-const MAX_ROWS_PER_RUN = 30;     // pass 1 cap
-const MAX_DIRECT_PER_RUN = 20;  // pass 2 cap — Bison API calls are expensive
-const MAX_FAILED_PER_RUN = 15;  // pass 3 cap
+const PASS2_LOOKBACK_HOURS = 24;  // only check leads that arrived in the last 24 hours
+const MAX_ROWS_PER_RUN = 30;      // pass 1 cap
+const MAX_DIRECT_PER_RUN = 30;   // pass 2 cap
+const MAX_FAILED_PER_RUN = 15;   // pass 3 cap
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -103,28 +104,29 @@ serve(async (req) => {
     return new Response(JSON.stringify({ success: false, error: candidatesError.message }), { status: 500, headers: corsHeaders });
   }
 
-  // ── PASS 2: interested leads with no sent_replies row at all ─────────────
-  // Find recently-interested leads that have no sent_replies entry yet.
-  // We use a NOT IN subquery pattern via two separate queries and JS diff.
-  const { data: recentLeads } = await supabase
+  // ── PASS 2: new leads with no sent_replies row — catch direct Bison replies ─
+  // Only look at leads that arrived in the last 24 hours. If an agent replied
+  // directly in Bison instead of through the dashboard, this will catch it
+  // within 2 minutes and create a verified sent_replies row automatically.
+  const pass2Cutoff = new Date(Date.now() - PASS2_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
+  const { data: allLeads } = await supabase
     .from('lead_replies')
     .select('id, workspace_name, lead_email, first_name, last_name, bison_reply_numeric_id, reply_date')
     .eq('is_interested', true)
-    .gte('reply_date', cutoffOld)
-    .lte('reply_date', cutoffRecent)
     .not('bison_reply_numeric_id', 'is', null)
+    .gte('reply_date', pass2Cutoff)
     .order('reply_date', { ascending: false })
     .limit(200) as any;
 
   const { data: existingSentUuids } = await supabase
     .from('sent_replies')
     .select('reply_uuid')
-    .gte('created_at', cutoffOld) as any;
+    .gte('created_at', pass2Cutoff) as any;
 
   const sentUuidSet = new Set<string>((existingSentUuids || []).map((r: any) => r.reply_uuid));
 
   // Leads with NO sent_replies row at all — these may have been replied to directly in Bison
-  const unrepliedLeads = ((recentLeads || []) as any[])
+  const unrepliedLeads = ((allLeads || []) as any[])
     .filter((l: any) => !sentUuidSet.has(l.id))
     .slice(0, MAX_DIRECT_PER_RUN);
 
@@ -375,8 +377,70 @@ serve(async (req) => {
     }
   }
 
+  // ── PASS 4: failsafe enqueue — catch interested leads with no queue entry ────
+  // Runs every 2 minutes. If any interested lead from the last 24h has no
+  // auto_reply_queue row AND no sent_replies row, it slipped through the webhook
+  // (e.g. came in via a reconcile insert or direct DB write). Enqueue it now so
+  // it gets processed and the dashboard shows the correct status — never silent.
+  const { data: pass4Leads } = await supabase
+    .from('lead_replies')
+    .select('id, workspace_name')
+    .eq('is_interested', true)
+    .gte('reply_date', pass2Cutoff)
+    .order('reply_date', { ascending: false })
+    .limit(200) as any;
+
+  let p4Enqueued = 0, p4Skipped = 0;
+
+  if (pass4Leads?.length) {
+    const p4Ids = (pass4Leads as any[]).map((l: any) => l.id);
+
+    // Find which of these already have a queue entry or sent_reply
+    const { data: existingQueue } = await supabase
+      .from('auto_reply_queue')
+      .select('reply_uuid')
+      .in('reply_uuid', p4Ids) as any;
+    const { data: existingSent } = await supabase
+      .from('sent_replies')
+      .select('reply_uuid')
+      .in('reply_uuid', p4Ids) as any;
+
+    const queuedSet = new Set<string>((existingQueue || []).map((r: any) => r.reply_uuid));
+    const sentSet   = new Set<string>((existingSent  || []).map((r: any) => r.reply_uuid));
+
+    const toEnqueue = (pass4Leads as any[]).filter(
+      (l: any) => !queuedSet.has(l.id) && !sentSet.has(l.id)
+    );
+
+    if (toEnqueue.length > 0) {
+      console.log(`⚠️  Pass 4: found ${toEnqueue.length} interested leads with no queue/sent entry — enqueuing now`);
+      const rows = toEnqueue.map((l: any) => ({
+        reply_uuid:     l.id,
+        workspace_name: l.workspace_name,
+        status:         'pending',
+        scheduled_for:  new Date().toISOString(),
+        force_review:   false,
+      }));
+
+      // Insert in chunks to avoid payload limits
+      const CHUNK = 50;
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const { error: insertErr } = await supabase
+          .from('auto_reply_queue')
+          .insert(rows.slice(i, i + CHUNK));
+        if (insertErr && insertErr.code !== '23505') {
+          console.error('Pass 4 insert error:', insertErr.message);
+        } else {
+          p4Enqueued += rows.slice(i, i + CHUNK).length;
+        }
+      }
+    } else {
+      p4Skipped = (pass4Leads as any[]).length;
+    }
+  }
+
   const elapsedMs = Date.now() - startedAt;
-  console.log(`✅ Reconcile done in ${elapsedMs}ms — p1: verified=${p1Verified} missing=${p1Missing} errors=${p1Errors} | p2: created=${p2Created} missing=${p2Missing} errors=${p2Errors} | p3: fixed=${p3Fixed} missing=${p3Missing} errors=${p3Errors}`);
+  console.log(`✅ Reconcile done in ${elapsedMs}ms — p1: verified=${p1Verified} missing=${p1Missing} errors=${p1Errors} | p2: created=${p2Created} missing=${p2Missing} errors=${p2Errors} | p3: fixed=${p3Fixed} missing=${p3Missing} errors=${p3Errors} | p4: enqueued=${p4Enqueued} skipped=${p4Skipped}`);
 
   return new Response(JSON.stringify({
     success: true,
@@ -384,6 +448,7 @@ serve(async (req) => {
     pass1: { candidates: candidates?.length ?? 0, verified: p1Verified, missing: p1Missing, errors: p1Errors },
     pass2: { candidates: unrepliedLeads.length, created: p2Created, missing: p2Missing, errors: p2Errors },
     pass3: { candidates: failedToCheck.length, fixed: p3Fixed, missing: p3Missing, errors: p3Errors },
+    pass4: { enqueued: p4Enqueued, skipped: p4Skipped },
     details,
   }), { status: 200, headers: corsHeaders });
 });

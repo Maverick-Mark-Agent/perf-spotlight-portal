@@ -97,6 +97,7 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
   const queueId: string = row.id;
   const replyUuid: string = row.reply_uuid;
   const workspaceName: string = row.workspace_name;
+  const forceReview: boolean = row.force_review === true;
 
   // ── 1. CAS claim ──────────────────────────────────────────────────────
   const { data: claimed, error: claimErr } = await supabase
@@ -117,6 +118,27 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
     return;
   }
   stats.claimed++;
+
+  // ── 1b. Guard: check if a human already replied since this row was enqueued ──
+  // A human agent replying directly in Bison fires manual_email_sent → creates a
+  // verified sent_replies row. If that exists now, cancel this queue row — we must
+  // never auto-reply on top of a human reply.
+  const { data: existingSent } = await supabase
+    .from('sent_replies')
+    .select('id, sent_by, verified_at')
+    .eq('reply_uuid', replyUuid)
+    .not('verified_at', 'is', null)
+    .maybeSingle();
+
+  if (existingSent) {
+    await supabase.from('auto_reply_queue').update({
+      status: 'cancelled',
+      error_message: `Reply already sent (sent_replies.id=${existingSent.id}, sent_by=${existingSent.sent_by ?? 'unknown'}) — cancelling to avoid double-reply`,
+    }).eq('id', queueId);
+    stats.skipped++;
+    stats.details.push({ queueId, status: 'cancelled', reason: 'already_replied_by_human', sentBy: existingSent.sent_by });
+    return;
+  }
 
   // ── 2. Load context: reply + workspace + template ─────────────────────
   const [replyResult, workspaceResult, templateResult] = await Promise.all([
@@ -154,6 +176,31 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
   const leadName = [reply.first_name, reply.last_name].filter(Boolean).join(' ') || reply.lead_email;
   const auditThreshold: number = workspace.auto_reply_min_audit_score ?? 90;
   const maxPerHour: number = workspace.auto_reply_max_per_hour ?? 30;
+
+  // ── 2b. Broad lead-email guard — check if ANY reply to this lead in this
+  // workspace has already been sent (regardless of reply_uuid). This catches
+  // the case where a human already engaged the lead in a separate thread.
+  if (reply.lead_email) {
+    const { data: emailLevelSent } = await supabase
+      .from('sent_replies')
+      .select('id, sent_by, verified_at')
+      .eq('workspace_name', workspaceName)
+      .eq('lead_email', reply.lead_email)
+      .not('verified_at', 'is', null)
+      .neq('reply_uuid', replyUuid)
+      .limit(1)
+      .maybeSingle();
+
+    if (emailLevelSent) {
+      await supabase.from('auto_reply_queue').update({
+        status: 'cancelled',
+        error_message: `Lead already has a replied thread (sent_replies.id=${emailLevelSent.id}, sent_by=${emailLevelSent.sent_by ?? 'unknown'}) — cancelling to protect active conversation`,
+      }).eq('id', queueId);
+      stats.skipped++;
+      stats.details.push({ queueId, status: 'cancelled', reason: 'active_conversation_thread', sentBy: emailLevelSent.sent_by });
+      return;
+    }
+  }
 
   // ── 3. Rate-limit check (per workspace, per rolling hour) ─────────────
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -348,18 +395,166 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
 
   const audit = auditRes.data.audit;
 
-  // Verdict mapping — only two outcomes from audit:
-  //   - auto_send  : audit cleared the draft (score >= threshold AND no high-severity issues)
-  //   - review     : ANY audit concern lands in the human review queue, regardless of score.
-  //                  Hallucinations, template deviations, low scores — all go to review.
-  //                  A human looking at the dashboard chooses to approve, edit, or reject.
-  //
-  // 'failed' status is reserved exclusively for OPERATIONAL failures (Bison send error,
-  // generation error, audit service unavailable). Draft-quality concerns are NEVER 'failed'.
+  // Verdict mapping:
+  //   - auto_send : score >= threshold AND no high-severity issues → send immediately
+  //   - review    : anything else — but ONLY after a retry. On the first attempt we
+  //                 regenerate and re-audit rather than parking the row as review_required.
+  //                 This means a hallucinated draft gets one fresh shot before escalating.
+  const hasHighSeverity = (audit.issues || []).some((i: any) => i.severity === 'high');
   let finalVerdict: 'auto_send' | 'review' = 'review';
-  const hasHighSeverity = (audit.issues || []).some((i) => i.severity === 'high');
-  if (audit.score >= auditThreshold && !hasHighSeverity) {
+  // force_review=true means a human must approve regardless of audit score —
+  // this covers: auto_reply_disabled workspaces, low confidence, needs_review flag.
+  if (!forceReview && audit.score >= auditThreshold && !hasHighSeverity) {
     finalVerdict = 'auto_send';
+  }
+
+  // ── Auto-retry on first audit failure ─────────────────────────────────
+  // If the draft failed audit AND this is the first attempt (attempts === 1),
+  // regenerate a fresh draft and re-audit it before escalating to human review.
+  // Most hallucinations are one-off — a second generation usually passes clean.
+  // Skip retry for force_review rows — they go straight to review regardless.
+  if (finalVerdict === 'review' && !forceReview && (row.attempts ?? 1) <= 1) {
+    console.log(`🔄 Audit failed on attempt 1 (score=${audit.score}) — regenerating draft for ${replyUuid}`);
+
+    const retryDraftRes = await callEdgeFunction<{
+      success?: boolean;
+      generated_reply?: string;
+      cc_emails?: string[];
+      template_used?: 'with_phone' | 'no_phone';
+      model_used?: string;
+      placeholders_resolved?: string[];
+      placeholders_missing?: string[];
+      placeholder_values?: Record<string, string>;
+      thread_history?: Array<{ reply_date?: string; reply_text?: string; sentiment?: string | null }>;
+      error?: string;
+    }>('generate-ai-reply', {
+      reply_uuid: replyUuid,
+      workspace_name: workspaceName,
+      lead_name: leadName,
+      lead_email: reply.lead_email,
+      lead_phone: reply.phone || undefined,
+      original_message: reply.reply_text || '',
+      preview_mode: true,
+    });
+
+    if (retryDraftRes.ok && retryDraftRes.data?.generated_reply) {
+      const retryDraft = retryDraftRes.data;
+      const retryText = retryDraft.generated_reply!;
+      const retryTemplateText = retryDraft.template_used === 'with_phone'
+        ? template.template_text_with_phone
+        : template.template_text_no_phone;
+
+      const retryAuditRes = await callEdgeFunction<{
+        success?: boolean;
+        audit?: {
+          score: number;
+          verdict: 'auto_send' | 'review' | 'reject';
+          reasoning: string;
+          issues: Array<{ type: string; severity: string; detail: string }>;
+          model: string;
+        };
+        error?: string;
+      }>('audit-ai-reply', {
+        lead_reply_uuid: replyUuid,
+        generated_reply_text: retryText,
+        cc_emails: retryDraft.cc_emails || [],
+        original_message: reply.reply_text || '',
+        template_text: retryTemplateText || '',
+        placeholders_resolved: retryDraft.placeholders_resolved ?? [],
+        placeholders_missing: retryDraft.placeholders_missing ?? [],
+        placeholder_values: retryDraft.placeholder_values ?? {},
+        thread_history: retryDraft.thread_history ?? [],
+        workspace_name: workspaceName,
+      });
+
+      if (retryAuditRes.ok && retryAuditRes.data?.audit) {
+        const retryAudit = retryAuditRes.data.audit;
+        const retryHasHigh = (retryAudit.issues || []).some((i: any) => i.severity === 'high');
+        if (!forceReview && retryAudit.score >= auditThreshold && !retryHasHigh) {
+          // Retry passed — proceed to send with the new draft
+          console.log(`✅ Retry draft passed audit (score=${retryAudit.score}) — sending`);
+          const retryBaseUpdate = {
+            generated_reply_text: retryText,
+            cc_emails: retryDraft.cc_emails || [],
+            audit_score: retryAudit.score,
+            audit_verdict: 'auto_send',
+            audit_reasoning: retryAudit.reasoning,
+            audit_issues: retryAudit.issues,
+            audit_model: retryAudit.model,
+            generation_model: retryDraft.model_used,
+          };
+          const retrySendRes = await callEdgeFunction<{
+            success?: boolean; bison_reply_id?: number; already_sent?: boolean; error?: string;
+          }>('send-reply-via-bison', {
+            reply_uuid: replyUuid,
+            workspace_name: workspaceName,
+            generated_reply_text: retryText,
+            cc_emails: retryDraft.cc_emails || [],
+          });
+          if (!retrySendRes.ok || !retrySendRes.data?.success) {
+            const retryErrMsg = `send-reply-via-bison failed (retry): ${retrySendRes.data?.error || retrySendRes.error || `status ${retrySendRes.status}`}`;
+            await supabase.from('auto_reply_queue').update({
+              ...retryBaseUpdate,
+              status: 'failed',
+              error_message: retryErrMsg,
+            }).eq('id', queueId);
+            // Insert a failed sent_replies row so the dashboard shows ERROR, not silence
+            await supabase.from('sent_replies').upsert({
+              reply_uuid: replyUuid,
+              workspace_name: workspaceName,
+              lead_email: reply.lead_email,
+              lead_name: leadName,
+              generated_reply_text: retryText,
+              status: 'failed',
+              error_message: retryErrMsg,
+              sent_at: new Date().toISOString(),
+              retry_count: 1,
+            }, { onConflict: 'reply_uuid', ignoreDuplicates: false });
+            stats.failed++;
+            stats.details.push({ queueId, status: 'failed', reason: 'send_failed_retry', score: retryAudit.score });
+            return;
+          }
+          const { data: retrySentRow } = await supabase.from('sent_replies').select('id').eq('reply_uuid', replyUuid).maybeSingle();
+          await supabase.from('auto_reply_queue').update({
+            ...retryBaseUpdate,
+            status: 'auto_sent',
+            sent_reply_id: retrySentRow?.id ?? null,
+          }).eq('id', queueId);
+          stats.auto_sent++;
+          stats.details.push({ queueId, status: 'auto_sent', score: retryAudit.score, lead: reply.lead_email, note: 'retry_passed' });
+          return;
+        }
+        // Retry also failed audit — fall through with retry's draft so the reviewer
+        // sees the better (most recent) version.
+        console.log(`⚠️  Retry draft also failed audit (score=${retryAudit.score}) — escalating to review`);
+        // Overwrite the original draft/audit with the retry results for the reviewer
+        const retryFinalUpdate = {
+          generated_reply_text: retryText,
+          cc_emails: retryDraft.cc_emails || [],
+          audit_score: retryAudit.score,
+          audit_verdict: 'review' as const,
+          audit_reasoning: retryAudit.reasoning,
+          audit_issues: retryAudit.issues,
+          audit_model: retryAudit.model,
+          generation_model: retryDraft.model_used,
+        };
+        await supabase.from('auto_reply_queue').update({
+          ...retryFinalUpdate,
+          status: 'review_required',
+        }).eq('id', queueId);
+        await sendAutoReplyEscalation({
+          workspace: workspaceName, leadName, leadEmail: reply.lead_email,
+          auditScore: retryAudit.score, auditThreshold, auditReasoning: retryAudit.reasoning,
+          auditIssues: retryAudit.issues, queueRowId: queueId,
+          dashboardUrl: DASHBOARD_BASE_URL ? `${DASHBOARD_BASE_URL}/live-replies?review=${queueId}` : undefined,
+        });
+        stats.review_required++;
+        stats.details.push({ queueId, status: 'review_required', score: retryAudit.score, note: 'both_attempts_failed' });
+        return;
+      }
+    }
+    // Retry generation/audit itself failed — fall through to escalate with original draft
+    console.warn(`⚠️  Retry generation failed — escalating original draft to review for ${replyUuid}`);
   }
 
   // Persist the audit result regardless of branch.
@@ -390,11 +585,25 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
     });
 
     if (!sendRes.ok || !sendRes.data?.success) {
+      const sendErrMsg = `send-reply-via-bison failed: ${sendRes.data?.error || sendRes.error || `status ${sendRes.status}`}`;
       await supabase.from('auto_reply_queue').update({
         ...baseUpdate,
         status: 'failed',
-        error_message: `send-reply-via-bison failed: ${sendRes.data?.error || sendRes.error || `status ${sendRes.status}`}`,
+        error_message: sendErrMsg,
       }).eq('id', queueId);
+      // Insert a failed sent_replies row so the dashboard shows ERROR with the message,
+      // not silence. Uses upsert to avoid duplicate if somehow called twice.
+      await supabase.from('sent_replies').upsert({
+        reply_uuid: replyUuid,
+        workspace_name: workspaceName,
+        lead_email: reply.lead_email,
+        lead_name: leadName,
+        generated_reply_text: generatedReplyText,
+        status: 'failed',
+        error_message: sendErrMsg,
+        sent_at: new Date().toISOString(),
+        retry_count: 0,
+      }, { onConflict: 'reply_uuid', ignoreDuplicates: false });
       stats.failed++;
       stats.details.push({ queueId, status: 'failed', reason: 'send_failed', score: audit.score });
       return;
@@ -418,7 +627,7 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
     return;
   }
 
-  // finalVerdict === 'review' (only remaining branch)
+  // finalVerdict === 'review' — both attempts failed, escalate to human
   await supabase.from('auto_reply_queue').update({
     ...baseUpdate,
     status: 'review_required',
@@ -451,7 +660,7 @@ serve(async (req) => {
   // Fetch up to MAX_ROWS_PER_RUN due rows.
   const { data: dueRows, error: dueErr } = await supabase
     .from('auto_reply_queue')
-    .select('id, reply_uuid, workspace_name, attempts')
+    .select('id, reply_uuid, workspace_name, attempts, force_review')
     .eq('status', 'pending')
     .lte('scheduled_for', new Date().toISOString())
     .order('scheduled_for', { ascending: true })

@@ -110,7 +110,7 @@ ONLY flag a fact as a hallucination if it appears nowhere in (a)–(e). Plausibl
 
 # Grading axes (sum to 0–100)
 
-1. **Faithfulness to template (0–25)**: Did the draft preserve the template's structure and all critical details (template-supplied phone numbers, agent names, signatures, CC routing, key offers)?
+1. **Faithfulness to template (0–25)**: Did the draft preserve the template's structure and all critical details (template-supplied phone numbers, agent names, signatures, key offers)? Do NOT evaluate or penalize CC recipients — those are controlled by workspace configuration, not the template.
 
 2. **Correctness of personalization (0–25)**: Are substituted values used in the right slot? E.g. don't insert the renewal date where a phone number belongs, don't put the lead's phone in the agent-phone slot. NOTE: A signature-name override (lead signed differently than {first_name}) is CORRECT — do not penalize. Only penalize if the drafter used an obviously wrong name with no source basis.
 
@@ -129,6 +129,25 @@ If the draft confirms a specific time on the agent's behalf when the inbound int
 \`\`\`
 
 This applies regardless of the four grading axes — a draft can be otherwise excellent but still contain this issue. Do not deduct points twice; flag the issue and let the caller route to review.
+
+# Direct question rule (separate from grading axes — flag-only)
+
+If the lead's inbound message asks a direct question about the agent's business, services, capabilities, or identity (e.g. "are you a broker?", "can you quote multiple companies?", "what insurance companies do you work with?", "are you with [specific company]?", "how does this work?"), check whether the draft's answer to that question is grounded in the workspace template or workspace-specific instructions.
+
+If the draft answers the lead's direct question with a claim that does NOT appear in the template or workspace-specific instructions — even if the claim sounds plausible — ADD a high-severity issue:
+
+\`\`\`
+{"type": "ungrounded_business_claim", "severity": "high", "detail": "<one sentence: what question was asked, what claim the draft made, and why it's not grounded in the template>"}
+\`\`\`
+
+Examples of this violation:
+- Lead asks "are you a broker?" → draft says "Yes, I work with multiple carriers" but the template says nothing about carrier count → FLAG
+- Lead asks "can you quote multiple companies?" → draft says "Absolutely, we provide quotes from many insurers" but template only mentions getting started on a single quote → FLAG
+- Lead asks "what company are you with?" → draft correctly says the agency name from the template → NOT a violation
+
+If the draft does NOT directly answer the question (e.g. it sidesteps and proceeds with template next-steps), that is acceptable — do NOT flag it.
+
+This applies regardless of the four grading axes. Do not deduct points twice; flag the issue and let the caller route to review.
 
 # Scoring guide
 
@@ -242,9 +261,6 @@ ${p.inbound_scheduling_intent ?? 'none'}
 
 ## Placeholders missing (drafter was instructed to drop sentences using these)
 [${(p.placeholders_missing ?? []).join(', ')}]
-
-## CC recipients on this draft
-${(p.cc_emails ?? []).join(', ') || '(none)'}
 
 ## AI-drafted reply (the thing you're auditing)
 """

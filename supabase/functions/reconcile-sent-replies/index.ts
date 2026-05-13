@@ -39,6 +39,12 @@ const MAX_ROWS_PER_RUN = 30;      // pass 1 cap
 const MAX_DIRECT_PER_RUN = 30;   // pass 2 cap
 const MAX_FAILED_PER_RUN = 15;   // pass 3 cap
 
+// After this many minutes pending without a Bison outbound message, treat the
+// send as failed. Bison normally delivers within seconds; 15+ minutes means
+// the send was accepted by Bison's API but never actually went out (sender
+// account disconnected, send queue dropped it, etc).
+const PENDING_STALE_MINUTES = 15;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -181,8 +187,28 @@ serve(async (req) => {
       const outbound = findOutboundMessage(thread, sentAtMs);
 
       if (!outbound) {
-        p1Missing++;
-        details.push({ pass: 1, id: row.id, status: 'unmatched', reason: 'no outgoing message in thread' });
+        // No outbound yet. If the row has been pending >15 min, the send never
+        // actually went out (sender disconnected, Bison dropped it, etc).
+        // Flip it to status='failed' so the dashboard shows ERROR and the
+        // operator knows to investigate, instead of an indefinite "pending."
+        const ageMin = (Date.now() - new Date(row.sent_at).getTime()) / 60_000;
+        if (ageMin >= PENDING_STALE_MINUTES) {
+          const errMsg = `No outbound message in Bison conversation thread after ${Math.round(ageMin)} min — Bison accepted the send but it never delivered (possible disconnected sender or dropped queue item).`;
+          const { error: failErr } = await supabase
+            .from('sent_replies')
+            .update({ status: 'failed', error_message: errMsg })
+            .eq('id', row.id);
+          if (failErr) {
+            p1Errors++;
+            details.push({ pass: 1, id: row.id, status: 'error', reason: failErr.message });
+          } else {
+            p1Missing++;
+            details.push({ pass: 1, id: row.id, status: 'marked_failed', age_min: Math.round(ageMin) });
+          }
+        } else {
+          p1Missing++;
+          details.push({ pass: 1, id: row.id, status: 'unmatched_still_fresh', age_min: Math.round(ageMin) });
+        }
         continue;
       }
 

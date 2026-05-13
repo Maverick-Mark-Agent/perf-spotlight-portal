@@ -177,30 +177,34 @@ async function processRow(supabase: any, row: any, stats: RunStats): Promise<voi
   const auditThreshold: number = workspace.auto_reply_min_audit_score ?? 90;
   const maxPerHour: number = workspace.auto_reply_max_per_hour ?? 30;
 
-  // ── 2b. Broad lead-email guard — only cancel if we have PROOF a reply
-  // already landed in Bison. Proof = sent_by='bison_direct' (human replied
-  // directly in Bison) OR bison_outbound_reply_id is set (reconcile confirmed
-  // an outbound message exists in the thread). A naked verified_at stamp is
-  // not enough — the previous logic mass-cancelled new leads against stale or
-  // wrongly-stamped sent_replies rows.
+  // ── 2b. One-reply-per-lead rule ──────────────────────────────────────────
+  // The AI replies ONLY to a lead's first inbound message in a given workspace.
+  // After that, the human rep owns the conversation — no matter how many more
+  // times the lead writes back, we stay silent. This prevents the AI from
+  // talking over a rep who has already taken the handoff (e.g., Castle Agency:
+  // Kim Williams hands off to Luke Mieska after the first reply).
+  //
+  // We cancel if ANY sent_replies row exists for this email+workspace,
+  // regardless of status or verification. Exclude failed rows so a genuine
+  // send failure doesn't permanently lock the lead out — they can be retried.
   if (reply.lead_email) {
-    const { data: emailLevelSent } = await supabase
+    const { data: priorSent } = await supabase
       .from('sent_replies')
-      .select('id, sent_by, verified_at, bison_outbound_reply_id')
+      .select('id, sent_by, status, sent_at')
       .eq('workspace_name', workspaceName)
       .eq('lead_email', reply.lead_email)
       .neq('reply_uuid', replyUuid)
-      .or('sent_by.eq.bison_direct,bison_outbound_reply_id.not.is.null')
+      .neq('status', 'failed')
       .limit(1)
       .maybeSingle();
 
-    if (emailLevelSent) {
+    if (priorSent) {
       await supabase.from('auto_reply_queue').update({
         status: 'cancelled',
-        error_message: `Lead already has a confirmed reply in Bison (sent_replies.id=${emailLevelSent.id}, sent_by=${emailLevelSent.sent_by ?? 'reconciled'}, outbound_id=${emailLevelSent.bison_outbound_reply_id ?? 'n/a'}) — cancelling to protect active conversation`,
+        error_message: `Already replied to this lead in ${workspaceName} (sent_replies.id=${priorSent.id}, sent_at=${priorSent.sent_at}, sent_by=${priorSent.sent_by ?? 'auto'}) — AI replies only to the first inbound message; the human rep owns subsequent turns.`,
       }).eq('id', queueId);
       stats.skipped++;
-      stats.details.push({ queueId, status: 'cancelled', reason: 'active_conversation_thread', sentBy: emailLevelSent.sent_by });
+      stats.details.push({ queueId, status: 'cancelled', reason: 'one_reply_per_lead', sentBy: priorSent.sent_by });
       return;
     }
   }

@@ -62,10 +62,16 @@ async function fetchConversationThread(baseUrl: string, apiKey: string, bisonRep
 }
 
 function findOutboundMessage(thread: any, afterMs: number) {
+  // Bison's conversation-thread response has two arrays: older_messages and
+  // newer_messages. We must search BOTH — a reply that arrived seconds after
+  // the lead's message will appear in newer_messages, but a reply that arrived
+  // much later (or on a slow workspace) may only appear in older_messages.
+  // The old code fell back to a non-existent `all_messages` field, so any
+  // outbound that landed in older_messages was silently missed, causing rows
+  // to sit unverified or to be wrongly marked failed.
+  const older: any[] = thread?.older_messages || [];
   const newer: any[] = thread?.newer_messages || [];
-  // Also check all_messages in case newer_messages is empty
-  const all: any[] = thread?.all_messages || [];
-  const messages = newer.length > 0 ? newer : all;
+  const messages = [...older, ...newer];
   return messages.find((m: any) => {
     const isOutgoing = m?.type === 'Outgoing Email' || m?.folder === 'Sent';
     if (!isOutgoing) return false;

@@ -28,6 +28,12 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const MAVERICK_BISON_API_KEY = Deno.env.get('MAVERICK_BISON_API_KEY');
 const LONG_RUN_BISON_API_KEY = Deno.env.get('LONG_RUN_BISON_API_KEY');
+const ALERTS_WEBHOOK = Deno.env.get('AI_REPLY_ALERTS_SLACK_WEBHOOK_URL');
+
+// Auto-retry: how many times to re-enqueue a failed send before giving up.
+const MAX_AUTO_RETRIES = 2;
+// Slack dedup: only fire one alert per workspace per hour.
+const alertedThisRun = new Set<string>();
 
 const MAVERICK_BASE = 'https://send.maverickmarketingllc.com/api';
 const LONGRUN_BASE = 'https://send.longrun.agency/api';
@@ -471,8 +477,66 @@ serve(async (req) => {
     }
   }
 
+  // ── PASS 5: auto-retry + real-time alerts ────────────────────────────────
+  // For failed sent_replies rows that haven't been retried yet, re-enqueue
+  // them in the auto_reply_queue so the pipeline takes another shot.
+  // Cap at MAX_AUTO_RETRIES to avoid infinite loops on genuinely broken senders.
+  // Fire a Slack alert for each newly-failed workspace (once per run).
+  const since6h = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+  const { data: freshFailed } = await supabase
+    .from('sent_replies')
+    .select('id, reply_uuid, workspace_name, lead_email, retry_count, error_message, sent_at')
+    .eq('status', 'failed')
+    .gte('created_at', since6h)
+    .order('created_at', { ascending: false })
+    .limit(50) as any;
+
+  let p5Retried = 0, p5Alerted = 0;
+
+  for (const row of (freshFailed as any[]) || []) {
+    const retryCount: number = row.retry_count ?? 0;
+
+    // Alert on new failures (once per workspace per run)
+    if (ALERTS_WEBHOOK && !alertedThisRun.has(row.workspace_name)) {
+      alertedThisRun.add(row.workspace_name);
+      const msg = row.error_message?.slice(0, 200) ?? 'unknown error';
+      fetch(ALERTS_WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: `⚠️ Send failed — ${row.workspace_name}`,
+          blocks: [{
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*⚠️ Auto-reply send failed*\n*Workspace:* ${row.workspace_name}\n*Lead:* ${row.lead_email ?? 'unknown'}\n*Error:* ${msg}\n_${retryCount < MAX_AUTO_RETRIES ? `Auto-retrying (attempt ${retryCount + 1}/${MAX_AUTO_RETRIES})…` : 'Max retries reached — manual intervention needed.'}_` },
+          }],
+        }),
+      }).catch(() => {});
+      p5Alerted++;
+    }
+
+    // Auto-retry if under the cap
+    if (retryCount < MAX_AUTO_RETRIES) {
+      // Increment retry_count so we don't retry indefinitely
+      await supabase.from('sent_replies')
+        .update({ retry_count: retryCount + 1 })
+        .eq('id', row.id);
+
+      // Re-enqueue — delay 30 min to give the sender time to recover
+      const schedFor = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      const { error: reqErr } = await supabase.from('auto_reply_queue').insert({
+        reply_uuid:     row.reply_uuid,
+        workspace_name: row.workspace_name,
+        status:         'pending',
+        scheduled_for:  schedFor,
+        force_review:   false,
+      });
+      if (!reqErr) p5Retried++;
+      // 23505 = duplicate key (already re-enqueued) — safe to ignore
+    }
+  }
+
   const elapsedMs = Date.now() - startedAt;
-  console.log(`✅ Reconcile done in ${elapsedMs}ms — p1: verified=${p1Verified} missing=${p1Missing} errors=${p1Errors} | p2: created=${p2Created} missing=${p2Missing} errors=${p2Errors} | p3: fixed=${p3Fixed} missing=${p3Missing} errors=${p3Errors} | p4: enqueued=${p4Enqueued} skipped=${p4Skipped}`);
+  console.log(`✅ Reconcile done in ${elapsedMs}ms — p1: verified=${p1Verified} missing=${p1Missing} errors=${p1Errors} | p2: created=${p2Created} missing=${p2Missing} errors=${p2Errors} | p3: fixed=${p3Fixed} missing=${p3Missing} errors=${p3Errors} | p4: enqueued=${p4Enqueued} skipped=${p4Skipped} | p5: retried=${p5Retried} alerted=${p5Alerted}`);
 
   return new Response(JSON.stringify({
     success: true,
@@ -481,6 +545,7 @@ serve(async (req) => {
     pass2: { candidates: unrepliedLeads.length, created: p2Created, missing: p2Missing, errors: p2Errors },
     pass3: { candidates: failedToCheck.length, fixed: p3Fixed, missing: p3Missing, errors: p3Errors },
     pass4: { enqueued: p4Enqueued, skipped: p4Skipped },
+    pass5: { retried: p5Retried, alerted: p5Alerted },
     details,
   }), { status: 200, headers: corsHeaders });
 });

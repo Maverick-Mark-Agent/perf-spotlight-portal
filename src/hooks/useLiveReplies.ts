@@ -146,24 +146,16 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
       const { data, error: fetchError } = await leadQuery;
       if (fetchError) throw fetchError;
 
-      // Use the oldest visible lead's reply_date as the floor — sent_replies
-      // older than that aren't shown anywhere on this page. Falls back to a
-      // 30-day window if no leads were returned.
-      const oldestLead = (data || []).reduce((min: string | null, r: any) => {
-        const d = r.reply_date;
-        if (!d) return min;
-        return !min || d < min ? d : min;
-      }, null as string | null);
-      const sentRepliesCutoff = oldestLead
-        ? new Date(new Date(oldestLead).getTime() - 24 * 60 * 60 * 1000).toISOString()
-        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
       const [{ data: sentRepliesRaw }, { data: conversationStats }, { data: queueRaw }] = await Promise.all([
+        // Fetch all sent_replies without a time cutoff — the cutoff was causing
+        // leads who replied multiple times over weeks to show as NEW because their
+        // old sent_replies row fell outside the window and the lead-level fallback
+        // lookup came up empty. The limit(5000) keeps the payload bounded.
         supabase
           .from('sent_replies')
-          .select('id, reply_uuid, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at, generated_reply_text, cc_emails')
-          .gte('created_at', sentRepliesCutoff)
-          .order('created_at', { ascending: false }) as any,
+          .select('id, reply_uuid, sent_at, status, sent_by, verified_at, error_message, retry_count, last_retry_at, generated_reply_text, cc_emails, lead_email, workspace_name')
+          .order('created_at', { ascending: false })
+          .limit(5000) as any,
         // Fetch only leads with reply_count > 1 (threads) — small result set, no URL-length issues.
         supabase
           .from('lead_conversation_stats')

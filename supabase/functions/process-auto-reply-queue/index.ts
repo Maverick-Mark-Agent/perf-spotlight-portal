@@ -664,6 +664,16 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const startedAt = Date.now();
 
+  // Recover rows stuck in 'processing' for >10 min. This happens when an edge
+  // function invocation crashes or times out mid-run. Without recovery the row
+  // stays claimed forever and never shows an error on the dashboard.
+  const staleProcessingCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  await supabase
+    .from('auto_reply_queue')
+    .update({ status: 'pending', scheduled_for: new Date().toISOString() })
+    .eq('status', 'processing')
+    .lt('updated_at', staleProcessingCutoff);
+
   // Fetch up to MAX_ROWS_PER_RUN due rows.
   const { data: dueRows, error: dueErr } = await supabase
     .from('auto_reply_queue')

@@ -35,6 +35,9 @@ export function getReplyState(reply: {
   }
   if (sr.status === 'failed') return 'failed';
   if (sr.verified_at) return 'replied';
+  // 'sending' = CAS lock held by send-reply-via-bison mid-flight; treat same as
+  // unverified 'sent' — show PENDING, not silence. Reconcile flips it to 'failed'
+  // after 5 min if the function crashed before completing.
   return 'pending';
 }
 
@@ -172,16 +175,33 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
         supabase
           .from('auto_reply_queue')
           .select('reply_uuid, status, scheduled_for')
-          .in('status', ['pending', 'processing', 'review_required']) as any,
+          .in('status', ['pending', 'processing', 'review_required'])
+          .order('created_at', { ascending: false }) as any,
       ]);
 
 
-      // Build lookup map keyed by reply_uuid — rows are ordered by created_at DESC
-      // so the first entry per reply_uuid is always the most recent one.
+      // Two lookup maps for sent_replies:
+      //   1. by reply_uuid — exact match for single-reply leads
+      //   2. by lead_email|workspace_name — catches thread leads where the
+      //      sent_replies row belongs to an earlier reply UUID than the card's id.
+      //      Without this, a thread card's latest inbound has no sent_replies match
+      //      and falls back to queue_status, showing "Sends X min ago" even though
+      //      the lead was already replied to.
+      // Rows are ordered created_at DESC so the first entry per key is the most recent.
       const sentRepliesMap = new Map<string, SentReplyRow>();
+      const sentRepliesByLeadMap = new Map<string, SentReplyRow>();
       ((sentRepliesRaw as any[]) || []).forEach((sr: any) => {
         if (sr.reply_uuid && !sentRepliesMap.has(sr.reply_uuid)) {
           sentRepliesMap.set(sr.reply_uuid, sr as SentReplyRow);
+        }
+        if (sr.lead_email && sr.workspace_name) {
+          const key = `${sr.lead_email}|${sr.workspace_name}`;
+          // Keep the most recent non-failed row; failed rows are kept only if
+          // there's no successful send for this lead.
+          const existing = sentRepliesByLeadMap.get(key);
+          if (!existing || (sr.status !== 'failed' && existing.status === 'failed')) {
+            sentRepliesByLeadMap.set(key, sr as SentReplyRow);
+          }
         }
       });
 
@@ -204,7 +224,11 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
       // Merge everything together
       const repliesWithConversation: LiveReply[] = (data || []).map(reply => {
         const stats = statsMap.get(`${reply.lead_email}|${reply.workspace_name}`);
-        const sentReply = sentRepliesMap.get(reply.id);
+        // Prefer exact reply_uuid match; fall back to any sent reply for this
+        // lead+workspace so thread cards correctly show REPLIED/FAILED instead
+        // of falling through to the queue status badge.
+        const sentReply = sentRepliesMap.get(reply.id)
+          ?? sentRepliesByLeadMap.get(`${reply.lead_email}|${reply.workspace_name}`);
         return {
           ...(reply as any),
           sent_replies: sentReply || undefined,
@@ -331,11 +355,10 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
           },
           (payload) => {
             const row = payload.new as any;
-            // Only refetch once the row is verified (verified_at set) or failed.
-            // Ignore status='sending' inserts — they cause a PENDING flash while
-            // Bison is mid-call. The optimistic patch already handles the UI.
-            if (row.verified_at || row.status === 'failed') {
-              console.log('sent_replies INSERT verified/failed — refreshing list');
+            // Refetch on: verified (replied), failed, or sending (shows PENDING immediately
+            // without relying on the optimistic patch, which only fires on manual sends).
+            if (row.verified_at || row.status === 'failed' || row.status === 'sending' || row.status === 'sent') {
+              console.log('sent_replies INSERT — refreshing list', row.status);
               fetchRepliesRef.current();
             }
           }
@@ -349,10 +372,10 @@ export function useLiveReplies(workspaceName?: string | null): UseLiveRepliesRet
           },
           (payload) => {
             const row = payload.new as any;
-            // Only refetch when verified_at is stamped or status flips to failed.
-            // Skip intermediate status transitions (sending → sent) to avoid flicker.
-            if (row.verified_at || row.status === 'failed') {
-              console.log('sent_replies UPDATE verified/failed — refreshing list');
+            // Refetch on any meaningful status change — verified, failed, or any
+            // status transition so the dashboard badge stays accurate.
+            if (row.verified_at || row.status === 'failed' || row.status === 'sent' || row.status === 'sending') {
+              console.log('sent_replies UPDATE — refreshing list', row.status);
               fetchRepliesRef.current();
             }
           }

@@ -87,9 +87,13 @@ export default function LiveRepliesBoard() {
     const counts = { needResponse: 0, pending: 0, replied: 0, failed: 0 };
     for (const r of filteredReplies) {
       const state = getReplyState(r);
+      const isThread = (r.conversation_reply_count ?? 1) > 1;
+      const isUnansweredThread = isThread && state === 'replied';
       if (state === 'pending') counts.pending++;
-      else if (state === 'replied') counts.replied++;
+      else if (state === 'replied' && !isUnansweredThread) counts.replied++;
       else if (state === 'failed') counts.failed++;
+      // Unanswered threads (lead wrote back after we replied) count as needing response
+      else if (isUnansweredThread) counts.needResponse++;
       else if ((state === 'none' || state === 'queued') && r.sentiment === 'positive') counts.needResponse++;
     }
     return counts;
@@ -512,12 +516,17 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
     setIsExpanded(!isExpanded);
   };
 
+  // If the lead wrote back after we already replied, treat as thread regardless
+  // of replyState — the new inbound message needs attention.
+  const isUnansweredThread = isThread && replyState === 'replied';
+
   const cardBorderClass =
+    isUnansweredThread ? 'border-l-teal-500' :
     replyState === 'none' && isThread ? 'border-l-teal-500' :
     replyState === 'none' ? 'border-l-blue-500' :
     replyState === 'queued' ? 'border-l-orange-400' :
     replyState === 'pending' ? 'border-l-yellow-500' :
-    replyState === 'replied' ? 'border-l-green-500 opacity-70' :
+    replyState === 'replied' && !isUnansweredThread ? 'border-l-green-500 opacity-70' :
     'border-l-red-500';
 
   return (
@@ -526,7 +535,15 @@ function ReplyCard({ reply, onReplySent, patchReplyAfterSend }: ReplyCardProps) 
       onClick={handleCardClick}
     >
       {/* State Indicator Badge - Top Right Corner */}
-      {replyState === 'replied' && (
+      {replyState === 'replied' && isUnansweredThread && (
+        <div className="absolute top-3 right-3 z-10">
+          <Badge className="bg-teal-600 text-white border-teal-700 shadow-md px-3 py-1.5 text-xs font-semibold">
+            <MessagesSquare className="h-3.5 w-3.5 mr-1.5" />
+            THREAD
+          </Badge>
+        </div>
+      )}
+      {replyState === 'replied' && !isUnansweredThread && (
         <div className="absolute top-3 right-3 z-10">
           <Badge className="bg-green-600 text-white border-green-700 shadow-md px-3 py-1.5 text-xs font-semibold">
             <Check className="h-3.5 w-3.5 mr-1.5" />

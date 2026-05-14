@@ -30,9 +30,7 @@ const MAVERICK_BISON_API_KEY = Deno.env.get('MAVERICK_BISON_API_KEY');
 const LONG_RUN_BISON_API_KEY = Deno.env.get('LONG_RUN_BISON_API_KEY');
 const ALERTS_WEBHOOK = Deno.env.get('AI_REPLY_ALERTS_SLACK_WEBHOOK_URL');
 
-// Auto-retry: how many times to re-enqueue a failed send before giving up.
-const MAX_AUTO_RETRIES = 2;
-// Slack dedup: only fire one alert per workspace per hour.
+// Slack dedup: only fire one alert per workspace per run.
 const alertedThisRun = new Set<string>();
 
 const MAVERICK_BASE = 'https://send.maverickmarketingllc.com/api';
@@ -96,6 +94,28 @@ serve(async (req) => {
   const startedAt = Date.now();
   const cutoffOld = new Date(Date.now() - MAX_AGE_HOURS * 60 * 60 * 1000).toISOString();
   const cutoffRecent = new Date(Date.now() - MIN_AGE_SECONDS * 1000).toISOString();
+
+  // ── PRE-PASS: recover stuck 'sending' rows ───────────────────────────────
+  // send-reply-via-bison inserts status='sending' as a CAS lock before calling
+  // the Bison API. If the edge function crashes or times out after the insert
+  // but before the final upsert to status='sent', the row is stuck 'sending'
+  // forever. The dashboard sees verified_at=null + status≠failed → shows the
+  // lead as PENDING (appears replied-to but wasn't). Flip these to 'failed'
+  // after 5 min so the error surfaces and a rep can manually reply in Bison.
+  const stuckSendingCutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { data: stuckSending } = await supabase
+    .from('sent_replies')
+    .select('id, workspace_name, lead_email')
+    .eq('status', 'sending')
+    .lt('created_at', stuckSendingCutoff) as any;
+
+  for (const row of (stuckSending || []) as any[]) {
+    await supabase.from('sent_replies').update({
+      status: 'failed',
+      error_message: 'Send function timed out or crashed before completing — rep must reply manually in Bison.',
+    }).eq('id', row.id);
+    console.warn(`⚠️  Flipped stuck 'sending' row ${row.id} (${row.workspace_name}) to failed`);
+  }
 
   // ── PASS 1: dashboard sends not yet verified ──────────────────────────────
   const { data: candidates, error: candidatesError } = await supabase
@@ -477,26 +497,38 @@ serve(async (req) => {
     }
   }
 
-  // ── PASS 5: auto-retry + real-time alerts ────────────────────────────────
-  // For failed sent_replies rows that haven't been retried yet, re-enqueue
-  // them in the auto_reply_queue so the pipeline takes another shot.
-  // Cap at MAX_AUTO_RETRIES to avoid infinite loops on genuinely broken senders.
-  // Fire a Slack alert for each newly-failed workspace (once per run).
+  // ── PASS 5: real-time failure alerts ────────────────────────────────────
+  // Alert Slack once per workspace per run for two types of problems:
+  //   (a) status='failed' in the last 6h — send definitely failed
+  //   (b) status='sent', verified_at IS NULL, >20 min old — send was accepted
+  //       by Bison but never showed up as outbound in the thread; looks
+  //       "replied to" on the dashboard but actually wasn't delivered
+  // No auto-retry — rep must go into Bison and reply manually.
   const since6h = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-  const { data: freshFailed } = await supabase
-    .from('sent_replies')
-    .select('id, reply_uuid, workspace_name, lead_email, retry_count, error_message, sent_at')
-    .eq('status', 'failed')
-    .gte('created_at', since6h)
-    .order('created_at', { ascending: false })
-    .limit(50) as any;
+  const staleUnverifiedCutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString();
 
-  let p5Retried = 0, p5Alerted = 0;
+  const [{ data: freshFailed }, { data: staleUnverified }] = await Promise.all([
+    supabase
+      .from('sent_replies')
+      .select('id, workspace_name, lead_email, error_message, sent_at')
+      .eq('status', 'failed')
+      .gte('created_at', since6h)
+      .order('created_at', { ascending: false })
+      .limit(50) as any,
+    supabase
+      .from('sent_replies')
+      .select('id, workspace_name, lead_email, sent_at')
+      .eq('status', 'sent')
+      .is('verified_at', null)
+      .lt('sent_at', staleUnverifiedCutoff)
+      .gte('sent_at', since6h)
+      .order('sent_at', { ascending: false })
+      .limit(50) as any,
+  ]);
+
+  let p5Alerted = 0;
 
   for (const row of (freshFailed as any[]) || []) {
-    const retryCount: number = row.retry_count ?? 0;
-
-    // Alert on new failures (once per workspace per run)
     if (ALERTS_WEBHOOK && !alertedThisRun.has(row.workspace_name)) {
       alertedThisRun.add(row.workspace_name);
       const msg = row.error_message?.slice(0, 200) ?? 'unknown error';
@@ -507,36 +539,40 @@ serve(async (req) => {
           text: `⚠️ Send failed — ${row.workspace_name}`,
           blocks: [{
             type: 'section',
-            text: { type: 'mrkdwn', text: `*⚠️ Auto-reply send failed*\n*Workspace:* ${row.workspace_name}\n*Lead:* ${row.lead_email ?? 'unknown'}\n*Error:* ${msg}\n_${retryCount < MAX_AUTO_RETRIES ? `Auto-retrying (attempt ${retryCount + 1}/${MAX_AUTO_RETRIES})…` : 'Max retries reached — manual intervention needed.'}_` },
+            text: { type: 'mrkdwn', text: `*⚠️ Auto-reply send failed*\n*Workspace:* ${row.workspace_name}\n*Lead:* ${row.lead_email ?? 'unknown'}\n*Error:* ${msg}\n_Rep must reply manually in Bison._` },
           }],
         }),
       }).catch(() => {});
       p5Alerted++;
     }
+  }
 
-    // Auto-retry if under the cap
-    if (retryCount < MAX_AUTO_RETRIES) {
-      // Increment retry_count so we don't retry indefinitely
-      await supabase.from('sent_replies')
-        .update({ retry_count: retryCount + 1 })
-        .eq('id', row.id);
-
-      // Re-enqueue — delay 30 min to give the sender time to recover
-      const schedFor = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-      const { error: reqErr } = await supabase.from('auto_reply_queue').insert({
-        reply_uuid:     row.reply_uuid,
-        workspace_name: row.workspace_name,
-        status:         'pending',
-        scheduled_for:  schedFor,
-        force_review:   false,
-      });
-      if (!reqErr) p5Retried++;
-      // 23505 = duplicate key (already re-enqueued) — safe to ignore
+  // Alert on unverified sends — these look "replied to" on the dashboard but
+  // Bison never confirmed delivery. Use a separate dedup key so it doesn't
+  // suppress the failed-send alert for the same workspace.
+  const alertedUnverified = new Set<string>();
+  for (const row of (staleUnverified as any[]) || []) {
+    const key = `unverified:${row.workspace_name}`;
+    if (ALERTS_WEBHOOK && !alertedUnverified.has(key)) {
+      alertedUnverified.add(key);
+      const ageMin = Math.round((Date.now() - new Date(row.sent_at).getTime()) / 60_000);
+      fetch(ALERTS_WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: `⚠️ Unverified send — ${row.workspace_name}`,
+          blocks: [{
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*⚠️ Reply not confirmed by Bison after ${ageMin} min*\n*Workspace:* ${row.workspace_name}\n*Lead:* ${row.lead_email ?? 'unknown'}\n_Dashboard shows PENDING but Bison may not have delivered it. Rep should check Bison and reply manually if needed._` },
+          }],
+        }),
+      }).catch(() => {});
+      p5Alerted++;
     }
   }
 
   const elapsedMs = Date.now() - startedAt;
-  console.log(`✅ Reconcile done in ${elapsedMs}ms — p1: verified=${p1Verified} missing=${p1Missing} errors=${p1Errors} | p2: created=${p2Created} missing=${p2Missing} errors=${p2Errors} | p3: fixed=${p3Fixed} missing=${p3Missing} errors=${p3Errors} | p4: enqueued=${p4Enqueued} skipped=${p4Skipped} | p5: retried=${p5Retried} alerted=${p5Alerted}`);
+  console.log(`✅ Reconcile done in ${elapsedMs}ms — p1: verified=${p1Verified} missing=${p1Missing} errors=${p1Errors} | p2: created=${p2Created} missing=${p2Missing} errors=${p2Errors} | p3: fixed=${p3Fixed} missing=${p3Missing} errors=${p3Errors} | p4: enqueued=${p4Enqueued} skipped=${p4Skipped} | p5: alerted=${p5Alerted}`);
 
   return new Response(JSON.stringify({
     success: true,
@@ -545,7 +581,7 @@ serve(async (req) => {
     pass2: { candidates: unrepliedLeads.length, created: p2Created, missing: p2Missing, errors: p2Errors },
     pass3: { candidates: failedToCheck.length, fixed: p3Fixed, missing: p3Missing, errors: p3Errors },
     pass4: { enqueued: p4Enqueued, skipped: p4Skipped },
-    pass5: { retried: p5Retried, alerted: p5Alerted },
+    pass5: { alerted: p5Alerted },
     details,
   }), { status: 200, headers: corsHeaders });
 });

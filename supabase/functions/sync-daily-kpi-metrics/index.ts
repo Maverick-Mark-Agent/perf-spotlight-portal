@@ -42,7 +42,7 @@ const formatDate = (date: Date): string => {
 
 // Concurrency knobs — workspace-specific Bison API keys mean each client
 // hits its own rate-limit bucket, so we parallelize freely.
-const CLIENT_CONCURRENCY = 8;
+const CLIENT_CONCURRENCY = 24;
 const PER_CLIENT_TIMEOUT_MS = 25_000;
 const MAX_API_RETRIES = 3;
 

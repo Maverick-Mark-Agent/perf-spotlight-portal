@@ -43,7 +43,7 @@ const formatDate = (date: Date): string => {
 // Concurrency knobs — workspace-specific Bison API keys mean each client
 // hits its own rate-limit bucket, so we parallelize freely.
 const CLIENT_CONCURRENCY = 50;
-const PER_CLIENT_TIMEOUT_MS = 35_000;
+const PER_CLIENT_TIMEOUT_MS = 50_000;
 const MAX_API_RETRIES = 3;
 
 // Fetch JSON from Bison with retry (exponential backoff on 5xx) and

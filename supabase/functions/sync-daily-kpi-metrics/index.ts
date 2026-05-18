@@ -40,6 +40,277 @@ const formatDate = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
 
+// Concurrency knobs — workspace-specific Bison API keys mean each client
+// hits its own rate-limit bucket, so we parallelize freely.
+const CLIENT_CONCURRENCY = 8;
+const PER_CLIENT_TIMEOUT_MS = 25_000;
+const MAX_API_RETRIES = 3;
+
+// Fetch JSON from Bison with retry (exponential backoff on 5xx) and
+// HTTP status check. Throws on 4xx and after max retries on 5xx/network.
+// Modeled on poll-sender-emails/index.ts:21-61.
+async function fetchBisonJson(
+  url: string,
+  apiKey: string,
+  signal: AbortSignal,
+  workspaceName: string,
+  maxRetries = MAX_API_RETRIES,
+): Promise<any> {
+  const options: RequestInit = {
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Accept': 'application/json',
+    },
+    signal,
+  };
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      if (response.ok) {
+        return await response.json();
+      }
+
+      // 4xx — don't retry, surface the error
+      if (response.status >= 400 && response.status < 500) {
+        const body = await response.text().catch(() => '');
+        throw new Error(
+          `[${workspaceName}] Bison ${response.status} on ${url}: ${body.slice(0, 200)}`,
+        );
+      }
+
+      // 5xx — retry with backoff
+      if (attempt < maxRetries - 1) {
+        const backoffMs = Math.pow(2, attempt) * 1000;
+        console.warn(
+          `[${workspaceName}] Bison ${response.status}, retry ${attempt + 1}/${maxRetries} in ${backoffMs}ms`,
+        );
+        await new Promise((r) => setTimeout(r, backoffMs));
+        continue;
+      }
+
+      const body = await response.text().catch(() => '');
+      throw new Error(
+        `[${workspaceName}] Bison ${response.status} after ${maxRetries} attempts: ${body.slice(0, 200)}`,
+      );
+    } catch (err: any) {
+      // AbortError — surface immediately, don't retry
+      if (err?.name === 'AbortError') throw err;
+      lastError = err;
+      if (attempt < maxRetries - 1) {
+        const backoffMs = Math.pow(2, attempt) * 1000;
+        console.warn(
+          `[${workspaceName}] Network error, retry ${attempt + 1}/${maxRetries} in ${backoffMs}ms: ${err.message}`,
+        );
+        await new Promise((r) => setTimeout(r, backoffMs));
+      }
+    }
+  }
+
+  throw lastError || new Error(`[${workspaceName}] Max retries exceeded`);
+}
+
+// Process one client: fetch Bison stats and upsert client_metrics row.
+// Extracted so we can run multiple clients concurrently.
+async function processClient(
+  client: any,
+  dateRanges: DateRanges,
+  supabase: any,
+): Promise<any> {
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(
+    () => abortController.abort(),
+    PER_CLIENT_TIMEOUT_MS,
+  );
+
+  try {
+    const baseUrl = client.bison_instance === 'longrun'
+      ? 'https://send.longrun.agency/api'
+      : 'https://send.maverickmarketingllc.com/api';
+
+    const apiKey = client.bison_api_key;
+    if (!apiKey) {
+      console.warn(`[${client.workspace_name}] Missing API key, skipping...`);
+      return {
+        workspace_name: client.workspace_name,
+        status: 'skipped',
+        error: 'Missing workspace API key',
+      };
+    }
+
+    const signal = abortController.signal;
+    const ws = client.workspace_name;
+
+    const [
+      mtdStats,
+      last7DaysStats,
+      last14DaysStats,
+      last30DaysStats,
+      lastMonthStats,
+      scheduledToday,
+      scheduledTomorrow,
+    ] = await Promise.all([
+      fetchBisonJson(
+        `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.currentMonthStart}&end_date=${dateRanges.today}`,
+        apiKey, signal, ws,
+      ),
+      fetchBisonJson(
+        `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.last7DaysStart}&end_date=${dateRanges.today}`,
+        apiKey, signal, ws,
+      ),
+      fetchBisonJson(
+        `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.last14DaysStart}&end_date=${dateRanges.today}`,
+        apiKey, signal, ws,
+      ),
+      fetchBisonJson(
+        `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.last30DaysStart}&end_date=${dateRanges.today}`,
+        apiKey, signal, ws,
+      ),
+      fetchBisonJson(
+        `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.lastMonthStart}&end_date=${dateRanges.lastMonthEnd}`,
+        apiKey, signal, ws,
+      ),
+      fetchBisonJson(
+        `${baseUrl}/campaigns/sending-schedules?day=today`,
+        apiKey, signal, ws,
+      ),
+      fetchBisonJson(
+        `${baseUrl}/campaigns/sending-schedules?day=tomorrow`,
+        apiKey, signal, ws,
+      ),
+    ]);
+
+    // Extract reply/lead metrics
+    const positiveRepliesMTD = mtdStats.data?.interested || 0;
+    const positiveRepliesLast7Days = last7DaysStats.data?.interested || 0;
+    const positiveRepliesLast14Days = last14DaysStats.data?.interested || 0;
+    const positiveRepliesLast30Days = last30DaysStats.data?.interested || 0;
+    const positiveRepliesLastMonth = lastMonthStats.data?.interested || 0;
+    const allRepliesMTD = mtdStats.data?.unique_replies_per_contact || 0;
+    const bouncedMTD = mtdStats.data?.bounced || 0;
+
+    // Extract email sending volume metrics
+    const emailsSentMTD = mtdStats.data?.emails_sent || 0;
+    const emailsSentLast7Days = last7DaysStats.data?.emails_sent || 0;
+    const emailsSentLast14Days = last14DaysStats.data?.emails_sent || 0;
+    const emailsSentLast30Days = last30DaysStats.data?.emails_sent || 0;
+
+    let emailsScheduledToday = 0;
+    try {
+      if (scheduledToday?.data && Array.isArray(scheduledToday.data)) {
+        emailsScheduledToday = scheduledToday.data.reduce(
+          (total: number, campaign: any) =>
+            total + (campaign?.emails_being_sent || 0),
+          0,
+        );
+      }
+    } catch (error) {
+      console.warn(`[${ws}] Error parsing scheduled emails (today):`, error);
+    }
+
+    let emailsScheduledTomorrow = 0;
+    try {
+      if (scheduledTomorrow?.data && Array.isArray(scheduledTomorrow.data)) {
+        emailsScheduledTomorrow = scheduledTomorrow.data.reduce(
+          (total: number, campaign: any) =>
+            total + (campaign?.emails_being_sent || 0),
+          0,
+        );
+      }
+    } catch (error) {
+      console.warn(`[${ws}] Error parsing scheduled emails (tomorrow):`, error);
+    }
+
+    const emailsSentToday = 0; // TODO: Track daily sends in separate table for accurate count
+
+    const dailyAverage = dateRanges.daysElapsed > 0
+      ? positiveRepliesMTD / dateRanges.daysElapsed
+      : 0;
+    const projectedRepliesEOM = Math.round(dailyAverage * dateRanges.daysInMonth);
+
+    const emailsDailyAvg = dateRanges.daysElapsed > 0
+      ? emailsSentMTD / dateRanges.daysElapsed
+      : 0;
+    const projectedEmailsEOM = Math.round(emailsDailyAvg * dateRanges.daysInMonth);
+
+    const monthlyKPI = client.monthly_kpi_target || 0;
+    const mtdLeadsProgress = monthlyKPI > 0
+      ? (positiveRepliesMTD / monthlyKPI) * 100
+      : 0;
+    const projectionRepliesProgress = monthlyKPI > 0
+      ? (projectedRepliesEOM / monthlyKPI) * 100
+      : 0;
+
+    const positiveReplies7To14Days = positiveRepliesLast14Days - positiveRepliesLast7Days;
+    const lastWeekVsWeekBefore = positiveReplies7To14Days > 0
+      ? ((positiveRepliesLast7Days - positiveReplies7To14Days) / positiveReplies7To14Days) * 100
+      : 0;
+
+    console.log(`[${ws}] MTD: ${positiveRepliesMTD}, Projected EOM: ${projectedRepliesEOM}, Target: ${monthlyKPI}`);
+
+    const { error: upsertError } = await supabase
+      .from('client_metrics')
+      .upsert({
+        workspace_name: ws,
+        metric_date: dateRanges.today,
+        metric_type: 'mtd',
+
+        emails_sent_mtd: emailsSentMTD,
+        emails_sent_today: emailsSentToday,
+        emails_sent_last_7_days: emailsSentLast7Days,
+        emails_sent_last_14_days: emailsSentLast14Days,
+        emails_sent_last_30_days: emailsSentLast30Days,
+        emails_scheduled_today: emailsScheduledToday,
+        emails_scheduled_tomorrow: emailsScheduledTomorrow,
+        projection_emails_eom: projectedEmailsEOM,
+
+        positive_replies_mtd: positiveRepliesMTD,
+        positive_replies_last_7_days: positiveRepliesLast7Days,
+        positive_replies_last_14_days: positiveRepliesLast14Days,
+        positive_replies_last_30_days: positiveRepliesLast30Days,
+        positive_replies_current_month: positiveRepliesMTD,
+        positive_replies_last_month: positiveRepliesLastMonth,
+        projection_positive_replies_eom: projectedRepliesEOM,
+
+        all_replies_mtd: allRepliesMTD,
+        bounced_mtd: bouncedMTD,
+
+        mtd_leads_progress: mtdLeadsProgress,
+        projection_replies_progress: projectionRepliesProgress,
+        last_week_vs_week_before_progress: lastWeekVsWeekBefore,
+
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'workspace_name,metric_date,metric_type',
+      });
+
+    if (upsertError) {
+      throw new Error(`Upsert failed: ${upsertError.message}`);
+    }
+
+    return {
+      workspace_name: ws,
+      status: 'success',
+      positive_replies_mtd: positiveRepliesMTD,
+      projection_eom: projectedRepliesEOM,
+      target: monthlyKPI,
+      progress: Math.round(mtdLeadsProgress),
+    };
+  } catch (error) {
+    console.error(`[${client.workspace_name}] Error:`, error);
+    return {
+      workspace_name: client.workspace_name,
+      status: 'failed',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // Get date ranges for metric calculations
 const getDateRanges = (): DateRanges => {
   const today = new Date();
@@ -107,210 +378,37 @@ serve(async (req) => {
 
     console.log(`Processing ${clients.length} active clients...`);
 
+    // Process clients in parallel batches of CLIENT_CONCURRENCY.
+    // Each workspace has its own Bison API key (independent rate-limit
+    // bucket), so we don't need an inter-client delay.
     const results: any[] = [];
-    let successCount = 0;
-    let failCount = 0;
-
-    // Process each client
-    for (const client of clients) {
-      try {
-        console.log(`\n[${client.workspace_name}] Fetching metrics...`);
-
-        // Determine base URL based on instance
-        const baseUrl = client.bison_instance === 'longrun'
-          ? 'https://send.longrun.agency/api'
-          : 'https://send.maverickmarketingllc.com/api';
-
-        // Use workspace-specific API key (NO WORKSPACE SWITCHING!)
-        const apiKey = client.bison_api_key;
-        if (!apiKey) {
-          console.warn(`[${client.workspace_name}] Missing API key, skipping...`);
-          failCount++;
+    for (let i = 0; i < clients.length; i += CLIENT_CONCURRENCY) {
+      const batch = clients.slice(i, i + CLIENT_CONCURRENCY);
+      console.log(
+        `\n--- Batch ${Math.floor(i / CLIENT_CONCURRENCY) + 1}: ${batch.map((c: any) => c.workspace_name).join(', ')} ---`,
+      );
+      const settled = await Promise.allSettled(
+        batch.map((c: any) => processClient(c, dateRanges, supabase)),
+      );
+      for (let j = 0; j < settled.length; j++) {
+        const s = settled[j];
+        if (s.status === 'fulfilled') {
+          results.push(s.value);
+        } else {
+          // processClient catches its own errors, so this should be rare —
+          // an unhandled rejection means the function itself threw before
+          // its try/catch (e.g. AbortError leaking).
           results.push({
-            workspace_name: client.workspace_name,
-            status: 'skipped',
-            error: 'Missing workspace API key',
+            workspace_name: batch[j].workspace_name,
+            status: 'failed',
+            error: s.reason instanceof Error ? s.reason.message : String(s.reason),
           });
-          continue;
         }
-
-        // Fetch stats for multiple time periods + today/tomorrow scheduled emails in parallel
-        const [mtdStats, last7DaysStats, last14DaysStats, last30DaysStats, lastMonthStats, scheduledToday, scheduledTomorrow] = await Promise.all([
-          // MTD (current month to today)
-          fetch(
-            `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.currentMonthStart}&end_date=${dateRanges.today}`,
-            { headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } }
-          ).then(r => r.json()),
-
-          // Last 7 days
-          fetch(
-            `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.last7DaysStart}&end_date=${dateRanges.today}`,
-            { headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } }
-          ).then(r => r.json()),
-
-          // Last 14 days
-          fetch(
-            `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.last14DaysStart}&end_date=${dateRanges.today}`,
-            { headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } }
-          ).then(r => r.json()),
-
-          // Last 30 days
-          fetch(
-            `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.last30DaysStart}&end_date=${dateRanges.today}`,
-            { headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } }
-          ).then(r => r.json()),
-
-          // Previous month
-          fetch(
-            `${baseUrl}/workspaces/v1.1/stats?start_date=${dateRanges.lastMonthStart}&end_date=${dateRanges.lastMonthEnd}`,
-            { headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } }
-          ).then(r => r.json()),
-
-          // Today's scheduled emails (future sends)
-          fetch(
-            `${baseUrl}/campaigns/sending-schedules?day=today`,
-            { headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } }
-          ).then(r => r.json()),
-
-          // Tomorrow's scheduled emails (future sends)
-          fetch(
-            `${baseUrl}/campaigns/sending-schedules?day=tomorrow`,
-            { headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' } }
-          ).then(r => r.json()),
-        ]);
-
-        // Extract reply/lead metrics
-        const positiveRepliesMTD = mtdStats.data?.interested || 0;
-        const positiveRepliesLast7Days = last7DaysStats.data?.interested || 0;
-        const positiveRepliesLast14Days = last14DaysStats.data?.interested || 0;
-        const positiveRepliesLast30Days = last30DaysStats.data?.interested || 0;
-        const positiveRepliesLastMonth = lastMonthStats.data?.interested || 0;
-        const allRepliesMTD = mtdStats.data?.unique_replies_per_contact || 0;
-        const bouncedMTD = mtdStats.data?.bounced || 0;
-
-        // Extract email sending volume metrics
-        const emailsSentMTD = mtdStats.data?.emails_sent || 0;
-        const emailsSentLast7Days = last7DaysStats.data?.emails_sent || 0;
-        const emailsSentLast14Days = last14DaysStats.data?.emails_sent || 0;
-        const emailsSentLast30Days = last30DaysStats.data?.emails_sent || 0;
-
-        // Calculate today's scheduled emails (sum across all campaigns)
-        let emailsScheduledToday = 0;
-        try {
-          if (scheduledToday?.data && Array.isArray(scheduledToday.data)) {
-            emailsScheduledToday = scheduledToday.data.reduce((total: number, campaign: any) => {
-              return total + (campaign?.emails_being_sent || 0);
-            }, 0);
-          }
-        } catch (error) {
-          console.warn(`[${client.workspace_name}] Error parsing scheduled emails (today):`, error);
-        }
-
-        // Calculate tomorrow's scheduled emails (sum across all campaigns)
-        let emailsScheduledTomorrow = 0;
-        try {
-          if (scheduledTomorrow?.data && Array.isArray(scheduledTomorrow.data)) {
-            emailsScheduledTomorrow = scheduledTomorrow.data.reduce((total: number, campaign: any) => {
-              return total + (campaign?.emails_being_sent || 0);
-            }, 0);
-          }
-        } catch (error) {
-          console.warn(`[${client.workspace_name}] Error parsing scheduled emails (tomorrow):`, error);
-        }
-
-        // For "emails sent today", we approximate as the difference between MTD and yesterday's total
-        // This is a rough estimate since we don't have exact daily breakdowns
-        // Better solution would be to track daily in a separate table
-        const emailsSentToday = 0; // TODO: Track daily sends in separate table for accurate count
-
-        // Calculate projections
-        const dailyAverage = dateRanges.daysElapsed > 0 ? positiveRepliesMTD / dateRanges.daysElapsed : 0;
-        const projectedRepliesEOM = Math.round(dailyAverage * dateRanges.daysInMonth);
-
-        const emailsDailyAvg = dateRanges.daysElapsed > 0 ? emailsSentMTD / dateRanges.daysElapsed : 0;
-        const projectedEmailsEOM = Math.round(emailsDailyAvg * dateRanges.daysInMonth);
-
-        // Calculate progress percentages
-        const monthlyKPI = client.monthly_kpi_target || 0;
-        const mtdLeadsProgress = monthlyKPI > 0 ? (positiveRepliesMTD / monthlyKPI) * 100 : 0;
-        const projectionRepliesProgress = monthlyKPI > 0 ? (projectedRepliesEOM / monthlyKPI) * 100 : 0;
-
-        // Week-over-week comparison
-        const positiveReplies7To14Days = positiveRepliesLast14Days - positiveRepliesLast7Days;
-        const lastWeekVsWeekBefore = positiveReplies7To14Days > 0
-          ? ((positiveRepliesLast7Days - positiveReplies7To14Days) / positiveReplies7To14Days) * 100
-          : 0;
-
-        console.log(`[${client.workspace_name}] MTD: ${positiveRepliesMTD}, Projected EOM: ${projectedRepliesEOM}, Target: ${monthlyKPI}`);
-
-        // Upsert to client_metrics table
-        const { error: upsertError } = await supabase
-          .from('client_metrics')
-          .upsert({
-            workspace_name: client.workspace_name,
-            metric_date: dateRanges.today,
-            metric_type: 'mtd',
-
-            // Email volume metrics (MTD + rolling windows)
-            emails_sent_mtd: emailsSentMTD,
-            emails_sent_today: emailsSentToday,
-            emails_sent_last_7_days: emailsSentLast7Days,
-            emails_sent_last_14_days: emailsSentLast14Days,
-            emails_sent_last_30_days: emailsSentLast30Days,
-            emails_scheduled_today: emailsScheduledToday,
-            emails_scheduled_tomorrow: emailsScheduledTomorrow,
-            projection_emails_eom: projectedEmailsEOM,
-
-            // Lead/Reply metrics
-            positive_replies_mtd: positiveRepliesMTD,
-            positive_replies_last_7_days: positiveRepliesLast7Days,
-            positive_replies_last_14_days: positiveRepliesLast14Days,
-            positive_replies_last_30_days: positiveRepliesLast30Days,
-            positive_replies_current_month: positiveRepliesMTD,
-            positive_replies_last_month: positiveRepliesLastMonth,
-            projection_positive_replies_eom: projectedRepliesEOM,
-
-            // Supplemental metrics
-            all_replies_mtd: allRepliesMTD,
-            bounced_mtd: bouncedMTD,
-
-            // Progress percentages
-            mtd_leads_progress: mtdLeadsProgress,
-            projection_replies_progress: projectionRepliesProgress,
-            last_week_vs_week_before_progress: lastWeekVsWeekBefore,
-
-            updated_at: new Date().toISOString(),
-          }, {
-            onConflict: 'workspace_name,metric_date,metric_type'
-          });
-
-        if (upsertError) {
-          throw new Error(`Upsert failed: ${upsertError.message}`);
-        }
-
-        successCount++;
-        results.push({
-          workspace_name: client.workspace_name,
-          status: 'success',
-          positive_replies_mtd: positiveRepliesMTD,
-          projection_eom: projectedRepliesEOM,
-          target: monthlyKPI,
-          progress: Math.round(mtdLeadsProgress),
-        });
-
-      } catch (error) {
-        console.error(`[${client.workspace_name}] Error:`, error);
-        failCount++;
-        results.push({
-          workspace_name: client.workspace_name,
-          status: 'failed',
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
       }
-
-      // Small delay to avoid rate limits
-      await new Promise(resolve => setTimeout(resolve, 100));
     }
+
+    const successCount = results.filter((r) => r.status === 'success').length;
+    const failCount = results.length - successCount;
 
     const durationMs = Date.now() - startTime;
 

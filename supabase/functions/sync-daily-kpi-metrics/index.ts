@@ -46,6 +46,13 @@ const CLIENT_CONCURRENCY = 50;
 const PER_CLIENT_TIMEOUT_MS = 50_000;
 const MAX_API_RETRIES = 3;
 
+// client_metrics percentage columns are DECIMAL(5,2) — max 999.99.
+// WoW math `((current - prior) / prior) * 100` can spike past that when
+// the prior-week value is small (e.g. 1 lead). Clamp before upsert so
+// the row lands instead of throwing "numeric field overflow".
+const clampPct = (n: number): number =>
+  Math.max(-999.99, Math.min(999.99, Number.isFinite(n) ? n : 0));
+
 // Fetch JSON from Bison with retry (exponential backoff on 5xx) and
 // HTTP status check. Throws on 4xx and after max retries on 5xx/network.
 // Modeled on poll-sender-emails/index.ts:21-61.
@@ -278,9 +285,9 @@ async function processClient(
         all_replies_mtd: allRepliesMTD,
         bounced_mtd: bouncedMTD,
 
-        mtd_leads_progress: mtdLeadsProgress,
-        projection_replies_progress: projectionRepliesProgress,
-        last_week_vs_week_before_progress: lastWeekVsWeekBefore,
+        mtd_leads_progress: clampPct(mtdLeadsProgress),
+        projection_replies_progress: clampPct(projectionRepliesProgress),
+        last_week_vs_week_before_progress: clampPct(lastWeekVsWeekBefore),
 
         updated_at: new Date().toISOString(),
       }, {

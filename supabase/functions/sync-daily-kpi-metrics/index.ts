@@ -35,10 +35,38 @@ interface DateRanges {
   daysElapsed: number;
 }
 
-// Helper function to format date as YYYY-MM-DD
+// Helper function to format date as YYYY-MM-DD.
+// IMPORTANT: input Dates passed here must be anchored to noon UTC on the
+// intended calendar day (see cstDate below), so the UTC-formatted output
+// matches the CST calendar day. Do NOT call this with `new Date()` directly
+// from server context — Deno's server clock is UTC, and after ~7pm CST that
+// would silently drift to the next day.
 const formatDate = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
+
+// Extract CST calendar parts from any Date. The frontend computes "today"
+// in CST (see src/lib/timezoneUtils.ts), so the sync function must too,
+// or late-night manual syncs land on the wrong metric_date row and the
+// dashboard reads stale data.
+const cstDateParts = (d: Date): { year: number; month: number; day: number } => {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = fmt.formatToParts(d);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
+  return { year: get('year'), month: get('month'), day: get('day') };
+};
+
+// Construct a Date anchored to noon UTC on the given CST calendar day.
+// All date arithmetic in getDateRanges uses getUTC*/setUTCDate on these,
+// so noon UTC keeps us safely inside the same calendar day no matter the
+// time-zone offset of any future caller.
+const cstDate = (year: number, month: number, day: number): Date =>
+  new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 
 // Concurrency knobs — workspace-specific Bison API keys mean each client
 // hits its own rate-limit bucket, so we parallelize freely.
@@ -320,26 +348,36 @@ async function processClient(
 
 // Get date ranges for metric calculations
 // Accepts an optional target date so the function can backfill historical
-// snapshots. When omitted, "today" is wall-clock now (existing behavior).
+// snapshots. When omitted, "today" is the current CST calendar day.
+// All math is anchored on the CST calendar (matches the frontend's
+// getCurrentCstInfo in src/lib/timezoneUtils.ts) so manual syncs late
+// at night land on the same row the dashboard reads.
 const getDateRanges = (targetDate?: Date): DateRanges => {
-  const today = targetDate ?? new Date();
+  const { year, month, day } = cstDateParts(targetDate ?? new Date());
+  const today = cstDate(year, month, day);
 
   // Current month (MTD)
-  const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const currentMonthStart = cstDate(year, month, 1);
 
   // Previous month
-  const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+  const prevMonthYear = month === 1 ? year - 1 : year;
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const lastMonthStart = cstDate(prevMonthYear, prevMonth, 1);
+  const lastMonthEnd = cstDate(year, month, 0); // day 0 = last day of prior month
 
-  // Last N days
-  const last7DaysStart = new Date(today);
-  last7DaysStart.setDate(today.getDate() - 7);
+  // Last N days — use UTC arithmetic on the noon-anchored Date.
+  const last7DaysStart = new Date(today.getTime());
+  last7DaysStart.setUTCDate(today.getUTCDate() - 7);
 
-  const last14DaysStart = new Date(today);
-  last14DaysStart.setDate(today.getDate() - 14);
+  const last14DaysStart = new Date(today.getTime());
+  last14DaysStart.setUTCDate(today.getUTCDate() - 14);
 
-  const last30DaysStart = new Date(today);
-  last30DaysStart.setDate(today.getDate() - 30);
+  const last30DaysStart = new Date(today.getTime());
+  last30DaysStart.setUTCDate(today.getUTCDate() - 30);
+
+  // daysInMonth = day 0 of (month+1) is the last day of `month`.
+  const daysInMonth = cstDate(year, month + 1, 0).getUTCDate();
+  const daysElapsed = day;
 
   return {
     today: formatDate(today),
@@ -349,8 +387,8 @@ const getDateRanges = (targetDate?: Date): DateRanges => {
     last7DaysStart: formatDate(last7DaysStart),
     last14DaysStart: formatDate(last14DaysStart),
     last30DaysStart: formatDate(last30DaysStart),
-    daysInMonth: new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate(),
-    daysElapsed: today.getDate(),
+    daysInMonth,
+    daysElapsed,
   };
 };
 

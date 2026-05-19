@@ -312,8 +312,10 @@ async function processClient(
 }
 
 // Get date ranges for metric calculations
-const getDateRanges = (): DateRanges => {
-  const today = new Date();
+// Accepts an optional target date so the function can backfill historical
+// snapshots. When omitted, "today" is wall-clock now (existing behavior).
+const getDateRanges = (targetDate?: Date): DateRanges => {
+  const today = targetDate ?? new Date();
 
   // Current month (MTD)
   const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -345,6 +347,29 @@ const getDateRanges = (): DateRanges => {
   };
 };
 
+// Parse and validate an optional ?date=YYYY-MM-DD query param.
+// Returns undefined if not supplied; throws if format/range is invalid.
+const parseTargetDate = (req: Request): Date | undefined => {
+  const url = new URL(req.url);
+  const raw = url.searchParams.get('date');
+  if (!raw) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new Error(`Invalid date param "${raw}" — expected YYYY-MM-DD`);
+  }
+  // Construct at noon UTC to avoid local-vs-UTC day flips.
+  const d = new Date(`${raw}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) {
+    throw new Error(`Invalid date param "${raw}" — not a real date`);
+  }
+  const now = new Date();
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setUTCDate(ninetyDaysAgo.getUTCDate() - 90);
+  if (d > now || d < ninetyDaysAgo) {
+    throw new Error(`date param "${raw}" must be within the last 90 days and not in the future`);
+  }
+  return d;
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -362,8 +387,15 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const dateRanges = getDateRanges();
 
+    // Optional ?date=YYYY-MM-DD backfills a historical snapshot.
+    // Without it, behavior is identical to before — snapshots "today".
+    const targetDate = parseTargetDate(req);
+    const dateRanges = getDateRanges(targetDate);
+
+    if (targetDate) {
+      console.log(`Backfill mode — snapshotting metric_date=${dateRanges.today}`);
+    }
     console.log('Date ranges:', dateRanges);
 
     // Fetch all active clients with workspace-specific API keys + billing info

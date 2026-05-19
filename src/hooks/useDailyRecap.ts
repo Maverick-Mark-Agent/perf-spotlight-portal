@@ -7,6 +7,10 @@ export type DailyRecapRow = {
   billingType: 'per_lead' | 'retainer';
   pricePerLead: number;
   emailsSent: number;
+  // Set when the prior-MTD anchor isn't strictly yesterday. The emailsSent
+  // value then spans (anchorDate, targetDate], not just one day.
+  // null means "anchor is yesterday" (single-day total, no caveat needed).
+  anchorDate: string | null;
   repliesReceived: number;
   interestedLeads: number;
   expectedRevenue: number;
@@ -54,6 +58,18 @@ function utcWindow(yyyyMmDd: string): { startIso: string; endIso: string } {
   return { startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
+// Look back this far when searching for an anchor row. 14 days handles
+// long weekends / holidays where the sync may have been skipped, while
+// keeping the fetch payload small. If no row exists in this window we
+// fall back to 0 (which only happens for brand-new workspaces).
+const ANCHOR_LOOKBACK_DAYS = 14;
+
+function daysAgo(yyyyMmDd: string, n: number): string {
+  const d = new Date(`${yyyyMmDd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 export function useDailyRecap(targetDate: Date | undefined) {
   const targetYmd = targetDate ? ymdInCst(targetDate) : undefined;
 
@@ -64,6 +80,7 @@ export function useDailyRecap(targetDate: Date | undefined) {
     queryFn: async (): Promise<DailyRecapData> => {
       const target = targetYmd!;
       const prior = previousDay(target);
+      const lookbackStart = daysAgo(target, ANCHOR_LOOKBACK_DAYS);
       const { startIso, endIso } = utcWindow(target);
 
       const [registryRes, metricsRes, repliesRes, leadsRes] = await Promise.all([
@@ -71,10 +88,14 @@ export function useDailyRecap(targetDate: Date | undefined) {
           .from('client_registry')
           .select('workspace_name, display_name, billing_type, price_per_lead, is_active')
           .eq('is_active', true),
+        // Pull a 14-day window so we can walk back to the most recent prior
+        // row when yesterday is missing (the original [target, prior]-only
+        // query produced phantom-large daily totals on gap days).
         supabase
           .from('client_metrics')
           .select('workspace_name, metric_date, emails_sent_mtd, updated_at')
-          .in('metric_date', [target, prior]),
+          .gte('metric_date', lookbackStart)
+          .lte('metric_date', target),
         supabase
           .from('lead_replies')
           .select('workspace_name, reply_date')
@@ -94,17 +115,28 @@ export function useDailyRecap(targetDate: Date | undefined) {
       if (repliesRes.error) throw repliesRes.error;
       if (leadsRes.error) throw leadsRes.error;
 
+      // Build per-workspace target MTD + most-recent-prior anchor.
+      // Anchor = the latest row with metric_date < target. If none exists,
+      // anchorMtd stays undefined and we display the target's full MTD
+      // (which is correct for first-ever sync days).
       const targetMtd = new Map<string, number>();
-      const priorMtd = new Map<string, number>();
+      const anchorMtd = new Map<string, number>();
+      const anchorDate = new Map<string, string>();
       let freshness: string | null = null;
+
       for (const r of metricsRes.data || []) {
         if (r.metric_date === target) {
           targetMtd.set(r.workspace_name, r.emails_sent_mtd ?? 0);
           if (r.updated_at && (!freshness || r.updated_at > freshness)) {
             freshness = r.updated_at;
           }
-        } else if (r.metric_date === prior) {
-          priorMtd.set(r.workspace_name, r.emails_sent_mtd ?? 0);
+        } else if (r.metric_date < target) {
+          // Keep the most recent prior row per workspace.
+          const existing = anchorDate.get(r.workspace_name);
+          if (!existing || r.metric_date > existing) {
+            anchorDate.set(r.workspace_name, r.metric_date);
+            anchorMtd.set(r.workspace_name, r.emails_sent_mtd ?? 0);
+          }
         }
       }
 
@@ -129,7 +161,13 @@ export function useDailyRecap(targetDate: Date | undefined) {
         price_per_lead: number | string | null;
       }): DailyRecapRow => {
         const ws = reg.workspace_name;
-        const sent = Math.max((targetMtd.get(ws) ?? 0) - (priorMtd.get(ws) ?? 0), 0);
+        const tgt = targetMtd.get(ws) ?? 0;
+        const anchor = anchorMtd.get(ws);
+        const anchorYmd = anchorDate.get(ws) ?? null;
+        // If anchor is the literal previous day, the daily total is a clean
+        // one-day delta and we omit anchorDate to keep the UI uncluttered.
+        // If anchor is older, expose it so the UI can label the span.
+        const sent = Math.max(tgt - (anchor ?? 0), 0);
         const replies = replyCounts.get(ws) ?? 0;
         const leads = leadCounts.get(ws) ?? 0;
         const price = Number(reg.price_per_lead ?? 0);
@@ -141,6 +179,7 @@ export function useDailyRecap(targetDate: Date | undefined) {
           billingType,
           pricePerLead: price,
           emailsSent: sent,
+          anchorDate: anchorYmd === prior ? null : anchorYmd,
           repliesReceived: replies,
           interestedLeads: leads,
           expectedRevenue: price * leads,

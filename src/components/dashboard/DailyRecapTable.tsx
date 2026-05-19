@@ -23,6 +23,13 @@ const formatNumber = (n: number) => n.toLocaleString();
 const formatRevenue = (n: number) =>
   `$${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
+// "2026-05-14" → "May 14". Used to label rows whose daily total spans
+// more than one day because a prior client_metrics row was missing.
+const formatAnchor = (ymd: string) => {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return format(new Date(y, m - 1, d), 'MMM d');
+};
+
 const yesterday = () => startOfDay(subDays(new Date(), 1));
 const today = () => startOfDay(new Date());
 
@@ -63,6 +70,14 @@ const RecapSection = ({ title, subtitle, rows, totals, showRevenue }: SectionPro
                   <TableCell className="font-medium">{r.displayName}</TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatNumber(r.emailsSent)}
+                    {r.anchorDate && (
+                      <span
+                        className="ml-1.5 text-xs text-muted-foreground"
+                        title={`No client_metrics snapshot existed for the day before. This number spans from ${r.anchorDate} through the selected date.`}
+                      >
+                        (since {formatAnchor(r.anchorDate)})
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatNumber(r.repliesReceived)}
